@@ -16,6 +16,7 @@ const NAV = [
   { kind: 'spacer' },
   { kind: 'divider' },
   { to: '/reference',  label: 'Reference' },
+  { to: '/uploads',    label: 'Uploads' },
 ];
 
 export default function Sidebar() {

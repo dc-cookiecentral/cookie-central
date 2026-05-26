@@ -6,6 +6,8 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import ProductOrders from './pages/ProductOrders';
+import PurchaseOrderDetail from './pages/PurchaseOrderDetail';
+import Uploads from './pages/Uploads';
 import PageStub from './pages/PageStub';
 
 export default function App() {
@@ -25,6 +27,7 @@ export default function App() {
               >
                 <Route index element={<Navigate to="/orders" replace />} />
                 <Route path="orders" element={<ProductOrders />} />
+                <Route path="orders/:poNumber" element={<PurchaseOrderDetail />} />
                 <Route
                   path="weekly"
                   element={
@@ -75,6 +78,7 @@ export default function App() {
                     />
                   }
                 />
+                <Route path="uploads" element={<Uploads />} />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
