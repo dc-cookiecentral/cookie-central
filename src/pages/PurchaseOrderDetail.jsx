@@ -1,7 +1,8 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import Pill from '../components/Pill';
 import FulfillmentTimeline from '../components/FulfillmentTimeline';
-import { usePurchaseOrder } from '../hooks/usePurchaseOrders';
+import { OriginalVsCurrent, ChangeHistory } from '../components/PoChangeHistory';
+import { usePurchaseOrder, usePoChanges } from '../hooks/usePurchaseOrders';
 import { useUOM } from '../contexts/UOMContext';
 import { formatDate } from '../utils/dates';
 
@@ -12,6 +13,7 @@ export default function PurchaseOrderDetail() {
   const { poNumber } = useParams();
   const navigate = useNavigate();
   const { order, loading, error } = usePurchaseOrder(poNumber);
+  const { changes, loading: changesLoading } = usePoChanges(order?.id);
   const { uom, format } = useUOM();
 
   if (loading) return <div className="text-sm text-gr py-10 text-center">Loading…</div>;
@@ -62,6 +64,9 @@ export default function PurchaseOrderDetail() {
           Back
         </button>
       </div>
+
+      {/* Original vs Current summary (only renders if something changed) */}
+      <OriginalVsCurrent changes={changes} />
 
       {/* Fulfillment Timeline (replaces the old info cards) */}
       <FulfillmentTimeline po={order} />
@@ -160,6 +165,9 @@ export default function PurchaseOrderDetail() {
           </div>
         </div>
       )}
+
+      {/* Change History (PART 2) — full audit trail below the email thread */}
+      <ChangeHistory changes={changes} loading={changesLoading} />
     </div>
   );
 }

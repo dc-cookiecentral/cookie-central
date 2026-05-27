@@ -82,3 +82,37 @@ export function usePurchaseOrder(poNumber) {
 
   return { order, loading, error };
 }
+
+// Change history for one PO (po_changes), oldest first, with the editor's name.
+// Runs only once the PO's id is known. Returns [] until then.
+export function usePoChanges(poId) {
+  const [changes, setChanges] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!poId) {
+      setChanges([]);
+      return;
+    }
+    let active = true;
+    setLoading(true);
+    supabase
+      .from('po_changes')
+      .select(
+        `id, field_name, original_value, new_value, change_source, change_reason, created_at,
+         changed_by_profile:user_profiles ( full_name )`
+      )
+      .eq('po_id', poId)
+      .order('created_at', { ascending: true })
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (!error) setChanges(data ?? []);
+        setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [poId]);
+
+  return { changes, loading };
+}
