@@ -8,7 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 // component handles Assemblers / DOT / QBO and embeds in any page.
 //
 // Stages: idle → parsing → preview → importing → done | error
-export default function UploadPipeline({ parser, onComplete }) {
+export default function UploadPipeline({ parser, onComplete, title, note }) {
   const { profile } = useAuth();
   const inputRef = useRef(null);
   const [stage, setStage] = useState('idle');
@@ -103,14 +103,15 @@ export default function UploadPipeline({ parser, onComplete }) {
 
   return (
     <div className="bg-cd border border-lt rounded-xl p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div className="font-bold text-dk text-sm">{parser.label}</div>
+      <div className="flex items-center justify-between mb-1">
+        <div className="font-bold text-dk text-sm">{title || parser.label}</div>
         {parser.unconfirmed && (
           <span className="text-[9px] font-semibold uppercase text-amber-700 bg-amber-100 px-2 py-[2px] rounded-full">
             Format unconfirmed
           </span>
         )}
       </div>
+      {note && <div className="text-[10px] text-gr mb-2">{note}</div>}
 
       {(stage === 'idle' || stage === 'parsing') && (
         <div
