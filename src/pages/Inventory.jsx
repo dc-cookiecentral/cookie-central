@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import WarehouseView from '../components/WarehouseView';
 import ReorderView from '../components/ReorderView';
 import LandingView from '../components/LandingView';
 
@@ -18,7 +19,7 @@ function Placeholder({ title, day }) {
 }
 
 export default function Inventory() {
-  const [view, setView] = useState('reorder');
+  const [view, setView] = useState('warehouse');
   // Bumped when a reorder creates new orders, so the landing list refetches.
   const [landingReload, setLandingReload] = useState(0);
 
@@ -41,7 +42,7 @@ export default function Inventory() {
         ))}
       </div>
 
-      {view === 'warehouse' && <Placeholder title="Warehouse view" day={4} />}
+      {view === 'warehouse' && <WarehouseView />}
       {view === 'product' && <Placeholder title="Product view" day="5.1" />}
       {view === 'reorder' && (
         <div className="space-y-4">

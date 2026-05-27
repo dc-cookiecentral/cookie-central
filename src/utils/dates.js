@@ -19,6 +19,16 @@ export function formatDate(date) {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+// Longer display with time: "May 18, 3:20 PM". Returns "never" for empty.
+export function formatDateTime(ts) {
+  if (!ts) return 'never';
+  const d = new Date(ts);
+  if (isNaN(d)) return 'never';
+  return d.toLocaleString(undefined, {
+    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  });
+}
+
 // A step is late when both dates exist and actual is after planned.
 export function isLate(planned, actual) {
   if (!planned || !actual) return false;

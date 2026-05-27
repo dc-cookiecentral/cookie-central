@@ -10,6 +10,10 @@ const MAP = {
   // legacy/prototype aliases
   paid_national:    ['bg-blue-100',    'text-blue-700',    'Cortina Paid'],
   awaiting_walmart: ['bg-yellow-100',  'text-yellow-700',  'Awaiting WM'],
+  // raw-material expiry statuses
+  good:             ['bg-green-100',   'text-green-700',   'Good'],
+  almost_expired:   ['bg-yellow-100',  'text-yellow-700',  'Expiring'],
+  partial_expired:  ['bg-red-100',     'text-red-700',     'Exp Lots'],
 };
 
 export default function Pill({ status }) {

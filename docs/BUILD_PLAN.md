@@ -10,10 +10,24 @@
 ## Blockers
 - [x] systems@dirtycookie.com access — DONE
 - [x] Shahira sign-off on prototype — DONE
-- [ ] Cortina NetSuite API credentials or sample export from Harshita
+- [x] Assemblers **inventory** report sample received (Inventory Report 2026-5-06.xlsx) — parser reconciled
+- [ ] Assemblers **production**, **outbound** (invoiced FG), and raw-material **landing/BOL** report formats — pending (Assemblers, ~tomorrow)
+- [ ] Cortina NetSuite PO export sample (parser built against unconfirmed format)
 - [ ] DOT portal sample report from Marc
 - [ ] EOM summary report example from Marc
 - [ ] QBO sample export from David
+
+## Progress (as of 2026-05-26)
+Built ahead of the original day-by-day order; **DB migrations intentionally NOT pushed** yet (holding for finalized report templates).
+
+- **Day 1 — Foundation:** ✅ complete (1.1–1.9). Commit `072479c`.
+- **Day 2 — Parsers + upload pipeline:** ✅ pipeline + upload log + 4 parsers (Assemblers, DOT, QBO, NetSuite). Assemblers validated against the real file; DOT/QBO/NetSuite behind column-mapping seams ("format unconfirmed"). Uploads page grouped by origin (Cortina / Assemblers / QuickBooks).
+- **Day 3 — Product Orders:** ✅ list (3.1) + detail (3.2), Supabase-backed. Added **Fulfillment Timeline** (Production ready → Ship to DOT → DOT receives → DOT ships → MABD) + 3 new `purchase_orders` columns. NetSuite PO parser (3.5). ◐ email thread renders `po_emails` (3.3); AI insight card (3.4) not built.
+- **Day 4 — Inventory Warehouse:** ✅ 3-view toggle (4.1), DOT section (4.2), Assemblers raw + packaging (4.3, 4.4), raw→Reference routing stub (4.5), per-warehouse upload links + timestamps (4.6). Makes/Wks stubbed pending production data.
+- **Day 5 — Reorder + landing:** ◐ reorder preview (5.3) with distributor/brand select (5.5) + Marc override (5.4) → creates pending orders; **landing/receiving flow added** (lot origin: land date + 1:many lots). Velocity/suggested + allocation view (5.6) pending production data. Product view (5.1) + inventory adjustment (5.2) not built.
+- **Not yet started:** Day 6 (Payments, Reference, Weekly Report), Day 7 (EOM, Alerts, Audit viewer), Day 8–9.
+
+Added beyond original plan: dev-only auth bypass (local), `raw_material_lots.raw_material_order_id` FK (lot→order provenance), DOT fulfillment date columns.
 
 ---
 
