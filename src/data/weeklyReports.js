@@ -54,6 +54,61 @@ export const WEEKLY_REPORTS = [
           { hostPo: '0994503782', week: '202612', mabd: '2026-04-23', late: 21 },
         ],
       },
+      // Vendor scorecard (sheet "Scorecard"). Parser handles all 8 periods × TY/LY/Diff;
+      // seeded with the 4 active periods (TY) — LY/Diff are 0 in year 1, Q3/Q4 future.
+      scorecard: {
+        vendor: '127224',
+        periods: ['Last Week', 'Current Month', 'Last Month', 'Year'],
+        sections: [
+          {
+            title: 'Store Sales',
+            metrics: [
+              { label: 'POS Sales in dollars', values: [42833.63, 141155.96, 200066.88, 366521.09] },
+              { label: 'Comp Sales in dollars', values: [42696.99, 140726.52, 199456.88, 365364.53] },
+              { label: 'POS Sales in Units', values: [8789, 28969, 41020, 75169] },
+              { label: 'AUR (Avg Unit Retail)', values: [4.87, 4.87, 4.88, 4.88] },
+              { label: 'Store Returns in dollars', values: [0, 0, 0, 0] },
+              { label: 'Store Returns as % of POS Sales', values: [0, 0, 0, 0] },
+            ],
+          },
+          {
+            title: 'Store Inventory',
+            metrics: [
+              { label: 'Retail Dollar Inventory', values: [263251.68, 213153.45, 317820.11, 148929.55] },
+              { label: 'Cost Dollar Inventory', values: [163195.96, 132174.13, 194545.2, 90121.75] },
+              { label: 'Cost On Order', values: [0, 0, 0, 0] },
+              { label: 'Repl Instock %', values: [0.996, 0.9941, 0.9784, 0.9809] },
+              { label: 'Unit Turns', values: [8.49, 8.64, 8.21, 7.55] },
+              { label: 'Retail turns', values: [8.46, 8.61, 8.18, 7.53] },
+              { label: 'Store Weeks of Supply/ Weeks on Hand', values: [5.59, 5.74, 13, 8.68] },
+              { label: 'Ships at Retail', values: [37120.32, 110096.8, 190088.24, 653789.76] },
+              { label: 'Ships at cost', values: [23616.33, 70027, 120887.74, 415766.06] },
+            ],
+          },
+          {
+            title: 'DC Inventory',
+            metrics: [
+              { label: 'Ships At Cost WHSE', values: [24868.03, 71254.37, 118550.89, 412670.87] },
+              { label: 'Warehouse Weeks of Supply/Weeks on Hand', values: [15.18, 12.8, 4.22, 6.78] },
+              { label: 'Cost On Hand', values: [290510.88, 245373.48, 277786.08, 153791.49] },
+              { label: 'Cost On Order', values: [0, 55.44, 73430.28, 70204.43] },
+              { label: 'Warehouse Turns', values: [4.52, 3.83, 5.63, 8.33] },
+            ],
+          },
+          {
+            title: 'Margins and Markdowns',
+            metrics: [
+              { label: 'Gross Initial Margin %', values: [0.3638, 0.364, 0.364, 0.3641] },
+              { label: 'Maintain Margin %', values: [0.3386, 0.3402, 0.334, 0.3316] },
+              { label: 'Net Maintain Margin %', values: [0.3386, 0.3402, 0.334, 0.3316] },
+              { label: 'Net Maintained Margin $', values: [14504.12, 48022.53, 66821.75, 121527.56] },
+              { label: 'GMROII', values: [4.62, 4.72, 4.47, 4.12] },
+              { label: 'MUMD Dollars', values: [1694.9, 5268.89, 9452.56, 18729.84] },
+              { label: 'MUMD Percent To Sales', values: [0.0396, 0.0373, 0.0472, 0.0511] },
+            ],
+          },
+        ],
+      },
     },
     kpis: [
       { l: 'POS', v: '$42,834', d: '', c: '#5C526A' },

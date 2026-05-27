@@ -1,8 +1,22 @@
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { WEEKLY_REPORTS, ALERTS } from '../data/weeklyReports';
 
 const usd = (n) => (n == null ? '--' : '$' + Math.round(n).toLocaleString());
 const qty = (n) => (n == null ? '--' : n.toLocaleString());
+
+// Format a scorecard value by inferring its kind from the metric label.
+function fmtScore(label, v) {
+  if (v == null) return '--';
+  const l = label.toLowerCase();
+  if (l.includes('%') || l.includes('percent') || l.includes('instock'))
+    return (v <= 1 ? v * 100 : v).toFixed(2) + '%';
+  if (l.includes('units')) return Math.round(v).toLocaleString();
+  if (/dollar|sales|cost|inventory|ships|margin \$|aur|mumd dollars|on hand|on order/.test(l)) {
+    const dp = Math.abs(v) < 100 && v !== 0 ? 2 : 0;
+    return '$' + v.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp });
+  }
+  return v.toLocaleString(undefined, { maximumFractionDigits: 2 }); // turns, GMROII, WOS
+}
 
 // Walmart Retail Link weekly readout (Bentonville Merchants email). Structured
 // for EOS Level 10: Scorecard KPIs, Findings, To-Dos, Rocks, Issues List.
@@ -37,6 +51,7 @@ function SectionLabel({ children, tone = 'pk' }) {
 // in the email body, so it only shows when a week has parsed attachment data.
 function AttachmentDetail({ d }) {
   const cell = 'px-1.5 py-1 whitespace-nowrap';
+  const [scOpen, setScOpen] = useState(false);
   return (
     <div className="px-[18px] pb-3 space-y-2">
       <SectionLabel>From attachments — parsed</SectionLabel>
@@ -128,6 +143,56 @@ function AttachmentDetail({ d }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Vendor scorecard — collapsible (multi-period, many metrics) */}
+      {d.scorecard && (
+        <div className="bg-bg border border-lt rounded-lg px-3 py-2">
+          <button onClick={() => setScOpen((o) => !o)} className="w-full flex items-center justify-between text-left gap-2">
+            <span className="text-[10px] font-bold text-dk">
+              {scOpen ? '▾' : '▸'} Vendor Scorecard — #{d.scorecard.vendor}
+            </span>
+            <span className="text-[8px] text-gr">
+              {d.scorecard.sections.reduce((n, s) => n + s.metrics.length, 0)} metrics · LY not yet populated (year 1)
+            </span>
+          </button>
+          {scOpen && (
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full text-[9px] border-collapse">
+                <thead>
+                  <tr className="text-gr">
+                    <th className={cell + ' text-left'}>Metric</th>
+                    {d.scorecard.periods.map((p) => (
+                      <th key={p} className={cell + ' text-right'}>{p}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {d.scorecard.sections.map((s) => (
+                    <Fragment key={s.title}>
+                      <tr>
+                        <td
+                          colSpan={d.scorecard.periods.length + 1}
+                          className="px-1.5 pt-2 pb-0.5 text-[8px] font-bold uppercase tracking-wider text-pk"
+                        >
+                          {s.title}
+                        </td>
+                      </tr>
+                      {s.metrics.map((m) => (
+                        <tr key={m.label} className="border-t border-lt">
+                          <td className={cell + ' text-left text-md'}>{m.label}</td>
+                          {m.values.map((v, i) => (
+                            <td key={i} className={cell + ' text-right text-dk'}>{fmtScore(m.label, v)}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </div>

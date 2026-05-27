@@ -206,6 +206,49 @@ export function parseItemMaster(rows) {
   return out;
 }
 
+// ---- 1d. Vendor Scorecard (sheet "Scorecard") ------------------------------
+// Period × metric matrix. Row 0 = period names (Last Week / Current Month /
+// Last Month / Year / Q1-Q4), each spanning 3 cols; row 1 = Walmart-week ranges;
+// row 2 = TY/LY/Diff sub-headers; row 3 = "Vendor Scorecard - Vendor #####".
+// Metrics live in col A grouped under blank-valued section headers (Store Sales,
+// Store Inventory, DC Inventory, Margins and Markdowns). LY/Diff are 0 in year 1.
+export function parseScorecard(rows) {
+  if (!rows || rows.length < 4) return null;
+  const nameRow = rows[0] || [];
+  const rangeRow = rows[1] || [];
+  const periods = [];
+  for (let c = 1; c < nameRow.length; c += 3) {
+    const name = String(nameRow[c] ?? '').trim();
+    if (name) periods.push({ name, range: String(rangeRow[c] ?? '').trim(), ty: c, ly: c + 1, diff: c + 2 });
+  }
+  const titleRow = rows.find((r) => /vendor scorecard/i.test(String(r[0] ?? '')));
+  const vendor = titleRow ? titleRow[0].match(/vendor\s+(\d+)/i)?.[1] ?? null : null;
+
+  const valueCols = periods.flatMap((p) => [p.ty, p.ly, p.diff]);
+  const hasValue = (r) => valueCols.some((c) => r[c] !== '' && r[c] != null && num(r[c]) != null);
+
+  const sections = [];
+  let cur = null;
+  for (let i = 3; i < rows.length; i++) {
+    const r = rows[i];
+    const label = String(r[0] ?? '').trim();
+    if (!label || /vendor scorecard/i.test(label)) continue;
+    if (!hasValue(r)) {
+      cur = { title: label, metrics: [] }; // blank-valued row = section header
+      sections.push(cur);
+      continue;
+    }
+    if (!cur) {
+      cur = { title: '', metrics: [] };
+      sections.push(cur);
+    }
+    const byPeriod = {};
+    for (const p of periods) byPeriod[p.name] = { ty: num(r[p.ty]), ly: num(r[p.ly]), diff: num(r[p.diff]) };
+    cur.metrics.push({ label, byPeriod });
+  }
+  return { vendor, periods: periods.map((p) => ({ name: p.name, range: p.range })), sections };
+}
+
 // ---- 2. Supply Plan (sheet "Supply Plan") ----------------------------------
 export function parseSupplyPlan(rows) {
   const monthsRowIdx = rows.findIndex((r) => r.includes('Grand Total') && r.some((c) => /^[A-Z][a-z]{2}$/.test(String(c))));
