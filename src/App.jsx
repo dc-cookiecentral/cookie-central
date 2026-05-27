@@ -7,6 +7,7 @@ import Layout from './components/Layout';
 import Login from './pages/Login';
 import ProductOrders from './pages/ProductOrders';
 import PurchaseOrderDetail from './pages/PurchaseOrderDetail';
+import Inventory from './pages/Inventory';
 import Uploads from './pages/Uploads';
 import PageStub from './pages/PageStub';
 
@@ -48,16 +49,7 @@ export default function App() {
                     />
                   }
                 />
-                <Route
-                  path="inventory"
-                  element={
-                    <PageStub
-                      title="Inventory"
-                      day={4}
-                      scope="3-view toggle (Warehouse / Product / Reorder) — built Days 4-5 (BUILD_PLAN 4.x, 5.x)."
-                    />
-                  }
-                />
+                <Route path="inventory" element={<Inventory />} />
                 <Route
                   path="snapshot"
                   element={
