@@ -2,6 +2,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Pill from '../components/Pill';
 import FulfillmentTimeline from '../components/FulfillmentTimeline';
 import { OriginalVsCurrent, ChangeHistory } from '../components/PoChangeHistory';
+import { DeliveryLots } from '../components/PoDeliveryLots';
 import { usePurchaseOrder, usePoChanges } from '../hooks/usePurchaseOrders';
 import { useUOM } from '../contexts/UOMContext';
 import { formatDate } from '../utils/dates';
@@ -76,6 +77,8 @@ export default function PurchaseOrderDetail() {
         {[
           { l: 'Destination', v: order.destination_dc || 'TBD' },
           { l: 'Carrier', v: order.carrier || 'TBD' },
+          { l: 'Freight', v: order.freight_handler || 'TBD' },
+          { l: 'BOL', v: order.bol_number || (order.bol_received ? 'Received' : 'Pending') },
           { l: 'Terms', v: order.payment_terms || '--' },
           { l: uom, v: format(order.total_cases ?? 0) },
         ].map((it) => (
@@ -129,6 +132,9 @@ export default function PurchaseOrderDetail() {
           </div>
         </div>
       )}
+
+      {/* Delivery & Lots (BOL + lot numbers from delivery emails / manual) */}
+      <DeliveryLots poId={order.id} bolNumber={order.bol_number} />
 
       {/* email thread (from systems@ enrichment) */}
       {emails.length > 0 && (

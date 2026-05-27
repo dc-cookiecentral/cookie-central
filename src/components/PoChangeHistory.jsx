@@ -17,6 +17,7 @@ const FIELD_META = {
   mabd: { label: 'MABD', kind: 'date' },
   payment_terms: { label: 'Payment terms' },
   invoice_number: { label: 'Invoice #' },
+  bol_number: { label: 'BOL #' },
   nova_changes: { label: 'NOVA note' },
 };
 

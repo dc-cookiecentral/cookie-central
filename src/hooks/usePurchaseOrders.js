@@ -9,7 +9,7 @@ const PO_FIELDS = `
   destination_dc, ship_status, payment_status, payment_terms,
   carrier, freight_handler, bol_received, customer_order_number,
   invoice_number, total_cases, total_amount, paid_amount,
-  nova_changes, revenue_per_case
+  nova_changes, revenue_per_case, bol_number
 `;
 
 // Urgency: pending POs first, soonest ship-to-DOT (then retailer ship) first.
@@ -115,4 +115,53 @@ export function usePoChanges(poId) {
   }, [poId]);
 
   return { changes, loading };
+}
+
+// Lot numbers + BOL refs captured on one PO (po_lot_numbers).
+export function usePoLots(poId) {
+  const [lots, setLots] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const refresh = useCallback(async () => {
+    if (!poId) {
+      setLots([]);
+      return;
+    }
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('po_lot_numbers')
+      .select('id, lot_number, sku, quantity_cases, bol_reference, received_date, source, created_at')
+      .eq('po_id', poId)
+      .order('created_at', { ascending: true });
+    if (!error) setLots(data ?? []);
+    setLoading(false);
+  }, [poId]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  return { lots, loading, refresh };
+}
+
+// Manual "+ Add Lot" entry. Returns { error } on failure.
+export async function addPoLot(poId, fields) {
+  const { error } = await supabase.from('po_lot_numbers').insert({
+    po_id: poId,
+    lot_number: fields.lot_number,
+    sku: fields.sku || null,
+    quantity_cases: fields.quantity_cases ?? null,
+    received_date: fields.received_date || null,
+    source: 'manual',
+  });
+  return { error };
+}
+
+// Inline-editable BOL number on the PO.
+export async function updatePoBol(poId, bolNumber) {
+  const { error } = await supabase
+    .from('purchase_orders')
+    .update({ bol_number: bolNumber || null })
+    .eq('id', poId);
+  return { error };
 }
