@@ -1,0 +1,86 @@
+// Walmart finished-goods item master — parsed from the WK16 sales report
+// ("Dirty Cookie WK16.xlsx" → "Item Data" sheet) by parsers/weeklyAttachments.js
+// (parseItemMaster), verified output. Feeds Reference > Products.
+//
+// Seed for now; the same parser will populate a products table once the schema
+// is pushed and the email connect is live. grossMarginPct = (retail-cost)/retail
+// (a gross item margin — distinct from the markdown-adjusted "Maintained Margin"
+// in the weekly scorecard).
+
+export const ITEM_MASTER = [
+  {
+    sku: '679640563',
+    desc: 'DC WHITE CHOC CKE',
+    vendorStockId: 'DCWCCC7786',
+    upc: '19434652778',
+    status: 'A',
+    unitCost: 3.08,
+    retail: 4.88,
+    grossMarginPct: 36.89,
+    vendorPackQty: 12,
+    vendorPackCost: 36.96,
+    warehousePackQty: 12,
+    vendorNumber: '127224',
+    vendorName: 'NATIONAL FOOD TRADING CORP.',
+    buyer: 'Steven Rold',
+    brand: 'bettergoods',
+    size: 'SMALL',
+    deptNumber: '90',
+    department: 'DAIRY',
+    category: 'DAIRY CHILLED BAKING',
+    subcategory: 'DOUGH COOKIE',
+    fineline: 'COOKIE BASIC',
+    finelineNumber: '1307',
+    consumerId: '225790009',
+    weight: 0.79,
+    height: 9.312,
+    length: 1,
+    width: 6.625,
+    cube: 0.036,
+    traitedStores: 2767,
+    instock: 0.9949,
+    storeOnHand: 27040,
+    storeInTransit: 96,
+    storeInWarehouse: 1135,
+    storeOnOrder: 0,
+  },
+  {
+    sku: '679640564',
+    desc: 'DC PB COOKIE',
+    vendorStockId: 'DCPBC7793',
+    upc: '19434652779',
+    status: 'A',
+    unitCost: 3.08,
+    retail: 4.88,
+    grossMarginPct: 36.89,
+    vendorPackQty: 12,
+    vendorPackCost: 36.96,
+    warehousePackQty: 12,
+    vendorNumber: '127224',
+    vendorName: 'NATIONAL FOOD TRADING CORP.',
+    buyer: 'Steven Rold',
+    brand: 'bettergoods',
+    size: 'SMALL',
+    deptNumber: '90',
+    department: 'DAIRY',
+    category: 'DAIRY CHILLED BAKING',
+    subcategory: 'DOUGH COOKIE',
+    fineline: 'COOKIE BASIC',
+    finelineNumber: '1307',
+    consumerId: '225790010',
+    weight: 0.79,
+    height: 9.312,
+    length: 1,
+    width: 6.625,
+    cube: 0.036,
+    traitedStores: 2767,
+    instock: 0.996,
+    storeOnHand: 26548,
+    storeInTransit: 27,
+    storeInWarehouse: 357,
+    storeOnOrder: 0,
+  },
+];
+
+// Status code → label (Walmart item status).
+export const ITEM_STATUS = { A: 'Active', D: 'Discontinued', X: 'Deleted' };

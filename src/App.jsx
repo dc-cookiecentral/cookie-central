@@ -10,6 +10,7 @@ import PurchaseOrderDetail from './pages/PurchaseOrderDetail';
 import Inventory from './pages/Inventory';
 import Uploads from './pages/Uploads';
 import WeeklyReport from './pages/WeeklyReport';
+import Reference from './pages/Reference';
 import PageStub from './pages/PageStub';
 
 export default function App() {
@@ -52,16 +53,7 @@ export default function App() {
                     />
                   }
                 />
-                <Route
-                  path="reference"
-                  element={
-                    <PageStub
-                      title="Reference"
-                      day={6}
-                      scope="Products + UOM, Raw Materials, Transitions — built Day 6 (BUILD_PLAN 6.3-6.5)."
-                    />
-                  }
-                />
+                <Route path="reference" element={<Reference />} />
                 <Route path="uploads" element={<Uploads />} />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
