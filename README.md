@@ -53,6 +53,7 @@ cookie-central/
 │   ├── ARCHITECTURE.md          # Data flow + tech stack + roles
 │   ├── DATA_MODEL.md            # Tables, columns, relationships
 │   ├── DECISIONS.md             # Architecture decision records (ADRs)
+│   ├── RUNBOOK.md               # Launch operations: onboarding, troubleshooting, recovery
 │   └── PEOPLE.md                # Org chart + contacts + system emails
 ├── supabase/
 │   ├── migrations/              # Forward-only schema migrations (manual apply)
