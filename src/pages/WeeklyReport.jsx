@@ -1,5 +1,6 @@
 import { useState, Fragment } from 'react';
-import { WEEKLY_REPORTS, ALERTS } from '../data/weeklyReports';
+import { WEEKLY_REPORTS } from '../data/weeklyReports';
+import { useAlerts } from '../hooks/useAlerts';
 
 const usd = (n) => (n == null ? '--' : '$' + Math.round(n).toLocaleString());
 const qty = (n) => (n == null ? '--' : n.toLocaleString());
@@ -202,6 +203,7 @@ function AttachmentDetail({ d }) {
 export default function WeeklyReport() {
   const [wk, setWk] = useState(WEEKLY_REPORTS[0].wk);
   const rpt = WEEKLY_REPORTS.find((r) => r.wk === wk) ?? WEEKLY_REPORTS[0];
+  const { alerts } = useAlerts();
 
   return (
     <div>
@@ -334,13 +336,16 @@ export default function WeeklyReport() {
         <div className="px-[18px] pb-2.5">
           <SectionLabel tone="eos">EOS Issues List</SectionLabel>
           <div className="bg-[#FAF5FF] rounded-md px-2.5 py-1.5 border border-[#EDE9FE] text-[9px]">
-            {ALERTS.map((a, i) => (
-              <div key={i} className="flex gap-1 py-px text-md">
+            {alerts.length === 0 && (
+              <div className="text-[9px] text-gr italic">No live issues.</div>
+            )}
+            {alerts.slice(0, 8).map((a) => (
+              <div key={a.id} className="flex gap-1 py-px text-md">
                 <span
                   className="w-1 h-1 rounded-full mt-1 flex-shrink-0"
-                  style={{ background: a.s === 'crit' ? '#EF4444' : '#F59E0B' }}
+                  style={{ background: a.severity === 'crit' ? '#EF4444' : '#F59E0B' }}
                 />
-                {a.m}
+                {a.message}
               </div>
             ))}
             <div className="mt-0.5 text-[8px] text-gr italic">IDS in L10. Top 3. Solved = To-Do.</div>

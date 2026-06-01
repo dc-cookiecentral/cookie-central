@@ -1,18 +1,25 @@
 import { toNumber } from '../utils/csvParser';
+import assemblers from './assemblers';
 
 // ─────────────────────────────────────────────────────────────────────────
-// Assemblers "Production" report parser — multi-sheet workbook covering the
-// raw lot → FG batch lot → outbound shipment chain (BUILD_PLAN row 24,
-// "Assemblers production report"). Reconciled against the real export
-// (sample_production_report.xlsx, sheets: Production / Reject / Inventory /
-// Shipment / Job <id> ×N).
+// Assemblers Report parser — the single canonical Assemblers upload. One
+// multi-sheet workbook covers the full raw lot → FG batch lot → outbound
+// shipment chain plus the inventory snapshot. Reconciled against the real
+// export (sample_production_report.xlsx):
 //
-// Why a custom parseFile: the per-Job sheets are vertical key-value with a
+//   Production       → production_pallets (pallet-level FG output)
+//   Reject           → production_rejects (per-event waste + reason taxonomy)
+//   Inventory        → raw_materials + raw_material_lots (delegates to the
+//                      existing assemblers.js parse/import — same column
+//                      shape as the standalone Inventory snapshot)
+//   Shipment         → lot_shipments (DOT FOODS / COMPACTOR / freight)
+//   Job <id> sheets  → production_subcomponents (raw lots → FG lot
+//                      consumption rollup)
+//
+// Why a custom parseFile: per-Job sheets are vertical key-value with a
 // nested subcomponent table — the shared parseXlsxFile flattens every sheet
-// to header-keyed rows, which destroys that layout. We bypass the shared
-// path and read sheets directly. The Inventory sheet inside this workbook is
-// IGNORED here — the standalone Inventory report (handled by assemblers.js)
-// is uploaded separately and is authoritative.
+// to header-keyed rows, destroying that layout. We bypass the shared path
+// and read sheets directly.
 // ─────────────────────────────────────────────────────────────────────────
 
 // --- date parsing ─ defensive over a wild mix of formats observed in the wild
@@ -275,10 +282,19 @@ async function parseFileImpl(file) {
   const productionRows = sheetAsObjects(XLSX, wb.Sheets['Production']);
   const rejectRows = sheetAsObjects(XLSX, wb.Sheets['Reject']);
   const shipmentRows = sheetAsObjects(XLSX, wb.Sheets['Shipment']);
+  const inventoryRows = sheetAsObjects(XLSX, wb.Sheets['Inventory']);
 
   const { pallets, runs } = parseProduction(productionRows);
   const rejects = parseRejects(rejectRows);
   const shipments = parseShipments(shipmentRows);
+  // Delegate the Inventory sheet to the standalone assemblers parser — same
+  // column shape (Item code / Item description / Lot code / Expiry date /
+  // Base quantity / ... / Inventory status / Pallet Number). Errors from
+  // here are namespaced so the upload preview still surfaces them.
+  const inventoryParsed = assemblers.parse(inventoryRows);
+  for (const e of inventoryParsed.errors || []) {
+    errors.push({ row: e.row, message: `[Inventory] ${e.message}` });
+  }
 
   // Job sheets: any sheet name starting with "Job ".
   const jobSheets = wb.SheetNames.filter((n) => /^Job\s/i.test(n));
@@ -343,7 +359,8 @@ async function parseFileImpl(file) {
   const summary =
     `${runs.length} job(s), ${pallets.length} pallet(s), ` +
     `${jobs.reduce((n, j) => n + j.subcomponents.length, 0)} subcomponent line(s), ` +
-    `${rejects.length} reject event(s), ${shipments.length} outbound row(s)`;
+    `${rejects.length} reject event(s), ${shipments.length} outbound row(s), ` +
+    `${inventoryParsed.records.length} inventory item(s)`;
 
   return {
     records,
@@ -351,7 +368,14 @@ async function parseFileImpl(file) {
     summary,
     // Stashed for importRecords (UploadPipeline passes records through, so we
     // hang the rest off the first record as a non-enumerable side channel).
-    _bundle: { runs, pallets, rejects, shipments, subcomponentsByJob },
+    _bundle: {
+      runs,
+      pallets,
+      rejects,
+      shipments,
+      subcomponentsByJob,
+      inventoryRecords: inventoryParsed.records,
+    },
   };
 }
 
@@ -362,7 +386,7 @@ async function importRecords(records, { uploadId } = {}) {
   const { supabase } = await import('../lib/supabase');
   const bundle = records.__bundle;
   if (!bundle) throw new Error('Missing parse bundle — re-parse and retry.');
-  const { runs, pallets, rejects, shipments, subcomponentsByJob } = bundle;
+  const { runs, pallets, rejects, shipments, subcomponentsByJob, inventoryRecords } = bundle;
 
   // 1. Upsert runs (job_id UNIQUE) → keep id map for child rows.
   const runIdByJob = new Map();
@@ -444,13 +468,23 @@ async function importRecords(records, { uploadId } = {}) {
     if (error) throw error;
   }
 
+  // 4. Inventory — delegate to the standalone Assemblers importer so raw_materials
+  //    + raw_material_lots stay in sync. Skipped on empty (some Production
+  //    snapshots may not include the Inventory sheet).
+  let invInserted = 0;
+  if (inventoryRecords?.length) {
+    const res = await assemblers.importRecords(inventoryRecords);
+    invInserted = res?.inserted ?? 0;
+  }
+
   return {
     inserted:
       runs.length +
       palletRows.length +
       subRows.length +
       rejectRows.length +
-      shipments.length,
+      shipments.length +
+      invInserted,
   };
 }
 
@@ -472,7 +506,7 @@ async function parseFile(file) {
 
 export default {
   type: 'production',
-  label: 'Assemblers Production',
+  label: 'Assemblers Report',
   accept: '.xlsx,.xls',
   parseFile,                              // override: handles workbook directly
   importRecords,

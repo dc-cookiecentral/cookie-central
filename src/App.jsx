@@ -11,6 +11,10 @@ import Inventory from './pages/Inventory';
 import Uploads from './pages/Uploads';
 import WeeklyReport from './pages/WeeklyReport';
 import Reference from './pages/Reference';
+import Payments from './pages/Payments';
+import PaymentDetail from './pages/PaymentDetail';
+import EomSnapshot from './pages/EomSnapshot';
+import AuditLog from './pages/AuditLog';
 import PageStub from './pages/PageStub';
 
 export default function App() {
@@ -32,28 +36,12 @@ export default function App() {
                 <Route path="orders" element={<ProductOrders />} />
                 <Route path="orders/:poNumber" element={<PurchaseOrderDetail />} />
                 <Route path="weekly" element={<WeeklyReport />} />
-                <Route
-                  path="payments"
-                  element={
-                    <PageStub
-                      title="Payments"
-                      day={6}
-                      scope="List with retailer filter + detail view — built Day 6 (BUILD_PLAN 6.1, 6.2)."
-                    />
-                  }
-                />
+                <Route path="payments" element={<Payments />} />
+                <Route path="payments/:poNumber" element={<PaymentDetail />} />
                 <Route path="inventory" element={<Inventory />} />
-                <Route
-                  path="snapshot"
-                  element={
-                    <PageStub
-                      title="EOM Snapshot"
-                      day={7}
-                      scope="Monthly KPIs with vs-last-month deltas — built Day 7 (BUILD_PLAN 7.1)."
-                    />
-                  }
-                />
+                <Route path="snapshot" element={<EomSnapshot />} />
                 <Route path="reference" element={<Reference />} />
+                <Route path="audit" element={<AuditLog />} />
                 <Route path="uploads" element={<Uploads />} />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />

@@ -10,6 +10,42 @@ import { formatDate } from '../utils/dates';
 const TH = 'px-2 py-2 text-left text-[9px] font-bold text-gr uppercase tracking-wider';
 const THR = TH + ' text-right';
 
+// AI insight stub. Derives a one-liner from observable PO state (NOVA edits,
+// ship-date shifts, lateness vs MABD, missing BOL) so the card never reads as
+// pure placeholder. Phase 2 swaps the body for live AI extraction.
+function AIInsightCard({ order }) {
+  const findings = [];
+  if (order.nova_changes) findings.push(`NOVA edit on file: ${order.nova_changes}`);
+  if (order.ship_date_original && order.ship_date_actual && order.ship_date_original !== order.ship_date_actual) {
+    findings.push('Ship date moved from original — track carrier handoff.');
+  }
+  if (order.ship_status === 'pending' && order.ship_date_original) {
+    const days = Math.round((new Date(order.ship_date_original) - new Date()) / 86400000);
+    if (days <= 3) findings.push(`Ships in ${days}d — confirm pallets + BOL ready.`);
+  }
+  if (order.ship_status === 'shipped' && !order.bol_number) {
+    findings.push('Shipped without a BOL number — capture from delivery email.');
+  }
+  if (order.payment_status === 'awaiting_retailer' || order.payment_status === 'awaiting_walmart') {
+    findings.push('Retailer payment overdue — confirm invoice with Cortina.');
+  }
+  if (!findings.length) findings.push('No anomalies detected from current PO state.');
+  return (
+    <div className="px-[18px] pb-3">
+      <div className="bg-gradient-to-br from-pink-100 to-violet-100 rounded-xl px-3 py-2">
+        <div className="text-[10px] font-bold text-pk uppercase tracking-wider mb-0.5">
+          AI Insight <span className="text-[8px] text-md font-medium normal-case">— Phase 1 stub</span>
+        </div>
+        <div className="text-[10px] text-md leading-snug space-y-0.5">
+          {findings.map((f, i) => (
+            <div key={i}>{f}</div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PurchaseOrderDetail() {
   const { poNumber } = useParams();
   const navigate = useNavigate();
@@ -135,6 +171,11 @@ export default function PurchaseOrderDetail() {
 
       {/* Delivery & Lots (BOL + lot numbers from delivery emails / manual) */}
       <DeliveryLots poId={order.id} bolNumber={order.bol_number} />
+
+      {/* AI insight card (3.4) — Phase 1 derives a one-liner from PO state;
+          Phase 2 replaces this with structured extraction across the email
+          thread (carrier/BOL/cost anomalies, ship-date shifts vs MABD, etc.) */}
+      <AIInsightCard order={order} />
 
       {/* email thread (from systems@ enrichment) */}
       {emails.length > 0 && (

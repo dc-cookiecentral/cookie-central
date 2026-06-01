@@ -1,5 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom';
 import RetailerFilterPill from '../components/RetailerFilterPill';
+import AlertsPanel from '../components/AlertsPanel';
 import Pill from '../components/Pill';
 import DaysTag from '../components/DaysTag';
 import { useRetailerFilter } from '../contexts/RetailerFilterContext';
@@ -65,6 +66,7 @@ export default function ProductOrders() {
         </div>
       ) : (
         <>
+          <AlertsPanel title="Attention" max={6} />
           <div className="flex gap-2 flex-wrap mb-3">
             <Kpi label="Active POs" value={rows.length} />
             <Kpi label="Pending Ship" value={rows.filter((p) => p.ship_status === 'pending').length} />

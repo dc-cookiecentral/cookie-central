@@ -56,11 +56,17 @@ export function AuthProvider({ children }) {
       options: { emailRedirectTo: window.location.origin },
     });
 
+  // Password sign-in fallback for the demo (and for any future user who
+  // would rather not click an email link). Pre-provisioned in the Supabase
+  // dashboard (Auth → Users → Add user → set password + Auto-confirm).
+  const signInWithPassword = (email, password) =>
+    supabase.auth.signInWithPassword({ email, password });
+
   const signOut = () => (AUTH_BYPASS ? Promise.resolve() : supabase.auth.signOut());
 
   return (
     <AuthContext.Provider
-      value={{ session, user: session?.user ?? null, profile, loading, signInWithEmail, signOut }}
+      value={{ session, user: session?.user ?? null, profile, loading, signInWithEmail, signInWithPassword, signOut }}
     >
       {children}
     </AuthContext.Provider>

@@ -16,6 +16,7 @@ const NAV = [
   { kind: 'spacer' },
   { kind: 'divider' },
   { to: '/reference',  label: 'Reference' },
+  { to: '/audit',      label: 'Audit Log' },
   { to: '/uploads',    label: 'Uploads' },
 ];
 
