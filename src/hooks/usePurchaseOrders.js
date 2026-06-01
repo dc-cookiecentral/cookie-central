@@ -65,7 +65,7 @@ export function usePurchaseOrder(poNumber) {
       .select(
         `${PO_FIELDS},
          po_line_items ( id, sku, quantity_cases, unit_cost, line_total ),
-         po_emails ( id, timestamp, sender_name, sender_org, summary, extracted_data )`
+         po_emails ( id, timestamp:email_timestamp, sender_name, sender_org, summary, extracted_data )`
       )
       .eq('po_number', poNumber)
       .maybeSingle()
