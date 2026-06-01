@@ -134,12 +134,12 @@ WHERE NOT EXISTS (
 -- A couple of itemised payment events so /payments/PO14331 + /payments/PO14255
 -- show event tables on top of their timeline.
 INSERT INTO payments (po_id, payment_type, payment_date, amount, deductions, notes)
-SELECT po.id, p.ptype, p.pdate::date, p.amt, COALESCE(p.deduct, 0), p.notes
+SELECT po.id, p.ptype, p.pdate::date, p.amt, p.deduct, p.notes
 FROM (VALUES
-  ('PO14331', 'cortina_to_dc',       '2026-05-15', 1440.00, NULL,  'Cortina cleared on terms'),
-  ('PO14290', 'cortina_to_dc',       '2026-05-18', 2880.00, NULL,  'Cortina cleared on terms'),
-  ('PO14255', 'cortina_to_dc',       '2026-05-06', 4320.00, NULL,  'Cortina cleared'),
-  ('PO14255', 'retailer_to_cortina', '2026-05-30', 4320.00, NULL,  'Walmart 60d settle')
+  ('PO14331', 'cortina_to_dc',       '2026-05-15', 1440.00, 0.00, 'Cortina cleared on terms'),
+  ('PO14290', 'cortina_to_dc',       '2026-05-18', 2880.00, 0.00, 'Cortina cleared on terms'),
+  ('PO14255', 'cortina_to_dc',       '2026-05-06', 4320.00, 0.00, 'Cortina cleared'),
+  ('PO14255', 'retailer_to_cortina', '2026-05-30', 4320.00, 0.00, 'Walmart 60d settle')
 ) AS p(po_number, ptype, pdate, amt, deduct, notes)
 JOIN purchase_orders po ON po.po_number = p.po_number
 WHERE NOT EXISTS (
