@@ -57,6 +57,7 @@ Module-by-module:
 - [ ] **Cortina NetSuite PO export sample** — still waiting on Harshita; reconcile real file against the parser's column-mapping seam once received
 - [ ] Real DOT portal CSV reconciled against the parser
 - [ ] Onboard the other admins (Shahira, David, Paul) — pre-provision their users in the Auth dashboard or wait for first magic-link sign-in (trigger auto-creates profile)
+- [ ] **Anthropic console + ANTHROPIC_API_KEY** — provisioned in Anthropic console with monthly spend cap. Stored as a Supabase Edge Function secret (NOT in Vercel `VITE_*` — the key must stay server-side). Wired up to the Phase 2 AI agent.
 
 ---
 

@@ -290,7 +290,41 @@ Seeds (`supabase/seeds/`) are separate — not part of the migration apply order
 
 ---
 
-## 8 · Escalation
+## 8 · Anthropic API key
+
+The Phase 2 AI agent (email → structured PO extraction) lives in a Supabase Edge Function. The Anthropic key is therefore a **server-side secret** — never put it in Vercel's `VITE_*` vars (those get inlined into the client bundle).
+
+### 8.1 · Provision a key
+
+1. https://console.anthropic.com → **Settings → API Keys → Create Key**. Name it `cookie-central`.
+2. Copy the `sk-ant-…` value once — it won't show again.
+3. **Console → Plans & Billing** → add payment method + set a monthly spend cap (recommend $50 to start; raise once the agent is steady).
+
+### 8.2 · Store as a Supabase secret
+
+The CLI works regardless of dashboard layout and whether any Edge Function exists yet:
+
+```bash
+brew install supabase/tap/supabase   # one-time install
+npx supabase login                    # one-time, opens browser
+npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-… --project-ref niesswmibmonlbrbcecj
+```
+
+Dashboard alternative: **Edge Functions** (top-level left-sidebar item, not under Project Settings) → **Secrets** tab → **Add new secret**. The Edge Functions section appears once you've created at least one function; until then use the CLI.
+
+Note: until the Phase 2 AI Edge Function is built, nothing reads this secret. Save the raw key in your password manager too in case the secret needs to be re-set later.
+
+### 8.3 · Rotate
+
+If the key leaks or a contractor rolls off:
+1. Anthropic Console → revoke the old key
+2. Create a new key with the same name
+3. Re-run the `supabase secrets set` command with the new value
+4. Redeploy any Edge Functions that read it (`npx supabase functions deploy <name>`)
+
+No code changes required as long as the env var name stays the same.
+
+## 9 · Escalation
 
 | Symptom | Likely owner |
 |---|---|
