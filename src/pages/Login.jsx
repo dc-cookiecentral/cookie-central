@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 // Two sign-in methods: magic link (default for normal use) and password
@@ -7,7 +8,17 @@ import { useAuth } from '../contexts/AuthContext';
 // set and "Auto-confirm" ticked.
 
 export default function Login() {
-  const { signInWithEmail, signInWithPassword } = useAuth();
+  const navigate = useNavigate();
+  const { session, signInWithEmail, signInWithPassword } = useAuth();
+
+  // Password sign-in returns immediately on success but doesn't redirect
+  // (magic link comes back via Supabase's URL with a token, which does).
+  // Watch the AuthContext session and bounce to the post-login landing as
+  // soon as it lands — also covers the "already signed in, navigated back
+  // to /login" case so a stale tab doesn't get stuck on the form.
+  useEffect(() => {
+    if (session) navigate('/', { replace: true });
+  }, [session, navigate]);
   const [mode, setMode] = useState('magic'); // 'magic' | 'password'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
