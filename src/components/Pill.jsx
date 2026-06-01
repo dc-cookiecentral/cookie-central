@@ -14,6 +14,14 @@ const MAP = {
   good:             ['bg-green-100',   'text-green-700',   'Good'],
   almost_expired:   ['bg-yellow-100',  'text-yellow-700',  'Expiring'],
   partial_expired:  ['bg-red-100',     'text-red-700',     'Exp Lots'],
+  // product status
+  active:           ['bg-green-100',   'text-green-700',   'Active'],
+  upcoming:         ['bg-violet-100',  'text-violet-700',  'Upcoming'],
+  discontinued:     ['bg-gray-100',    'text-gr',          'Discontinued'],
+  // transition status
+  planning:         ['bg-yellow-100',  'text-yellow-700',  'Planning'],
+  in_progress:      ['bg-blue-100',    'text-blue-700',    'In Progress'],
+  complete:         ['bg-green-100',   'text-green-700',   'Complete'],
 };
 
 export default function Pill({ status }) {
