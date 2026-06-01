@@ -19,12 +19,9 @@ const SECTIONS = [
   },
   {
     origin: 'Assemblers',
-    note: 'All reports list lot code — traceability runs raw lot → production batch lot → outbound shipment.',
+    note: 'One workbook covers Production / Reject / Inventory / Shipment + per-Job consumption — lot code is the join key across all sheets. Raw-ingredient landing/BOL is captured separately via Inventory → Reorder.',
     items: [
-      { type: 'assemblers', title: 'Inventory', note: 'Raw + packaging + finished goods' },
-      { type: 'production', title: 'Production', note: 'Raw lots → FG batch lots (cost + traceability) + outbound shipments' },
-      { planned: true, title: 'Outbound', note: 'Invoiced FG shipments → feeds PO ship-to-DOT' },
-      { planned: true, title: 'BOL — landed raw ingredients', note: 'Lot # + expiry at landing (need to confirm)' },
+      { type: 'production', title: 'Assemblers Report', note: 'Production runs + raw-lot consumption + inventory + outbound shipments — one multi-sheet upload' },
     ],
   },
   {
