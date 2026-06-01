@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import WarehouseView from '../components/WarehouseView';
+import ProductView from '../components/ProductView';
 import ReorderView from '../components/ReorderView';
 import LandingView from '../components/LandingView';
 
@@ -8,15 +9,6 @@ const VIEWS = [
   { key: 'product', label: 'By Product' },
   { key: 'reorder', label: 'Reorder' },
 ];
-
-function Placeholder({ title, day }) {
-  return (
-    <div className="bg-cd border border-lt rounded-xl p-8 text-center">
-      <div className="text-sm font-semibold text-dk mb-1">{title}</div>
-      <div className="text-xs text-gr">Built Day {day}.</div>
-    </div>
-  );
-}
 
 export default function Inventory() {
   const [view, setView] = useState('warehouse');
@@ -43,7 +35,7 @@ export default function Inventory() {
       </div>
 
       {view === 'warehouse' && <WarehouseView />}
-      {view === 'product' && <Placeholder title="Product view" day="5.1" />}
+      {view === 'product' && <ProductView />}
       {view === 'reorder' && (
         <div className="space-y-4">
           <div>
