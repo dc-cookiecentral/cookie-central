@@ -51,10 +51,11 @@ Module-by-module:
 - [x] RLS policies cover INSERT/UPDATE/DELETE on every write-path table
 - [x] Audit log gated to admin/finance; ops users see explicit "restricted" panel
 - [x] Cascade-delete FK so user lifecycle ops don't error
-- [ ] Real Cortina NetSuite PO export reconciled against the parser
+- [x] Production deploy to Vercel
+- [x] Supabase Auth Site URL + Redirect URLs pointed at the Vercel domain
+- [ ] **Talk to David about the QBO connection** — confirm the QBO API access path he can grant, and whether Phase 1 stays on CSV upload or jumps straight to API
+- [ ] **Cortina NetSuite PO export sample** — still waiting on Harshita; reconcile real file against the parser's column-mapping seam once received
 - [ ] Real DOT portal CSV reconciled against the parser
-- [ ] Real QBO export reconciled against the parser
-- [ ] Production deploy to Vercel (`main` builds clean; needs a one-time link)
 - [ ] Onboard the other admins (Shahira, David, Paul) — pre-provision their users in the Auth dashboard or wait for first magic-link sign-in (trigger auto-creates profile)
 
 ---
