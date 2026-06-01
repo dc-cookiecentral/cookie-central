@@ -36,7 +36,7 @@
 
 | Address | Purpose |
 |---------|---------|
-| systems@dirtycookie.com | Operational email — POs, BOLs, confirmations. CC'd on all PO threads. AI agent reads this. |
+| systems@dirtycookie.com | Operational email — POs, BOLs, confirmations. CC'd on all PO threads. AI agent reads this. **Also the primary Cookie Central sign-in identity (admin role).** |
 | orders@dirtycookie.com | Order-related CC |
 | support@dirtycookie.com | Maria's email for PO confirmations |
 | ap@branddetroit.com | Invoicing (BD Venture Studio) |
