@@ -22,7 +22,7 @@ const SECTIONS = [
     note: 'All reports list lot code — traceability runs raw lot → production batch lot → outbound shipment.',
     items: [
       { type: 'assemblers', title: 'Inventory', note: 'Raw + packaging + finished goods' },
-      { planned: true, title: 'Production', note: 'Raw lots → FG batch lots (cost + traceability)' },
+      { type: 'production', title: 'Production', note: 'Raw lots → FG batch lots (cost + traceability) + outbound shipments' },
       { planned: true, title: 'Outbound', note: 'Invoiced FG shipments → feeds PO ship-to-DOT' },
       { planned: true, title: 'BOL — landed raw ingredients', note: 'Lot # + expiry at landing (need to confirm)' },
     ],

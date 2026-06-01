@@ -1,10 +1,11 @@
 import assemblers from './assemblers';
+import production from './production';
 import dot from './dot';
 import qbo from './qbo';
 import netsuite from './netsuite';
 
 // Registry keyed by upload_log.upload_type.
-export const PARSERS = { netsuite, assemblers, dot, qbo };
+export const PARSERS = { netsuite, assemblers, production, dot, qbo };
 
 export function getParser(type) {
   return PARSERS[type] || null;

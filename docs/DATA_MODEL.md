@@ -18,6 +18,10 @@ raw_materials ──< raw_material_orders
 raw_materials ──< inventory_adjustments
 raw_materials ──< raw_material_lots (FIFO)
 raw_materials ──< bill_of_materials (links to products)
+production_runs ──< production_pallets         (FG output, pallet-level)
+production_runs ──< production_subcomponents   (raw lots consumed → FG lot)
+production_runs ──< production_rejects         (per-event waste/loss)
+lot_shipments (standalone, lot-level outbound from Assemblers facility)
 weekly_reports (standalone, from email)
 audit_log (standalone, logs all changes)
 upload_log (standalone, tracks CSV uploads)
@@ -292,6 +296,94 @@ One ingredient can have multiple distributors, each with different brands/pricin
 | role | text | admin, finance, ops |
 | title | text | CEO, COO, Biz Exec, Ops, Admin |
 | created_at | timestamptz | |
+
+### production_runs
+One Assemblers production job → one finished-good lot. `job_id` is the Assemblers Job number (UNIQUE). `assemblers_po` is Assemblers' internal manufacturing PO (≠ `purchase_orders.po_number`).
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid PK | |
+| job_id | text UNIQUE | "9375706" |
+| produced_date | date | |
+| work_order | text | "6538048/ PO 017-2026" |
+| assemblers_po | text | "PO 017-2026" |
+| fg_item_code | text | "123006" |
+| fg_item_description | text | |
+| fg_lot_code | text | "6147AM" |
+| fg_expiry_date | date | |
+| quantity_produced | numeric | Authoritative from Job sheet header |
+| quantity_unit | text | "cs", "ea" |
+| job_start_at | timestamptz | |
+| job_end_at | timestamptz | |
+| reference_1 | text | Usually echoes assemblers_po |
+| reference_2 | text | "$8.16 per case" / "MASTER BATCH" |
+| source_upload_id | uuid FK → upload_log | |
+
+### production_pallets
+Pallet-level FG output (Production sheet rows).
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid PK | |
+| run_id | uuid FK → production_runs ON DELETE CASCADE | |
+| produced_date | date | |
+| pallet_number | text | "M2593256" |
+| fg_item_code | text | |
+| fg_lot_code | text | |
+| fg_expiry_date | date | |
+| units_produced | numeric | |
+| unit_of_measure | text | |
+| source_upload_id | uuid FK → upload_log | |
+
+### production_subcomponents
+Per-run raw-lot consumption from each Job sheet's subcomponent table — the cost-rollup + traceability backbone tying raw lots to the FG lot. `quantity_used = consumed + rejected`.
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid PK | |
+| run_id | uuid FK → production_runs ON DELETE CASCADE | |
+| subcomponent_code | text | "111006", "WMT CCF- Batch" |
+| subcomponent_description | text | |
+| raw_lot_code | text | "26071-83" |
+| raw_lot_expiry | date | |
+| quantity_consumed | numeric | Went into the product |
+| quantity_rejected | numeric | Waste portion |
+| quantity_used | numeric | Total drawn |
+| unit_of_measure | text | "lb", "ea" |
+| reject_pct | numeric | 56.87 (percent, not 0.5687) |
+| source_upload_id | uuid FK → upload_log | |
+
+### production_rejects
+Per-event reject rows from the Reject sheet — adds timestamp + reason taxonomy the Job-sheet rollup drops. Reasons observed: Waste Product, Yield Loss, QA Test, Damage By Machine, Floor contact, Formulation Trial, Inventory Variance, Crushed Corrugate, Rework Scrap. Stub `production_runs` is created when a reject references a job whose FG output rows haven't landed yet.
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid PK | |
+| run_id | uuid FK → production_runs ON DELETE CASCADE | |
+| work_order | text | |
+| item_code | text | |
+| item_description | text | |
+| base_quantity | numeric | |
+| rejected_at | timestamptz | |
+| reject_reason | text | Free text (taxonomy is evolving) |
+| lot_code | text | |
+| expiry_date | date | |
+| source_upload_id | uuid FK → upload_log | |
+
+### lot_shipments
+Pallet/lot-level outbound from the Assemblers facility (Shipment sheet) — DISTINCT from PO-level `shipments`. Includes non-retailer destinations (COMPACTOR for waste, freight handlers like Wilson Freire). `ship_order_id` links to NetSuite when `ship_to = DOT FOODS`.
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid PK | |
+| shipment_number | text | "4815846" (facility) |
+| ship_order_id | text | "4262458" |
+| ship_date | date | |
+| ship_to | text | "DOT FOODS", "COMPACTOR", ... |
+| item_code | text | |
+| item_description | text | |
+| lot_code | text | |
+| expiry_date | date | |
+| base_quantity | numeric | |
+| base_unit | text | "eaches" / "pounds" |
+| case_quantity | numeric | |
+| case_unit | text | "cases" / "Roll" |
+| source_upload_id | uuid FK → upload_log | |
 
 ### transitions
 | Column | Type | Notes |

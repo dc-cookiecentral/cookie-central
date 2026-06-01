@@ -33,9 +33,17 @@ export default function UploadPipeline({ parser, onComplete, title, note }) {
       setStage('parsing');
       setError(null);
       try {
-        const { rows, parseErrors } = await parseFile(f);
-        const out = parser.parse(rows);
-        setParsed({ ...out, parseErrors });
+        // Multi-sheet parsers (e.g. Production) need workbook structure that
+        // the shared row-flattening helper destroys — they implement parseFile
+        // directly and skip the (parseFile → parser.parse(rows)) pipeline.
+        let out;
+        if (parser.parseFile) {
+          out = await parser.parseFile(f);
+        } else {
+          const { rows, parseErrors } = await parseFile(f);
+          out = { ...parser.parse(rows), parseErrors };
+        }
+        setParsed(out);
         setStage('preview');
       } catch (e) {
         setError(e.message || 'Failed to parse file');
