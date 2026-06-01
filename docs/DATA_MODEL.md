@@ -1,8 +1,7 @@
 # Cookie Central — Data Model
 
 ## Schema Location
-`supabase/migrations/001_initial_schema.sql` — initial migration (linked to GitHub)
-Future schema changes go in `002_*.sql`, `003_*.sql`, etc.
+`supabase/migrations/` — forward-only, applied manually via the Supabase SQL editor in filename order. Initial schema is `20260521000000_initial_schema.sql`. Subsequent migrations are timestamped (YYYYMMDDhhmmss). Never edit a migration that has been applied; write a new one.
 
 ## Entity Relationship Overview
 
@@ -22,10 +21,14 @@ production_runs ──< production_pallets         (FG output, pallet-level)
 production_runs ──< production_subcomponents   (raw lots consumed → FG lot)
 production_runs ──< production_rejects         (per-event waste/loss)
 lot_shipments (standalone, lot-level outbound from Assemblers facility)
+purchase_orders ──< po_emails                  (extracted email thread)
+purchase_orders ──< po_changes                 (every PO field mutation, audit-linked)
+purchase_orders ──< po_lot_numbers             (delivered FG lots + BOL)
 weekly_reports (standalone, from email)
 audit_log (standalone, logs all changes)
-upload_log (standalone, tracks CSV uploads)
-user_profiles ──< (role-based access)
+upload_log (standalone, tracks every uploaded file)
+user_role_seeds ──> user_profiles              (role assignment at first sign-in)
+auth.users ──> user_profiles                   (1:1 via trigger; ON DELETE CASCADE)
 ```
 
 ## Tables
@@ -88,6 +91,10 @@ Defines UOM conversion chains per product category.
 | email_count | int | Emails linked to this PO |
 | cortina_po | boolean | true (all POs flow through Cortina) |
 | revenue_per_case | numeric | Per-PO pricing (may differ by retailer) |
+| ship_to_dot_date | date | Planned ship-to-DOT date (upstream of retailer ship) |
+| ship_to_dot_actual | date | Actual ship-to-DOT; UI flags red if after planned |
+| dot_receipt_date | date | DOT-confirmed receipt at warehouse |
+| bol_number | text | BOL captured from delivery email (Phase 2 AI extracts) |
 | created_at | timestamptz | |
 | updated_at | timestamptz | |
 
@@ -207,6 +214,7 @@ One ingredient can have multiple distributors, each with different brands/pricin
 |--------|------|-------|
 | id | uuid PK | |
 | raw_material_id | uuid FK → raw_materials | |
+| raw_material_order_id | uuid FK → raw_material_orders | Landing provenance — which order this lot landed against (1 order can land as N lots) |
 | lot_number | text | "FL-2401" |
 | quantity | numeric | |
 | received_date | date | |
@@ -255,12 +263,41 @@ One ingredient can have multiple distributors, each with different brands/pricin
 |--------|------|-------|
 | id | uuid PK | |
 | po_id | uuid FK → purchase_orders | |
-| timestamp | timestamptz | |
+| email_timestamp | timestamptz | When the email was sent (column name avoids clash with the `timestamp` type; hooks alias as `timestamp`) |
 | sender_name | text | |
 | sender_org | text | "Cortina", "DC Ops", "SunTeck" |
 | summary | text | |
 | extracted_data | jsonb | {shipDate, carrier, etc.} |
 | source | text | email, manual |
+
+### po_changes
+Per-field PO mutation history (drives the "Original vs Current" diff + Change History on PO detail). Written by the `log_po_changes` trigger on every UPDATE to tracked columns.
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid PK | |
+| po_id | uuid FK → purchase_orders ON DELETE CASCADE | |
+| field_name | text | "ship_date_actual", "payment_status", "bol_number", etc. |
+| original_value | text | |
+| new_value | text | |
+| change_source | text | internal, email, manual |
+| change_reason | text | Free-text notes |
+| changed_by | uuid FK → user_profiles | |
+| created_at | timestamptz | |
+
+### po_lot_numbers
+FG lots that arrived for a PO (the traceability key from outbound → received). Phase 1 entry is manual; Phase 2 AI extracts from delivery emails.
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid PK | |
+| po_id | uuid FK → purchase_orders ON DELETE CASCADE | |
+| lot_number | text | "6147AM" (matches production_runs.fg_lot_code) |
+| sku | text | "WCCB" |
+| quantity_cases | int | |
+| bol_reference | text | |
+| received_date | date | |
+| source | text | email, manual, dot_report |
+| extracted_from_email_id | uuid FK → po_emails | |
+| created_at | timestamptz | |
 
 ### audit_log
 | Column | Type | Notes |
@@ -279,7 +316,7 @@ One ingredient can have multiple distributors, each with different brands/pricin
 | Column | Type | Notes |
 |--------|------|-------|
 | id | uuid PK | |
-| upload_type | text | dot, assemblers, qbo, netsuite |
+| upload_type | text | dot, assemblers, production, qbo, netsuite, weekly_report |
 | filename | text | |
 | uploaded_by | uuid FK → user_profiles | |
 | row_count | int | |
@@ -288,14 +325,24 @@ One ingredient can have multiple distributors, each with different brands/pricin
 | uploaded_at | timestamptz | |
 
 ### user_profiles
+ON DELETE CASCADE to `auth.users` so dashboard user-deletes don't error on the FK. Created automatically by the `handle_new_auth_user` trigger when a user first signs in.
 | Column | Type | Notes |
 |--------|------|-------|
-| id | uuid PK (matches auth.users.id) | |
+| id | uuid PK → auth.users(id) ON DELETE CASCADE | |
 | email | text | |
 | full_name | text | |
 | role | text | admin, finance, ops |
-| title | text | CEO, COO, Biz Exec, Ops, Admin |
+| title | text | |
 | created_at | timestamptz | |
+
+### user_role_seeds
+Email-to-role mapping that `handle_new_auth_user` reads when provisioning a `user_profiles` row. Adding someone here BEFORE they sign in gives them the right role on first sign-in; missing entries default to `ops`.
+| Column | Type | Notes |
+|--------|------|-------|
+| email | text PK | Lower-case |
+| full_name | text | |
+| role | text | admin / finance / ops |
+| title | text | |
 
 ### production_runs
 One Assemblers production job → one finished-good lot. `job_id` is the Assemblers Job number (UNIQUE). `assemblers_po` is Assemblers' internal manufacturing PO (≠ `purchase_orders.po_number`).

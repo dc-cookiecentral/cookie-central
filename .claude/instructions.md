@@ -14,13 +14,12 @@ The approved UI prototype is at `prototype/CookieCentral_Complete.jsx`. This is 
 - **Auth:** Supabase magic link (email-based, no passwords)
 - **Design:** Dirty Cookie brand — pink/magenta palette. See prototype for exact colors.
 
-## Supabase + GitHub Integration
-- Supabase is connected to this GitHub repo
-- Migrations live in `supabase/migrations/` and auto-deploy on push to main
-- Use `npx supabase migration new <name>` for new schema changes
-- Use `npx supabase db push` to deploy migrations
-- Initial schema is in `supabase/migrations/20260521000000_initial_schema.sql`
-- NEVER edit migrations that have been pushed — create new ones instead
+## Supabase migrations
+- Migrations live in `supabase/migrations/`, named with a `YYYYMMDDhhmmss_*.sql` timestamp prefix
+- Forward-only — NEVER edit an already-applied migration; create a new one
+- Applied **manually** via the Supabase SQL editor (paste file contents → Run) in filename order. GitHub auto-deploy is off.
+- Initial schema: `20260521000000_initial_schema.sql`
+- One-time demo data (e.g. prototype POs) lives in `supabase/seeds/`, NOT in `supabase/migrations/` — separate folder so the demo set can be dropped cleanly when real data lands
 
 ## Key architecture rules
 1. **Read-mostly app.** Most data enters via uploads (CSV) or API ingestion. The primary write-backs are: reorder confirmations, inventory adjustments, and manual order entry.
@@ -59,14 +58,13 @@ Key tables:
 - Check `docs/BUILD_PLAN.md` for current task and priority
 - Reference `docs/ARCHITECTURE.md` for data flow decisions
 - Reference `docs/DATA_MODEL.md` for table schemas
-- Reference `prototype/CookieCentral_Complete.jsx` for UI spec
-- Log decisions in `docs/DECISIONS.md`
-- Create new migrations (never edit pushed ones): `npx supabase migration new <name>`
+- Reference `prototype/CookieCentral_Complete.jsx` for UI spec — it is the build spec for every module
+- Log decisions in `docs/DECISIONS.md` as ADRs
 
 ## Org chart
-- Shahira Marei — CEO/Founder — admin/finance role
-- Marc Bouthillette — COO — ops role (primary daily user)
-- David Landeck — Biz Exec — finance role
-- Paul — Biz Exec — finance role
-- Maria Restrepo — Ops — ops role
-- Caroline Friedrich — Builder/Admin — admin role
+- Shahira Marei — CEO/Founder — admin
+- Marc Bouthillette — COO — ops (primary daily user)
+- David Landeck — Biz Exec — admin
+- Paul — Biz Exec — admin
+- Maria Restrepo — Ops — ops (onboarding later)
+- Caroline Friedrich — Builder — accesses via systems@dirtycookie.com (admin)

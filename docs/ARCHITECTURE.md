@@ -57,15 +57,15 @@
 ## Data Sources — Priority and Method
 
 ### Automated (Primary)
-1. **Cortina NetSuite** — POs, shipments, invoices, payments. API target, CSV fallback.
-2. **systems@ email AI agent** — PO emails, BOLs, supplier confirmations. AI extracts structured data.
-3. **Bentonville Merchants email** — Weekly Retail Link readout. Parsed every Monday 9:30 AM CT.
+1. **Cortina NetSuite** — POs, shipments, invoices, payments. CSV upload today (Phase 1), API target (Phase 2).
+2. **systems@ email AI agent** — PO emails, BOLs, supplier confirmations. Phase 1 surfaces a stub AI Insight card on PO detail; Phase 2 swaps in live structured extraction.
+3. **Bentonville Merchants email** — Weekly Retail Link readout. Parsed every Monday 9:30 AM CT into `weekly_reports`; the 3 .xlsx attachments add markdowns / supply plan / per-PO OTIF detail.
 
 ### Manual (Supplement)
-4. **DOT portal CSV** — finished goods inventory, 48-hr lag
-5. **Assemblers report CSV** — raw materials, packaging, WIP
+4. **DOT portal CSV** — finished goods inventory, 48-hr lag (parser behind column-mapping seam)
+5. **Assemblers report (one .xlsx)** — Production + Reject + Inventory + Shipment + N Job sheets in a single workbook. The Production parser dispatches each sheet to its respective table; the Inventory sheet delegates through to the standalone assemblers.js parser/importer.
 6. **QBO CSV** (Phase 1) → QBO API (Phase 2) — invoices, payments
-7. **Manual entry** — orders, audits, lead times, inventory adjustments
+7. **Manual entry** — reorders + landing, inventory adjustments, transitions, raw-material distributor additions
 
 ## Tech Stack
 
@@ -74,8 +74,8 @@
 | Frontend | React + Vite + Tailwind | Single-page app, sidebar navigation |
 | Backend | Supabase | Postgres, Auth, Edge Functions, Storage |
 | Hosting | Vercel | Auto-deploy from GitHub main branch |
-| Auth | Supabase magic link | Email-based, no passwords |
-| DB Migrations | Supabase CLI + GitHub | `supabase/migrations/` — auto-linked to repo |
+| Auth | Supabase email auth | Magic link (default) + password fallback for SMTP outages. Auto-confirm + role-seed trigger provisions `user_profiles` on first sign-in. |
+| DB Migrations | `supabase/migrations/` | Forward-only, applied **manually** via the SQL editor in filename order (GitHub auto-deploy currently off). |
 | File parsing | Edge Functions / client-side | CSV parsing with Papa Parse |
 | PDF generation | Client-side (jsPDF or react-pdf) | Reorder confirmation PDFs |
 | Email parsing | Supabase Edge Function | Gmail API for systems@, scheduled + manual trigger |
@@ -84,9 +84,13 @@
 
 | Role | Users | Can do | Cannot do |
 |------|-------|--------|-----------|
-| admin | Caroline | Everything | — |
-| finance | Shahira, David, Paul | View all, edit pricing/COG/revenue, approve changes | Delete data |
-| ops | Marc, Maria | View all, upload data, adjust inventory, confirm reorders, add orders | Edit pricing |
+| admin | Shahira, David, Paul, `systems@dirtycookie.com` (Caroline signs in here) | Everything: view + edit + upload + audit log + pricing | — |
+| ops | Marc, Maria (when onboarded) | View all, upload data, adjust inventory, confirm reorders, add orders | Edit pricing; read audit log |
+| finance | (reserved) | View all, edit pricing/COG/revenue, read audit log | Delete data |
+
+Roles are assigned via `user_role_seeds` and applied by the `handle_new_auth_user` trigger when a user signs in for the first time. To onboard someone outside the seed list, either add them to `user_role_seeds` before they sign in or pre-provision their row in the Auth dashboard.
+
+RLS policies on every write-path table check `role IN ('admin', 'ops')` for writes (or `'admin', 'finance', 'ops'` on the few tables anyone authorised can write). `audit_log` SELECT is gated to `admin` + `finance`.
 
 ## UOM Conversion
 

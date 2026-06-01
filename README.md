@@ -2,79 +2,95 @@
 
 Operational dashboard for Dirty Cookie's white-label retail business (Walmart + Kroger) through Cortina Foods.
 
-**Stack:** React + Vite + Supabase + Vercel  
-**Builder:** Caroline Friedrich (BD Venture Studio LLC)  
-**Users:** Shahira (CEO), Marc (COO), David (Biz Exec), Paul (Biz Exec), Maria (Ops)
+**Stack:** React + Vite + Tailwind + Supabase + Vercel
+**Status:** Phase 1 complete — demo shipped (June 2026). All eight build-plan modules functional against live Supabase data. Now in launch hardening / Phase 2 prep.
+**Builder:** Caroline Friedrich
+**Users:** Shahira (CEO/admin), Marc (COO/ops), David + Paul (Biz Exec/admin), Maria (Ops — onboarding later)
+**Primary sign-in:** `systems@dirtycookie.com` (admin)
 
 ## Quick Start
 
 ```bash
-# Install dependencies
 npm install
-
-# Link Supabase (project is connected to this GitHub repo)
-npx supabase link --project-ref YOUR_PROJECT_REF
-
-# Run initial migration
-npx supabase db push
-
-# Set up environment
 cp .env.example .env.local
 # Fill in VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY from Supabase dashboard > Settings > API
-
-# Run locally
+# Leave VITE_AUTH_BYPASS=false for real auth (true only for offline UI work)
 npm run dev
 ```
 
-## Supabase + GitHub Integration
+Then sign in at `/login` as `systems@dirtycookie.com`. If the user doesn't exist yet, provision it once in the Supabase dashboard (Auth → Users → Add user, with **Auto-confirm** ticked). The `handle_new_auth_user` trigger creates the matching `user_profiles` row with the admin role automatically.
 
-This project uses Supabase with GitHub integration. Migrations in `supabase/migrations/` auto-deploy when pushed to main.
+The login form supports both **magic link** (default) and **password** (fallback when SMTP is rate-limited).
 
-```bash
-# Create a new migration
-npx supabase migration new my_migration_name
+## Migrations
 
-# Push migrations to remote
-npx supabase db push
+Migrations live in `supabase/migrations/`. The Supabase + GitHub integration is currently disabled; migrations are applied **manually** via the SQL editor by pasting the migration file contents and running them in filename order.
 
-# Pull remote schema changes
-npx supabase db pull
 ```
+20260521000000_initial_schema.sql              # 20 tables + RLS + triggers
+20260521000001_seed_user_profiles.sql          # user_role_seeds + auto-provision trigger
+20260526120000_add_po_dot_fulfillment_dates    # PO → DOT leg timeline
+20260526130000_link_lots_to_orders             # raw_material_lots.raw_material_order_id FK
+20260527120000_po_change_tracking              # po_changes + audit trigger
+20260527130000_po_lot_numbers                  # po_lot_numbers + bol_number
+20260601120000_production_report               # 5 production tables + lot_shipments
+20260601130000_upload_log_production_type      # CHECK constraint update
+20260601140000_upload_log_write_policies       # ops/admin INSERT + UPDATE
+20260601150000_seed_systems_user               # systems@ admin seed
+20260601160000_update_user_seeds               # roster reconciliation
+20260601170000_user_profiles_cascade_delete    # cascade FK fix
+20260601180000_raw_materials_write_policies    # ops/admin INSERT/DELETE
+```
+
+Optional seed data for a populated demo: `supabase/seeds/demo_purchase_orders.sql` (7 prototype POs + line items + emails + payment events). Idempotent; safe to drop later when real Cortina data lands.
 
 ## Project Structure
 
 ```
 cookie-central/
 ├── docs/
-│   ├── BUILD_PLAN.md                  # Phase 1-3 task breakdown
-│   ├── ARCHITECTURE.md                # Data flow + tech stack
-│   ├── DATA_MODEL.md                  # Tables, columns, relationships
-│   ├── DECISIONS.md                   # Architecture decision records
-│   └── PEOPLE.md                      # Org chart + contacts
+│   ├── BUILD_PLAN.md            # Phase 1-3 task breakdown + status
+│   ├── ARCHITECTURE.md          # Data flow + tech stack + roles
+│   ├── DATA_MODEL.md            # Tables, columns, relationships
+│   ├── DECISIONS.md             # Architecture decision records (ADRs)
+│   └── PEOPLE.md                # Org chart + contacts + system emails
 ├── supabase/
-│   └── migrations/
-│       └── 20260521000000_initial_schema.sql   # Full schema (auto-deploys via GitHub)
-├── src/                               # React app (created during build)
+│   ├── migrations/              # Forward-only schema migrations (manual apply)
+│   └── seeds/                   # Demo data (idempotent, removable)
+├── src/
+│   ├── App.jsx + main.jsx
+│   ├── pages/                   # Routes (one file per sidebar nav item)
+│   ├── components/              # Reusable pieces (Pill, AlertsPanel, …)
+│   ├── hooks/                   # Data-fetch + mutation hooks
+│   ├── parsers/                 # File parsers (assemblers, netsuite, qbo, dot)
+│   ├── contexts/                # Auth, UOM, Retailer filter
+│   └── utils/                   # Date helpers, CSV/XLSX dispatch
 ├── prototype/
-│   └── CookieCentral_Complete.jsx     # Approved UI prototype (build spec)
-├── .claude/
-│   └── instructions.md                # Claude Code project context
-├── .env.example
-├── .gitignore
-└── README.md
+│   └── CookieCentral_Complete.jsx   # Approved UI prototype (build spec)
+└── .claude/instructions.md      # Claude Code project context
 ```
 
-## Build Plan
+## Modules (Phase 1)
 
-See `docs/BUILD_PLAN.md` for the full phase 1-3 breakdown.
+| Route | Built | Source data |
+|-------|-------|-------------|
+| `/weekly` | Weekly Report shell + WK16 parsed scorecard | Bentonville Merchants email + 3 .xlsx attachments |
+| `/orders` | Product Orders list + KPIs + Attention banner | `purchase_orders` + `po_line_items` |
+| `/orders/:po` | PO detail + Fulfillment Timeline + email thread + Delivery & Lots + AI Insight | + `po_emails`, `po_changes`, `po_lot_numbers` |
+| `/payments` + `/payments/:po` | Two-stage payment list + 3-stage timeline | `purchase_orders` + `invoices` + `payments` |
+| `/inventory` | Warehouse + Product views + Reorder + Landing | `dot_inventory` + `raw_materials` + lots + orders |
+| `/snapshot` | EOM Snapshot (month-pinned KPIs + deltas) | All of the above, month-scoped |
+| `/reference` | Products + Raw Materials + Transitions | Walmart item master + `raw_materials` + `transitions` |
+| `/audit` | Audit log viewer (admin/finance only) | `audit_log` |
+| `/uploads` | Drag-drop pipeline + upload history | `upload_log` |
 
-**Phase 1 target:** 8-9 working days  
-**Demo deadline:** Thursday May 29, 2026 (Marc + David)
+## Phase 2 (next)
+
+See `docs/BUILD_PLAN.md` Phase 2 section. Headline items: NetSuite API replacing CSV uploads, AI agent over `systems@` emails, supplier-confirmation auto-capture, production-plan allocation surface.
 
 ## Key Links
 
-- **GitHub:** Connected to Supabase for auto-migrations on push to main
-- **Supabase project:** [fill after `supabase link`]
-- **Vercel deployment:** [fill after `vercel deploy`]
-- **Prototype:** `prototype/CookieCentral_Complete.jsx`
-- **Operational email:** systems@dirtycookie.com
+- **Operational email + sign-in:** `systems@dirtycookie.com`
+- **Prototype (UI spec):** `prototype/CookieCentral_Complete.jsx`
+- **Supabase project:** see `.env.local`
+- **GitHub repo:** dc-cookiecentral/cookie-central

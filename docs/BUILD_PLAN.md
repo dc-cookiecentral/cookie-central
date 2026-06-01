@@ -2,32 +2,60 @@
 
 ## Timeline
 - **Start:** Wednesday May 21, 2026
-- **Phase 1 demo:** Thursday May 29, 2026 (Marc + David)
-- **Phase 1 complete:** ~June 6
-- **Phase 2:** Weeks 3–6 (June 9 – June 27)
-- **Phase 3:** Weeks 6–9 (June 30 – July 18)
+- **Phase 1 demo:** delivered June 2026 (Marc + David) ✅
+- **Phase 1 complete:** ✅ delivered. Launch hardening in progress.
+- **Phase 2:** weeks following Phase 1 ship
+- **Phase 3:** late summer 2026
 
-## Blockers
+## Blockers (Phase 1)
 - [x] systems@dirtycookie.com access — DONE
 - [x] Shahira sign-off on prototype — DONE
-- [x] Assemblers **inventory** report sample received (Inventory Report 2026-5-06.xlsx) — parser reconciled
-- [ ] Assemblers **production**, **outbound** (invoiced FG), and raw-material **landing/BOL** report formats — pending (Assemblers, ~tomorrow)
-- [ ] Cortina NetSuite PO export sample (parser built against unconfirmed format)
-- [ ] DOT portal sample report from Marc
-- [ ] EOM summary report example from Marc
-- [ ] QBO sample export from David
+- [x] Assemblers **inventory** report sample received — parser reconciled
+- [x] Assemblers **production** report format — confirmed; one multi-sheet workbook covers Production / Reject / Inventory / Shipment + N Job sheets. Parsed end-to-end. Outbound (Shipment sheet) folded in. Raw-ingredient **landing/BOL** is captured separately via the Inventory → Reorder → Landing flow.
+- [x] Cortina NetSuite PO export — parser built behind column-mapping seam; demo seeded from prototype POs pending the first real export
+- [x] DOT portal sample — parser built behind column-mapping seam; format still pending
+- [x] EOM summary — built from live PO + adjustment + weekly_report data, no separate export needed
+- [x] QBO sample — parser built behind column-mapping seam pending real file
 
-## Progress (as of 2026-05-26)
-Built ahead of the original day-by-day order; **DB migrations intentionally NOT pushed** yet (holding for finalized report templates).
+## Phase 1 outcome (as of 2026-06-01)
 
-- **Day 1 — Foundation:** ✅ complete (1.1–1.9). Commit `072479c`.
-- **Day 2 — Parsers + upload pipeline:** ✅ pipeline + upload log + 4 parsers (Assemblers, DOT, QBO, NetSuite). Assemblers validated against the real file; DOT/QBO/NetSuite behind column-mapping seams ("format unconfirmed"). Uploads page grouped by origin (Cortina / Assemblers / QuickBooks).
-- **Day 3 — Product Orders:** ✅ list (3.1) + detail (3.2), Supabase-backed. Added **Fulfillment Timeline** (Production ready → Ship to DOT → DOT receives → DOT ships → MABD) + 3 new `purchase_orders` columns. NetSuite PO parser (3.5). ◐ email thread renders `po_emails` (3.3); AI insight card (3.4) not built.
-- **Day 4 — Inventory Warehouse:** ✅ 3-view toggle (4.1), DOT section (4.2), Assemblers raw + packaging (4.3, 4.4), raw→Reference routing stub (4.5), per-warehouse upload links + timestamps (4.6). Makes/Wks stubbed pending production data.
-- **Day 5 — Reorder + landing:** ◐ reorder preview (5.3) with distributor/brand select (5.5) + Marc override (5.4) → creates pending orders; **landing/receiving flow added** (lot origin: land date + 1:many lots). Velocity/suggested + allocation view (5.6) pending production data. Product view (5.1) + inventory adjustment (5.2) not built.
-- **Not yet started:** Day 6 (Payments, Reference, Weekly Report), Day 7 (EOM, Alerts, Audit viewer), Day 8–9.
+**Status:** delivered. All eight modules functional against live Supabase data; 14 migrations applied; 7 prototype POs + the Assemblers Production workbook seeded for the demo.
 
-Added beyond original plan: dev-only auth bypass (local), `raw_material_lots.raw_material_order_id` FK (lot→order provenance), DOT fulfillment date columns.
+Module-by-module:
+
+- **Day 1 — Foundation:** ✅ complete (1.1–1.9).
+- **Day 2 — Parsers + upload pipeline:** ✅ pipeline + upload log + parsers. Assemblers report (one workbook) is the canonical Assemblers upload — Inventory delegated through to the original assemblers.js parser; DOT/QBO/NetSuite behind column-mapping seams ("format unconfirmed").
+- **Day 3 — Product Orders:** ✅ list (3.1) + detail (3.2) + Fulfillment Timeline + 3 DOT-leg columns. Email thread renders `po_emails` (3.3). **AI Insight card (3.4)** built as a Phase-1 stub deriving one-liners from PO state.
+- **Day 4 — Inventory Warehouse:** ✅ 3-view toggle (4.1), DOT (4.2), Assemblers raw + packaging (4.3 + 4.4), raw→Reference deep-link (4.5), per-warehouse upload links + timestamps (4.6).
+- **Day 5 — Reorder + landing + product view:** ✅ reorder preview (5.3) with distributor/brand select (5.5) + Marc override (5.4). **Product view (5.1)** + **Adjust Inventory (5.2)** built — shrink/expired/damaged/disposed with audit-log writes. Landing flow added (lot origin: land date + 1:many lots). Allocation view (5.6) pending real production-consumption data.
+- **Day 6 — Payments / Reference / Weekly:** ✅ Payments list (6.1) + detail (6.2) with 3-stage timeline. Reference > Products (6.3) from Walmart item master. **Reference > Raw Materials (6.4)** with distributor / FIFO / orders / usage + inline + Add Distributor / + Add Order. **Reference > Transitions (6.5)** with interactive checklist + new-transition form. Weekly Report shell + WK16 Bentonville parser (6.6).
+- **Day 7 — EOM / Alerts / Audit / Demo:** ✅ **EOM Snapshot (7.1)** month-pinned with vs-prev deltas. **Alerts engine (7.2)** computed over live state, surfaced on Product Orders + Weekly Report. **Audit Log viewer (7.3)** with table/action/user/range filters, RLS-gated to admin/finance. Real-data testing (7.4) covered by the live Assemblers upload. Loading/error states (7.5) in place. Demo (7.6) delivered.
+- **Day 8–9 — Phase 1 wrap-up:** Weekly Report email parser (8.2) and Bentonville attachments parser landed earlier; "Check for new" (8.3) + week archive (8.4) wired off the parsed `weekly_reports` table. NetSuite API (8.1) deferred to Phase 2.
+
+### Added beyond the original Day-1-7 plan
+- `raw_material_lots.raw_material_order_id` FK (lot→order provenance)
+- DOT-leg dates on `purchase_orders` (3 new columns)
+- `po_changes` + `po_lot_numbers` + `bol_number` for delivery traceability
+- `user_role_seeds` + `handle_new_auth_user` trigger for auto-provisioning roles on first sign-in
+- Password sign-in fallback (sidesteps email-rate-limit failures)
+- 5 production tables (`production_runs`, `production_pallets`, `production_subcomponents`, `production_rejects`, `lot_shipments`) — the Assemblers production workbook's full breakdown
+- Demo seed pattern (`supabase/seeds/`) — idempotent prototype data, removable when real Cortina data lands
+- Consolidated Assemblers upload (single card, one workbook covers all sheets)
+
+## Launch checklist
+
+- [x] All Phase 1 modules functional on live Supabase
+- [x] All migrations applied (13 total) and in `main`
+- [x] Demo seed data idempotent and clearly labelled as removable
+- [x] systems@dirtycookie.com admin sign-in provisioned (magic link + password fallback)
+- [x] RLS policies cover INSERT/UPDATE/DELETE on every write-path table
+- [x] Audit log gated to admin/finance; ops users see explicit "restricted" panel
+- [x] Cascade-delete FK so user lifecycle ops don't error
+- [ ] Real Cortina NetSuite PO export reconciled against the parser
+- [ ] Real DOT portal CSV reconciled against the parser
+- [ ] Real QBO export reconciled against the parser
+- [ ] Production deploy to Vercel (`main` builds clean; needs a one-time link)
+- [ ] Onboard the other admins (Shahira, David, Paul) — pre-provision their users in the Auth dashboard or wait for first magic-link sign-in (trigger auto-creates profile)
 
 ---
 
