@@ -4,12 +4,12 @@
 
 | Person | Role | Email | Cookie Central Role | Notes |
 |--------|------|-------|-------------------|-------|
-| Shahira Marei | CEO / Founder | smarei@thedirtycookieoc.com | admin / finance | Final sign-off |
+| Shahira Marei | CEO / Founder | shahira@dirtycookie.com | admin | Final sign-off |
 | Marc Bouthillette | COO | marc@dirtycookie.com | ops | Primary daily user, production planning |
-| David Landeck | Biz Exec | dlandeck@dirtycookie.com, dave@dirtycookie.com | finance | Payment visibility, strategy |
-| Paul | Biz Exec | TBD | finance | New hire, same access as David |
-| Maria Restrepo | Ops | support@dirtycookie.com | ops | PO confirmation alongside Marc |
-| Caroline Friedrich | Consultant (BD Venture Studio) | carolinesfriedrich@gmail.com | admin | Builder, project lead |
+| David Landeck | Biz Exec | david@dirtycookie.com | admin | Payment visibility, strategy |
+| Paul | Biz Exec | paul@dirtycookie.com | admin | New hire, same access as David |
+| Maria Restrepo | Ops | TBD | ops | PO confirmation alongside Marc — onboarding later |
+| Caroline Friedrich | Consultant | systems@dirtycookie.com | admin | Builder, project lead — signs in via systems@ |
 
 ## Cortina Foods (EDI Conduit / Financier)
 
