@@ -56,7 +56,9 @@ Module-by-module:
 - [ ] **Talk to David about the QBO connection** — confirm the QBO API access path he can grant, and whether Phase 1 stays on CSV upload or jumps straight to API
 - [ ] **Cortina NetSuite PO export sample** — still waiting on Harshita; reconcile real file against the parser's column-mapping seam once received
 - [ ] Real DOT portal CSV reconciled against the parser
-- [ ] Onboard the other admins (Shahira, David, Paul) — pre-provision their users in the Auth dashboard or wait for first magic-link sign-in (trigger auto-creates profile)
+- [ ] **Phase 1 invites** — Marc (ops), David (admin), Paul (admin). Pre-provision in Auth dashboard with password + Auto-confirm, share Vercel URL.
+- [ ] **Shahira invite** — deferred until Phase 2 is fully shipped (post-AI-agent).
+- [ ] **Kroger reporting source** — parked for now (Walmart's Bentonville feed covers `/weekly`; Kroger equivalent TBD).
 - [x] **Anthropic console + ANTHROPIC_API_KEY** — provisioned + stored in Supabase Vault.
 - [ ] **Talk to David about Gmail OAuth for systems@dirtycookie.com** — the AI agent (now Phase 1, see Day 10+) reads systems@ inbox via the Gmail API. Needs an OAuth client (Google Cloud Console project) + the systems@ account granting refresh-token consent. David confirms who owns Workspace billing + admin access.
 - [ ] **AI Agent build (Day 10.1 – 10.5)** — Gmail OAuth, polling Edge Function, structured extraction (dates/costs/BOLs/lot numbers) into `po_emails` + `po_lot_numbers` + `po_changes`, swap PO-detail AI Insight card to live extraction, auto-capture supplier confirmations.
