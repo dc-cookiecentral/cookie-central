@@ -59,6 +59,8 @@ Module-by-module:
 - [ ] **Phase 1 invites** — Marc (ops), David (admin), Paul (admin). Pre-provision in Auth dashboard with password + Auto-confirm, share Vercel URL.
 - [ ] **Shahira invite** — deferred until Phase 2 is fully shipped (post-AI-agent).
 - [ ] **Kroger reporting source** — parked for now (Walmart's Bentonville feed covers `/weekly`; Kroger equivalent TBD).
+- [ ] **Ingredient master data** (`raw_material_suppliers`: distributor, brand, cost/unit, MOQ, lead time per ingredient) — needs population. Two paths to confirm with Marc: (a) one-time spreadsheet entry, or (b) let the Day 10 AI agent backfill from order confirmation emails as they arrive. Option (b) is incremental + lower upfront effort but slower to a complete picture.
+- [ ] **Subdomain on dirtycookie.com** — hidden + protected entry. David owns the website infra; conversation needed on which subdomain (`ops.`/`central.`/something else), how to gate access beyond Supabase Auth (IP allowlist? Vercel password protection? basic auth at the edge?), and who manages DNS + the cert.
 - [x] **Anthropic console + ANTHROPIC_API_KEY** — provisioned + stored in Supabase Vault.
 - [ ] **Talk to David about Gmail OAuth for systems@dirtycookie.com** — the AI agent (now Phase 1, see Day 10+) reads systems@ inbox via the Gmail API. Needs an OAuth client (Google Cloud Console project) + the systems@ account granting refresh-token consent. David confirms who owns Workspace billing + admin access.
 - [ ] **AI Agent build (Day 10.1 – 10.5)** — Gmail OAuth, polling Edge Function, structured extraction (dates/costs/BOLs/lot numbers) into `po_emails` + `po_lot_numbers` + `po_changes`, swap PO-detail AI Insight card to live extraction, auto-capture supplier confirmations.
