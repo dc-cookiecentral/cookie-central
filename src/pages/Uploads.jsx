@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import UploadPipeline from '../components/UploadPipeline';
 import UploadLog from '../components/UploadLog';
+import InboxCard from '../components/InboxCard';
 import { getParser } from '../parsers';
 
 // Uploads grouped by data origin. Built parsers render as live upload cards;
@@ -21,7 +22,7 @@ const SECTIONS = [
     origin: 'Assemblers',
     note: 'One workbook covers Production / Reject / Inventory / Shipment + per-Job consumption — lot code is the join key across all sheets. Raw-ingredient landing/BOL is captured separately via Inventory → Reorder.',
     items: [
-      { type: 'production', title: 'Assemblers Report', note: 'Production runs + raw-lot consumption + inventory + outbound shipments — one multi-sheet upload' },
+      { type: 'production', title: 'Assemblers Report', note: 'Production runs + raw-lot consumption + inventory + outbound shipments — one multi-sheet upload. Also auto-ingested when emailed to systems@.' },
     ],
   },
   {
@@ -55,6 +56,8 @@ export default function Uploads() {
     <div>
       <h1 className="text-xl font-bold text-dk mb-1">Uploads</h1>
       <div className="text-[10px] uppercase tracking-wider text-gr mb-4">By data origin</div>
+
+      <InboxCard onPolled={bumpLog} />
 
       {SECTIONS.map((section) => (
         <section key={section.origin} className="mb-6">

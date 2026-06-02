@@ -319,7 +319,70 @@ If the key leaks or a contractor rolls off:
 
 No code changes required as long as the env var name stays the same.
 
-## 9 · Escalation
+## 9 · Gmail email agent (systems@dirtycookie.com)
+
+The AI agent reads `systems@` (read-only), classifies each message, and files it.
+Three Edge Functions + four migrations + the Vault secrets back it.
+
+### 9.1 · One-time deploy
+
+1. Apply the migrations (SQL editor, filename order):
+   `20260602120000_vault_secret_helpers.sql`, `20260602130000_gmail_agent_tables.sql`,
+   `20260602140000_upload_log_source.sql`. (Hold `..150000_gmail_poll_cron.sql` for step 4.)
+2. Confirm the secrets are in Vault (Project Settings → Vault): `ANTHROPIC_API_KEY`,
+   `GMAIL_OAUTH_CLIENT_ID`, `GMAIL_OAUTH_CLIENT_SECRET`. Sanity check as service role:
+   `select public.get_secret('ANTHROPIC_API_KEY') is not null;`
+3. Deploy the functions:
+   ```
+   npx supabase functions deploy gmail-oauth-callback --no-verify-jwt
+   npx supabase functions deploy gmail-poll
+   npx supabase functions deploy gmail-extract
+   ```
+   (`config.toml` pins these settings; the callback is public, the other two need a JWT.)
+   OAuth lands on `https://cookiecentral.dirtycookie.com` by default; override with
+   `npx supabase secrets set APP_BASE_URL=https://<app-domain>` if that changes.
+4. Schedule the daily poll: store the bearer, then apply the cron migration:
+   `select public.set_secret('EDGE_CRON_BEARER', '<service_role_key>');` then paste
+   `20260602150000_gmail_poll_cron.sql` (needs `pg_cron` + `pg_net` enabled).
+
+### 9.2 · Connect / reconnect the inbox
+
+`/uploads → systems@ Inbox → Connect Gmail` → sign in as `systems@dirtycookie.com`
+→ grant read-only → lands back on `/uploads?gmail=connected`. The refresh token is
+stored in Vault as `GMAIL_REFRESH_TOKEN`. **If reconnect returns "no refresh_token":**
+Google only issues one on first consent — remove the app at
+`myaccount.google.com/permissions`, then Connect again.
+
+### 9.3 · Run a poll
+
+`Check for new ↻` on the inbox card (or the daily cron) runs `gmail-poll`: it lists
+new mail, classifies with Haiku, writes `gmail_messages` (deduped on the Gmail
+message id), and tail-calls `gmail-extract`. **Where each class lands:**
+
+| Class | Lands in |
+|---|---|
+| PO / supplier_confirmation | `po_emails` (+ advisory `po_changes` `change_source='email'`) |
+| BOL | `po_emails` + `po_lot_numbers` (+ advisory `po_changes`) |
+| assemblers_report | runs the .xlsx through the production parser → `production_*` / `raw_materials`, one `upload_log` row `source='email'` |
+| weekly_report | `weekly_reports` (body scorecard; .xlsx attachments are recorded, not parsed) |
+| other | logged only |
+
+Structured extraction is **advisory** — it never edits `purchase_orders` directly;
+review email-sourced values via Original-vs-Current and Delivery & Lots.
+
+### 9.4 · Reprocess / debug a message
+
+Every email is a `gmail_messages` row with `classification`, `processed`, `error`,
+and links (`po_email_id`, `upload_log_id`). To re-run one:
+`update gmail_messages set processed=false, error=null where gmail_message_id='…';`
+then Check for new. A failed message has `processed=true` + an `error` string.
+
+### 9.5 · Rotate the Gmail token
+
+Reconnect via the button (§9.2) — it overwrites `GMAIL_REFRESH_TOKEN`. To rotate the
+Anthropic key, see §8.3 (the functions read it from Vault, no redeploy needed).
+
+## 10 · Escalation
 
 | Symptom | Likely owner |
 |---|---|

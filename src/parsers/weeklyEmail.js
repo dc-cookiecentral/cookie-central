@@ -176,9 +176,13 @@ const pct = (cur, prev) => {
   return ((cur - prev) / prev) * 100;
 };
 
-// Build the Weekly Report display record (matches src/data/weeklyReports.js).
-export function toWeeklyReport(rawEml) {
-  const parts = extractEmailParts(rawEml);
+// Build the Weekly Report display record from already-separated email parts
+// ({ subject, date, from, plainBody, attachments }). Split out from
+// toWeeklyReport so the server-side Gmail agent — which gets subject/body
+// separated from the Gmail API and has no raw .eml — reuses the exact same
+// mapping (file header lines 4-6). The .eml file-drop path calls it via
+// toWeeklyReport below.
+export function weeklyReportFromParts(parts) {
   const data = parseWeeklyBody(parts.plainBody);
   const wk = (parts.subject?.match(/WK\s*\d+/i)?.[0] || '').replace(/\s+/g, '') || 'WK?';
 
@@ -243,4 +247,9 @@ export function toWeeklyReport(rawEml) {
     pos: data.pos,
     otif: data.otif,
   };
+}
+
+// .eml file-drop path: split the raw MIME, then reuse weeklyReportFromParts.
+export function toWeeklyReport(rawEml) {
+  return weeklyReportFromParts(extractEmailParts(rawEml));
 }

@@ -1,5 +1,8 @@
-import { toNumber } from '../utils/csvParser';
-import assemblers from './assemblers';
+// Explicit .js extensions: Vite resolves extensionless imports, but the Gmail
+// agent Edge Function (Deno) that reuses this parser does not — Deno requires
+// the full path. Harmless in the browser, required server-side.
+import { toNumber } from '../utils/csvParser.js';
+import assemblers from './assemblers.js';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Assemblers Report parser — the single canonical Assemblers upload. One
@@ -382,8 +385,12 @@ async function parseFileImpl(file) {
 // UploadPipeline gives importRecords the same `records` array it previewed.
 // We need the full bundle, so importRecords pulls it off the first record's
 // hidden _bundle reference set during parsing.
-async function importRecords(records, { uploadId } = {}) {
-  const { supabase } = await import('../lib/supabase');
+// `client` lets a server-side caller (the Gmail agent Edge Function, running in
+// Deno with a service-role client) reuse this importer for email-attachment
+// auto-import. The browser /uploads path passes none and falls back to the lazy
+// anon client — unchanged behavior.
+async function importRecords(records, { uploadId, client } = {}) {
+  const supabase = client ?? (await import('../lib/supabase.js')).supabase;
   const bundle = records.__bundle;
   if (!bundle) throw new Error('Missing parse bundle — re-parse and retry.');
   const { runs, pallets, rejects, shipments, subcomponentsByJob, inventoryRecords } = bundle;
@@ -473,7 +480,7 @@ async function importRecords(records, { uploadId } = {}) {
   //    snapshots may not include the Inventory sheet).
   let invInserted = 0;
   if (inventoryRecords?.length) {
-    const res = await assemblers.importRecords(inventoryRecords);
+    const res = await assemblers.importRecords(inventoryRecords, { client });
     invInserted = res?.inserted ?? 0;
   }
 

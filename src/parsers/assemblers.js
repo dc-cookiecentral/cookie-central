@@ -1,4 +1,6 @@
-import { toNumber, pick } from '../utils/csvParser';
+// Explicit .js extension so this parser also resolves under Deno (reused by the
+// Gmail agent Edge Function); Vite is unaffected.
+import { toNumber, pick } from '../utils/csvParser.js';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Assemblers "Inventory Snapshot Report" parser (BUILD_PLAN 2.3).
@@ -165,8 +167,11 @@ function parse(rows) {
   return { records, errors, summary };
 }
 
-async function importRecords(records) {
-  const { supabase } = await import('../lib/supabase');
+// `client` lets a server-side caller (the Gmail agent Edge Function, running in
+// Deno with a service-role client) reuse this importer. The browser passes none,
+// so it falls back to the lazy anon client — unchanged behavior.
+async function importRecords(records, { client } = {}) {
+  const supabase = client ?? (await import('../lib/supabase.js')).supabase;
   const last_upload_at = new Date().toISOString();
   let inserted = 0;
 

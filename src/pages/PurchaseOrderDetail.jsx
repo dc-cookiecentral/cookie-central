@@ -10,10 +10,10 @@ import { formatDate } from '../utils/dates';
 const TH = 'px-2 py-2 text-left text-[9px] font-bold text-gr uppercase tracking-wider';
 const THR = TH + ' text-right';
 
-// AI insight stub. Derives a one-liner from observable PO state (NOVA edits,
-// ship-date shifts, lateness vs MABD, missing BOL) so the card never reads as
-// pure placeholder. Phase 2 swaps the body for live AI extraction.
-function AIInsightCard({ order }) {
+// Rule-based fallback: derives a one-liner from observable PO state (NOVA edits,
+// ship-date shifts, lateness vs MABD, missing BOL) so the card never reads empty
+// before any email has been ingested for this PO.
+function stateFindings(order) {
   const findings = [];
   if (order.nova_changes) findings.push(`NOVA edit on file: ${order.nova_changes}`);
   if (order.ship_date_original && order.ship_date_actual && order.ship_date_original !== order.ship_date_actual) {
@@ -30,11 +30,56 @@ function AIInsightCard({ order }) {
     findings.push('Retailer payment overdue — confirm invoice with Cortina.');
   }
   if (!findings.length) findings.push('No anomalies detected from current PO state.');
+  return findings;
+}
+
+// Live findings synthesized from the AI agent's email extractions
+// (po_emails.extracted_data). Walks the thread newest-first so the most recent
+// value wins per field, and surfaces any flagged anomalies.
+function liveFindings(order, emails) {
+  const withData = emails.filter((e) => e.extracted_data && Object.keys(e.extracted_data).length);
+  if (!withData.length) return null;
+
+  const findings = [];
+  const seen = (k) => withData.find((e) => e.extracted_data[k] != null)?.extracted_data[k];
+
+  const bol = seen('bol_number');
+  if (bol) findings.push(`BOL ${bol} captured from email${order.bol_number ? '' : ' — not yet on the PO'}.`);
+  const carrier = seen('carrier');
+  if (carrier && carrier !== order.carrier) findings.push(`Carrier per email: ${carrier}.`);
+  const shipDate = seen('ship_date');
+  if (shipDate && order.mabd && new Date(shipDate) > new Date(order.mabd)) {
+    findings.push(`Email ship date ${shipDate} is after MABD ${order.mabd} — at risk.`);
+  }
+  const lotTotal = withData.reduce((n, e) => n + (Number(e.extracted_data.lots) || 0), 0);
+  if (lotTotal) findings.push(`${lotTotal} finished-good lot(s) reported across delivery emails.`);
+
+  const anomalies = withData.flatMap((e) =>
+    Array.isArray(e.extracted_data.anomalies) ? e.extracted_data.anomalies : []
+  );
+  for (const a of anomalies.slice(0, 3)) findings.push(`⚠ ${a}`);
+
+  if (!findings.length) {
+    // Extraction exists but nothing notable — show the latest summary instead.
+    const latest = withData[withData.length - 1];
+    if (latest?.summary) findings.push(latest.summary);
+  }
+  return findings.length ? findings : null;
+}
+
+// Phase 2: pull from real email extraction when available, else fall back to the
+// PO-state heuristics. `emails` already carries extracted_data (usePurchaseOrder).
+function AIInsightCard({ order, emails }) {
+  const live = liveFindings(order, emails);
+  const findings = live ?? stateFindings(order);
   return (
     <div className="px-[18px] pb-3">
       <div className="bg-gradient-to-br from-pink-100 to-violet-100 rounded-xl px-3 py-2">
         <div className="text-[10px] font-bold text-pk uppercase tracking-wider mb-0.5">
-          AI Insight <span className="text-[8px] text-md font-medium normal-case">— Phase 1 stub</span>
+          AI Insight{' '}
+          <span className="text-[8px] text-md font-medium normal-case">
+            {live ? `— from ${emails.length} email${emails.length === 1 ? '' : 's'}` : '— from PO state'}
+          </span>
         </div>
         <div className="text-[10px] text-md leading-snug space-y-0.5">
           {findings.map((f, i) => (
@@ -172,10 +217,10 @@ export default function PurchaseOrderDetail() {
       {/* Delivery & Lots (BOL + lot numbers from delivery emails / manual) */}
       <DeliveryLots poId={order.id} bolNumber={order.bol_number} />
 
-      {/* AI insight card (3.4) — Phase 1 derives a one-liner from PO state;
-          Phase 2 replaces this with structured extraction across the email
-          thread (carrier/BOL/cost anomalies, ship-date shifts vs MABD, etc.) */}
-      <AIInsightCard order={order} />
+      {/* AI insight card (3.4) — synthesizes the agent's email extractions
+          (po_emails.extracted_data: carrier/BOL/lots/anomalies, ship-date vs
+          MABD), falling back to PO-state heuristics before any email lands. */}
+      <AIInsightCard order={order} emails={emails} />
 
       {/* email thread (from systems@ enrichment) */}
       {emails.length > 0 && (
