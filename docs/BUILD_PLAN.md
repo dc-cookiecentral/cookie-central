@@ -57,8 +57,9 @@ Module-by-module:
 - [ ] **Cortina NetSuite PO export sample** — still waiting on Harshita; reconcile real file against the parser's column-mapping seam once received
 - [ ] Real DOT portal CSV reconciled against the parser
 - [ ] Onboard the other admins (Shahira, David, Paul) — pre-provision their users in the Auth dashboard or wait for first magic-link sign-in (trigger auto-creates profile)
-- [x] **Anthropic console + ANTHROPIC_API_KEY** — provisioned in Anthropic console; key stored in Supabase Vault (Settings → Vault). Phase 2 AI Edge Function will read it via Postgres RPC at build time.
-- [ ] **Talk to David about Gmail OAuth for systems@dirtycookie.com** — the Phase 2 AI agent reads systems@ inbox via the Gmail API, which needs an OAuth client (Google Cloud Console project) with the systems@ account authorising the refresh-token grant. David is the right person to confirm who owns the Google Workspace billing + admin access needed to wire this up cleanly.
+- [x] **Anthropic console + ANTHROPIC_API_KEY** — provisioned + stored in Supabase Vault.
+- [ ] **Talk to David about Gmail OAuth for systems@dirtycookie.com** — the AI agent (now Phase 1, see Day 10+) reads systems@ inbox via the Gmail API. Needs an OAuth client (Google Cloud Console project) + the systems@ account granting refresh-token consent. David confirms who owns Workspace billing + admin access.
+- [ ] **AI Agent build (Day 10.1 – 10.5)** — Gmail OAuth, polling Edge Function, structured extraction (dates/costs/BOLs/lot numbers) into `po_emails` + `po_lot_numbers` + `po_changes`, swap PO-detail AI Insight card to live extraction, auto-capture supplier confirmations.
 
 ---
 
@@ -84,7 +85,7 @@ Module-by-module:
 | 2.2 | Upload log table + UI | 0.5h | Shows all uploads with timestamps |
 | 2.3 | Assemblers report parser | 3h | 389 rows → categorize raw/packaging/FG, flag expired |
 | 2.4 | DOT portal CSV parser | 1.5h | Pallet-level → SKU aggregate |
-| 2.5 | QBO CSV parser (invoices + payments) | 2h | Match by invoice number |
+| 2.5 | ~~QBO CSV parser~~ → moved to Phase 2 (P2.0) | — | Parser already built; integration deferred until David confirms feed |
 
 ### Day 3 (Fri May 23): Product Orders
 | # | Task | Est | Notes |
@@ -144,20 +145,28 @@ Module-by-module:
 | 8.4 | Week archive navigation | 1h | |
 | 8.5 | Bug fixes from demo feedback | 2h | |
 
+### Day 10+ (Phase 1 extension): AI Agent over systems@
+The agent reads systems@dirtycookie.com via Gmail API, classifies each thread, and extracts structured data into the existing PO tables — replacing the Phase 1 state-derived AI Insight stub with real extraction. Anthropic key already provisioned (in Supabase Vault); Gmail OAuth pending the David conversation (L15).
+| # | Task | Est | Notes |
+|---|------|-----|-------|
+| 10.1 | Gmail OAuth + refresh-token storage | 3h | Google Cloud Console project, OAuth client, systems@ grants consent. Tokens in Supabase Vault next to ANTHROPIC_API_KEY. |
+| 10.2 | Edge Function: poll Gmail + thread classification | 5h | Cron-scheduled. Per thread: identify retailer/PO/topic; attach to `po_emails` and link to `purchase_orders` by extracted PO number. |
+| 10.3 | Edge Function: structured extraction | 8h | Per thread: dates, costs, carrier, BOL, FG lot numbers. Writes to `po_emails.extracted_data`, `po_lot_numbers`, `po_changes`. |
+| 10.4 | Swap PO-detail AI Insight card from stub → live extraction | 1h | Same component, reads `extracted_data` + recent agent runs rather than deriving from PO state. |
+| 10.5 | Auto-capture supplier confirmations → update pending orders | 4h | Extracted ship-date / cost / BOL → update matching `raw_material_orders` or PO. Audit-logged. |
+
 ---
 
 ## PHASE 2 — Operations (~40 hrs, weeks 3–6)
 
 | # | Task | Est | Deps |
 |---|------|-----|------|
+| P2.0 | **QBO CSV integration** — adopt the existing parser, reconcile against David's first export, surface in `/payments` reconciliation | 2h once file lands | L14 (David conversation) |
 | P2.1 | Honeymoon validation (Marc compares forecasts to actuals) | Ongoing | 2–3 weeks |
 | P2.2 | Activate reorder Confirm — PDF generation | 3h | |
-| P2.3 | Pending refills in inventory (italic → confirmed on email) | 4h | |
+| P2.3 | Pending refills in inventory (italic → confirmed on email) | 4h | Day 10 agent live |
 | P2.4 | Production plan surface (allocate runs against POs) | 8h | |
-| P2.5 | QBO API connection (replace CSV upload) | 6h | QBO API creds |
-| P2.6 | AI agent — email classification (tag + link to POs) | 5h | systems@ active |
-| P2.7 | AI agent — structured extraction (dates, costs, BOLs) | 8h | |
-| P2.8 | Auto-capture supplier confirmations → update pending orders | 4h | |
+| P2.5 | QBO API connection (replace CSV) | 6h | P2.0 reconciled, QBO API creds |
 | P2.9 | Forecasting foundation — historical velocity model | 4h | |
 
 ---
