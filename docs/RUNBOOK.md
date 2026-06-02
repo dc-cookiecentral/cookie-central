@@ -302,17 +302,12 @@ The Phase 2 AI agent (email → structured PO extraction) lives in a Supabase Ed
 
 ### 8.2 · Store as a Supabase secret
 
-The CLI works regardless of dashboard layout and whether any Edge Function exists yet:
+Two separate stores in Supabase, both safe:
 
-```bash
-brew install supabase/tap/supabase   # one-time install
-npx supabase login                    # one-time, opens browser
-npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-… --project-ref niesswmibmonlbrbcecj
-```
+- **Vault** (dashboard: **Project Settings → Vault**) — pgsodium-encrypted at rest, audit-logged on every access. Read from Postgres via `select vault.decrypted_secret('ANTHROPIC_API_KEY')`. This is where the current key lives.
+- **Edge Function secrets** (dashboard: **Edge Functions → Secrets**, or CLI `supabase secrets set ANTHROPIC_API_KEY=…`) — plain env vars exposed via `Deno.env.get('ANTHROPIC_API_KEY')` inside Edge Functions.
 
-Dashboard alternative: **Edge Functions** (top-level left-sidebar item, not under Project Settings) → **Secrets** tab → **Add new secret**. The Edge Functions section appears once you've created at least one function; until then use the CLI.
-
-Note: until the Phase 2 AI Edge Function is built, nothing reads this secret. Save the raw key in your password manager too in case the secret needs to be re-set later.
+The Phase 2 AI Edge Function will read from Vault via a small Postgres helper (or duplicate the value into Edge Function secrets if call latency matters). Whichever, both stores stay in sync at rotation time. Save the raw key in your password manager too — neither store will show it back after the first write.
 
 ### 8.3 · Rotate
 

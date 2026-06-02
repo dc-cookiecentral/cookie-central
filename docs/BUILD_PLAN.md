@@ -57,7 +57,7 @@ Module-by-module:
 - [ ] **Cortina NetSuite PO export sample** — still waiting on Harshita; reconcile real file against the parser's column-mapping seam once received
 - [ ] Real DOT portal CSV reconciled against the parser
 - [ ] Onboard the other admins (Shahira, David, Paul) — pre-provision their users in the Auth dashboard or wait for first magic-link sign-in (trigger auto-creates profile)
-- [ ] **Anthropic console + ANTHROPIC_API_KEY** — provisioned in Anthropic console with monthly spend cap. Stored as a Supabase Edge Function secret (NOT in Vercel `VITE_*` — the key must stay server-side). Wired up to the Phase 2 AI agent.
+- [x] **Anthropic console + ANTHROPIC_API_KEY** — provisioned in Anthropic console; key stored in Supabase Vault (Settings → Vault). Phase 2 AI Edge Function will read it via Postgres RPC at build time.
 - [ ] **Talk to David about Gmail OAuth for systems@dirtycookie.com** — the Phase 2 AI agent reads systems@ inbox via the Gmail API, which needs an OAuth client (Google Cloud Console project) with the systems@ account authorising the refresh-token grant. David is the right person to confirm who owns the Google Workspace billing + admin access needed to wire this up cleanly.
 
 ---
