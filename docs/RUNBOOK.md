@@ -110,20 +110,19 @@ DELETE FROM upload_log            WHERE id = (SELECT id FROM last_run);
 
 `raw_materials` is upserted on `code` and `raw_material_lots` is delete-then-insert per material, so re-uploading the prior file restores them.
 
-### 4.2 · Reseed demo POs
+### 4.2 · Delete POs (wipe data)
 
-Paste `supabase/seeds/demo_purchase_orders.sql`. Idempotent via `ON CONFLICT (po_number) DO NOTHING` + `NOT EXISTS` guards.
-
-### 4.3 · Wipe demo POs before real data
+Delete POs by `po_number` — the FKs cascade to every child row. Run in the
+dashboard SQL editor (there's no app-side DELETE policy on `purchase_orders`).
 
 ```sql
 DELETE FROM purchase_orders
-WHERE po_number IN ('PO14201','PO14255','PO14290','PO14326','PO14331','PO14371','PO14400');
+WHERE po_number IN ('PO14201', 'PO14255');   -- example
 -- CASCADE removes po_line_items, po_emails, po_changes, po_lot_numbers,
 -- shipments, invoices, payments.
 ```
 
-### 4.4 · Add a new upload type
+### 4.3 · Add a new upload type
 
 Production → assemblers + dot + qbo + netsuite + production + weekly_report (current). To add another:
 1. Build the parser in `src/parsers/<name>.js`, register in `src/parsers/index.js`
@@ -285,8 +284,6 @@ Apply order is **filename order**. The current list lives in `supabase/migration
 5. If it fails halfway, fix and rerun — DDL inside the editor is transactional unless explicitly committed
 
 NEVER edit a migration that has been applied. If a fix is needed, write a follow-up that adjusts the earlier one's effect (DROP CONSTRAINT + ADD CONSTRAINT, etc.).
-
-Seeds (`supabase/seeds/`) are separate — not part of the migration apply order, applied only when you want demo data.
 
 ---
 

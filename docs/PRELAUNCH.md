@@ -29,5 +29,14 @@ easy to forget.
   the **dashboard** (note: `purchase_orders` has no app-side DELETE policy, and
   `po_emails.po_id` is `ON DELETE CASCADE`, so deleting the PO will also delete
   its 5 linked email extractions).
-- [ ] **Wipe demo POs before real Cortina data** if not already done — see
-  RUNBOOK §4.3.
+- [ ] **Wipe the 7 prototype demo POs before real Cortina data** (dashboard SQL
+  editor — there's no app-side DELETE policy). The demo seed file has been
+  removed; this is the one-time cleanup of the rows it created:
+  ```sql
+  DELETE FROM purchase_orders
+  WHERE po_number IN ('PO14201','PO14255','PO14290','PO14326','PO14331','PO14371','PO14400');
+  -- CASCADE removes their po_line_items, po_emails, po_changes, po_lot_numbers,
+  -- shipments, invoices, payments.
+  ```
+  (`PO14451` is real — leave it out unless you also want its 5 linked email
+  extractions gone. General delete pattern: RUNBOOK §4.2.)

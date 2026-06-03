@@ -49,8 +49,6 @@ Migrations live in `supabase/migrations/`. The Supabase + GitHub integration is 
 
 The Gmail-agent migrations (`20260602*`) and Edge Function deploy steps are in `docs/RUNBOOK.md` §9.
 
-Optional seed data for a populated demo: `supabase/seeds/demo_purchase_orders.sql` (7 prototype POs + line items + emails + payment events). Idempotent; safe to drop later when real Cortina data lands.
-
 ## Project Structure
 
 ```
@@ -64,7 +62,7 @@ cookie-central/
 │   └── PEOPLE.md                # Org chart + contacts + system emails
 ├── supabase/
 │   ├── migrations/              # Forward-only schema migrations (manual apply)
-│   └── seeds/                   # Demo data (idempotent, removable)
+│   └── functions/               # Edge Functions (Gmail agent)
 ├── src/
 │   ├── App.jsx + main.jsx
 │   ├── pages/                   # Routes (one file per sidebar nav item)

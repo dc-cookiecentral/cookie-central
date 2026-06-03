@@ -12,7 +12,7 @@
 - [x] Shahira sign-off on prototype — DONE
 - [x] Assemblers **inventory** report sample received — parser reconciled
 - [x] Assemblers **production** report format — confirmed; one multi-sheet workbook covers Production / Reject / Inventory / Shipment + N Job sheets. Parsed end-to-end. Outbound (Shipment sheet) folded in. Raw-ingredient **landing/BOL** is captured separately via the Inventory → Reorder → Landing flow.
-- [x] Cortina NetSuite PO export — parser built behind column-mapping seam; demo seeded from prototype POs pending the first real export
+- [x] Cortina NetSuite PO export — parser built behind column-mapping seam; interim Cortina PO **PDF** parser added for manual upload until the NetSuite API lands (demo POs since removed)
 - [x] DOT portal sample — parser built behind column-mapping seam; format still pending
 - [x] EOM summary — built from live PO + adjustment + weekly_report data, no separate export needed
 - [x] QBO sample — parser built behind column-mapping seam pending real file
@@ -39,7 +39,7 @@ Module-by-module:
 - `user_role_seeds` + `handle_new_auth_user` trigger for auto-provisioning roles on first sign-in
 - Password sign-in fallback (sidesteps email-rate-limit failures)
 - 5 production tables (`production_runs`, `production_pallets`, `production_subcomponents`, `production_rejects`, `lot_shipments`) — the Assemblers production workbook's full breakdown
-- Demo seed pattern (`supabase/seeds/`) — idempotent prototype data, removable when real Cortina data lands
+- ~~Demo seed pattern (`supabase/seeds/`) — idempotent prototype data~~ — removed June 2026 as real Cortina data (PDF upload) landed
 - Consolidated Assemblers upload (single card, one workbook covers all sheets)
 
 ## Launch checklist
@@ -52,7 +52,7 @@ Module-by-module:
 **Already done:**
 - [x] Eight demo modules functional + live on Vercel
 - [x] All migrations applied (15 total) and in `main`
-- [x] Demo seed data idempotent and clearly labelled as removable
+- [x] Demo seed data removed once real Cortina data (PDF upload) landed
 - [x] systems@dirtycookie.com admin sign-in provisioned (magic link + password fallback)
 - [x] RLS policies cover INSERT/UPDATE/DELETE on every write-path table
 - [x] Audit log gated to admin/finance; ops users see explicit "restricted" panel

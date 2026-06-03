@@ -95,6 +95,7 @@
 **Date:** June 1, 2026
 **Decision:** One-time demo data (e.g. 7 prototype POs + line items + emails + payment events) lives in `supabase/seeds/` and is applied manually. It is **not** a migration. Idempotent via ON CONFLICT + NOT EXISTS so re-runs are safe.
 **Rationale:** Migrations are forward-only schema definitions. Mixing seed data into migrations would force the demo POs into every environment forever; sometimes you want a clean slate. The separate path makes it obvious what's removable.
+**Update (June 2026):** the demo seed (`supabase/seeds/demo_purchase_orders.sql`) has been **removed** now that real Cortina POs are uploaded (via the PO PDF parser). The `supabase/seeds/` path stays documented here as the pattern for any future one-time seed data.
 
 ## ADR-020: systems@dirtycookie.com is the canonical admin sign-in
 **Date:** June 1, 2026
