@@ -3,8 +3,10 @@ import Pill from '../components/Pill';
 import FulfillmentTimeline from '../components/FulfillmentTimeline';
 import { OriginalVsCurrent, ChangeHistory } from '../components/PoChangeHistory';
 import { DeliveryLots } from '../components/PoDeliveryLots';
-import { usePurchaseOrder, usePoChanges } from '../hooks/usePurchaseOrders';
+import { usePurchaseOrder, usePoChanges, usePurchaseOrders } from '../hooks/usePurchaseOrders';
+import { useRetailerFilter } from '../contexts/RetailerFilterContext';
 import { useUOM } from '../contexts/UOMContext';
+import DetailPager from '../components/DetailPager';
 import { formatDate } from '../utils/dates';
 
 const TH = 'px-2 py-2 text-left text-[9px] font-bold text-gr uppercase tracking-wider';
@@ -97,6 +99,13 @@ export default function PurchaseOrderDetail() {
   const { order, loading, error } = usePurchaseOrder(poNumber);
   const { changes, loading: changesLoading } = usePoChanges(order?.id);
   const { uom, format } = useUOM();
+  // Ordered list for the prev/next pager — matches the Product Orders view
+  // (urgency sort + retailer filter); falls back to the unfiltered list if the
+  // current PO isn't in the filtered view (e.g. opened directly).
+  const { orders } = usePurchaseOrders();
+  const { filter } = useRetailerFilter();
+  const filteredKeys = filter(orders, 'retailer').map((o) => o.po_number);
+  const orderKeys = filteredKeys.includes(poNumber) ? filteredKeys : orders.map((o) => o.po_number);
 
   if (loading) return <div className="text-sm text-gr py-10 text-center">Loading…</div>;
   if (error) return <div className="text-sm text-red-600 py-10 text-center">{error}</div>;
@@ -139,12 +148,15 @@ export default function PurchaseOrderDetail() {
             </span>
           </div>
         </div>
-        <button
-          onClick={() => navigate('/orders')}
-          className="bg-bg border border-lt rounded-lg px-3 py-1.5 text-[10px] font-semibold text-md h-fit hover:bg-pc"
-        >
-          Back
-        </button>
+        <div className="flex items-center gap-2 h-fit">
+          <DetailPager items={orderKeys} current={poNumber} makePath={(po) => `/orders/${po}`} />
+          <button
+            onClick={() => navigate('/orders')}
+            className="bg-bg border border-lt rounded-lg px-3 py-1.5 text-[10px] font-semibold text-md hover:bg-pc"
+          >
+            Back
+          </button>
+        </div>
       </div>
 
       {/* Original vs Current summary (only renders if something changed) */}

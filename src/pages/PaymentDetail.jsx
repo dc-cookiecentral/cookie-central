@@ -1,8 +1,11 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import Pill from '../components/Pill';
+import DetailPager from '../components/DetailPager';
 import { useUOM } from '../contexts/UOMContext';
+import { useRetailerFilter } from '../contexts/RetailerFilterContext';
 import {
   usePaymentDetail,
+  usePayments,
   outstandingOf,
   stage1Done,
   stage2Done,
@@ -61,6 +64,14 @@ export default function PaymentDetail() {
   const navigate = useNavigate();
   const { uom, format } = useUOM();
   const { data, loading, error } = usePaymentDetail(poNumber);
+  // Ordered list for the prev/next pager — matches the Payments view (shipped
+  // only + retailer filter), falling back to unfiltered if the current PO isn't
+  // in that view.
+  const { rows } = usePayments();
+  const { filter } = useRetailerFilter();
+  const shipped = rows.filter((p) => p.ship_status !== 'pending');
+  const filteredKeys = filter(shipped, 'retailer').map((p) => p.po_number);
+  const paymentKeys = filteredKeys.includes(poNumber) ? filteredKeys : shipped.map((p) => p.po_number);
 
   if (loading) return <div className="text-sm text-gr py-10 text-center">Loading…</div>;
   if (error) return <div className="text-sm text-red-600">{error}</div>;
@@ -115,12 +126,15 @@ export default function PaymentDetail() {
             </span>
           </div>
         </div>
-        <button
-          onClick={() => navigate('/payments')}
-          className="bg-bg border border-lt rounded-md px-3 py-1 text-[10px] font-semibold text-md hover:text-pk"
-        >
-          Back
-        </button>
+        <div className="flex items-center gap-2">
+          <DetailPager items={paymentKeys} current={poNumber} makePath={(po) => `/payments/${po}`} />
+          <button
+            onClick={() => navigate('/payments')}
+            className="bg-bg border border-lt rounded-md px-3 py-1 text-[10px] font-semibold text-md hover:text-pk"
+          >
+            Back
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-4 gap-2 mb-4">
