@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { usePoLots, addPoLot, updatePoBol } from '../hooks/usePurchaseOrders';
 import { formatDate } from '../utils/dates';
 
@@ -113,6 +114,7 @@ export function DeliveryLots({ poId, bolNumber }) {
               <th className={THR}>Cases</th>
               <th className={TH}>Received</th>
               <th className={TH}>Source</th>
+              <th className={TH}></th>
             </tr>
           </thead>
           <tbody>
@@ -123,6 +125,15 @@ export function DeliveryLots({ poId, bolNumber }) {
                 <td className="px-2 py-1.5 text-right">{l.quantity_cases?.toLocaleString() ?? '—'}</td>
                 <td className="px-2 py-1.5 text-md">{formatDate(l.received_date)}</td>
                 <td className="px-2 py-1.5"><LotSourceBadge source={l.source} /></td>
+                <td className="px-2 py-1.5 text-right">
+                  <Link
+                    to={`/trace?lot=${encodeURIComponent(l.lot_number)}`}
+                    className="text-[9px] text-pk hover:text-pm underline underline-offset-2 whitespace-nowrap"
+                    title={`Trace lot ${l.lot_number}`}
+                  >
+                    Trace ↗
+                  </Link>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -160,8 +171,8 @@ export function DeliveryLots({ poId, bolNumber }) {
       {err && <div className="mt-1.5 text-[9px] text-red-600">{err}</div>}
 
       <div className="mt-2 text-[8px] text-gr italic">
-        Lot # is the traceability key. Linking these to raw_material_lots / dot_inventory
-        (outbound ↔ inbound, for recalls + shelf life) lands in Phase 2.
+        Lot # is the traceability key — “Trace ↗” walks it back to the raw-material lots that
+        fed the batch and forward to every shipment + PO it touched (for recalls + shelf life).
       </div>
     </div>
   );
