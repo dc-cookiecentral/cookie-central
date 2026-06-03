@@ -31,7 +31,7 @@ async function fetchAll() {
   const [rawLots, runs, subs, pallets, shipments, poLots] = await Promise.all([
     supabase
       .from('raw_material_lots')
-      .select('id, lot_number, quantity, received_date, expiry_date, raw_materials ( code, name, unit )'),
+      .select('id, lot_number, quantity, received_date, expiry_date, raw_materials ( code, name, unit, category )'),
     supabase
       .from('production_runs')
       .select(
@@ -75,23 +75,39 @@ function buildTrace(query, db) {
 
   // Direct matches per table.
   const rawLotMatches = rawLots.filter((l) => normLot(l.lot_number) === q);
-  const subRawMatches = subs.filter((s) => normLot(s.raw_lot_code) === q); // q used as a raw lot
+  const subRawMatches = subs.filter((s) => normLot(s.raw_lot_code) === q); // q consumed as an input
   const runMatches = runs.filter((r) => normLot(r.fg_lot_code) === q);
   const palletMatches = pallets.filter((p) => normLot(p.fg_lot_code) === q);
   const shipMatches = shipments.filter((s) => normLot(s.lot_code) === q);
   const poLotMatches = poLots.filter((p) => normLot(p.lot_number) === q);
 
-  const rawSide = rawLotMatches.length > 0 || subRawMatches.length > 0;
-  const fgSide =
-    runMatches.length > 0 || palletMatches.length > 0 || shipMatches.length > 0 || poLotMatches.length > 0;
+  // raw_material_lots is the inventory-lots table for EVERY category (raw
+  // material, packaging, AND finished good), so a hit there doesn't by itself
+  // mean "raw". Classify by the parent material's category: finished-good lots
+  // are the FG side of the chain; everything else (raw_material / packaging) is
+  // an input/source lot.
+  const isFgCategory = (l) => l.raw_materials?.category === 'finished_good';
+  const sourceLotMatches = rawLotMatches.filter((l) => !isFgCategory(l)); // raw + packaging inputs
+  const fgInventoryMatches = rawLotMatches.filter(isFgCategory); // FG lots held in inventory
 
+  const rawSide = sourceLotMatches.length > 0 || subRawMatches.length > 0;
+  const fgSide =
+    runMatches.length > 0 ||
+    palletMatches.length > 0 ||
+    shipMatches.length > 0 ||
+    poLotMatches.length > 0 ||
+    fgInventoryMatches.length > 0;
+
+  // Friendly source labels for the "found in" banner (raw_material_lots holds
+  // all categories, so name it for what it is — inventory lots).
   const matchedTables = [];
-  if (rawLotMatches.length) matchedTables.push('raw_material_lots');
-  if (subRawMatches.length) matchedTables.push('production_subcomponents');
-  if (runMatches.length) matchedTables.push('production_runs');
-  if (palletMatches.length) matchedTables.push('production_pallets');
-  if (shipMatches.length) matchedTables.push('lot_shipments');
-  if (poLotMatches.length) matchedTables.push('po_lot_numbers');
+  if (sourceLotMatches.length) matchedTables.push('inventory lots');
+  if (fgInventoryMatches.length) matchedTables.push('finished-good inventory');
+  if (subRawMatches.length) matchedTables.push('production inputs');
+  if (runMatches.length) matchedTables.push('production runs');
+  if (palletMatches.length) matchedTables.push('pallets');
+  if (shipMatches.length) matchedTables.push('shipments');
+  if (poLotMatches.length) matchedTables.push('PO lots');
 
   // The chain is anchored on FG lot codes. Collect every FG lot reachable from
   // the query: directly (FG-side matches) and downstream of a raw match (the FG
@@ -101,6 +117,7 @@ function buildTrace(query, db) {
   for (const p of palletMatches) fgCodes.add(normLot(p.fg_lot_code));
   for (const s of shipMatches) fgCodes.add(normLot(s.lot_code));
   for (const p of poLotMatches) fgCodes.add(normLot(p.lot_number));
+  for (const l of fgInventoryMatches) fgCodes.add(normLot(l.lot_number));
   const runById = new Map(runs.map((r) => [r.id, r]));
   for (const s of subRawMatches) {
     const run = runById.get(s.run_id);
@@ -141,13 +158,24 @@ function buildTrace(query, db) {
     }
   }
 
+  const entryCategory = rawSide
+    ? sourceLotMatches[0]?.raw_materials?.category || 'raw_material'
+    : null;
+  const entryLabel = rawSide
+    ? entryCategory === 'packaging'
+      ? 'a packaging lot'
+      : 'a raw-material lot'
+    : 'a finished-good / outbound lot';
+
   return {
     query,
     normalized: q,
     found: rawSide || fgSide,
     entryKind: rawSide ? 'raw' : fgSide ? 'fg' : null,
+    entryCategory,
+    entryLabel,
     matchedTables,
-    rawEntry: rawSide ? { lots: rawLotMatches, subUses: subRawMatches } : null,
+    rawEntry: rawSide ? { lots: sourceLotMatches, subUses: subRawMatches } : null,
     fgLots,
     recallPOs,
   };

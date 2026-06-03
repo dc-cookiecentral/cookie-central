@@ -364,7 +364,7 @@ export default function LotTrace() {
             <div className="bg-gradient-to-br from-pink-100 to-violet-100 rounded-xl px-3 py-2 mb-3">
               <div className="text-[10px] text-md leading-snug">
                 Tracing <span className="font-mono font-bold text-dk">{trace.query}</span> —{' '}
-                {trace.entryKind === 'raw' ? 'a raw-material lot' : 'a finished-good / outbound lot'}.
+                {trace.entryLabel}.
                 {' '}Found in: <span className="font-semibold">{trace.matchedTables.join(', ')}</span>.
                 {trace.fgLots.length > 0 && (
                   <>
@@ -378,7 +378,7 @@ export default function LotTrace() {
             {/* raw-lot entry detail (when the query itself is a raw lot) */}
             {trace.entryKind === 'raw' && trace.rawEntry?.lots?.length > 0 && (
               <div className="bg-bg border border-lt rounded-xl mb-3 px-3 py-2.5">
-                <StageHeader>Raw-material lot</StageHeader>
+                <StageHeader>{trace.entryCategory === 'packaging' ? 'Packaging lot' : 'Raw-material lot'}</StageHeader>
                 <table className="w-full border-collapse text-[11px]">
                   <thead>
                     <tr className="bg-pc">
