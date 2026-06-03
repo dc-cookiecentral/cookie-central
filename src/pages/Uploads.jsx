@@ -14,6 +14,7 @@ const SECTIONS = [
     origin: 'Cortina',
     note: 'POs flow through Cortina (NetSuite), enriched by Retail Link performance + NOVA edits. Cortina-paid status (Cortina → Dirty Cookie) is tracked from these feeds.',
     items: [
+      { type: 'cortina_po', title: 'Cortina PO (PDF)', note: 'Temporary — upload PO PDFs from Cortina until the NetSuite API is connected. Creates the purchase_orders record; parked systems@ email data auto-links on import.' },
       { type: 'netsuite', title: 'NetSuite POs', note: 'Retail Link + NOVA' },
       { type: 'dot', title: 'DOT Reports' },
     ],
