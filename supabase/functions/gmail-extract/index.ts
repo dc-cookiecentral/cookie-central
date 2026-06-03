@@ -67,6 +67,16 @@ Deno.serve(async (req) => {
     if (!refreshToken) return json({ error: 'Gmail not connected.' }, 400);
     const accessToken = await refreshAccessToken(clientId!, clientSecret!, refreshToken);
 
+    // "other" needs no action — bulk-mark it processed in one shot so it never
+    // accumulates as pending (and doesn't consume the actionable batch limit).
+    const { data: swept } = await supabase
+      .from('gmail_messages')
+      .update({ processed: true })
+      .eq('processed', false)
+      .eq('classification', 'other')
+      .select('id');
+    const otherSwept = swept?.length ?? 0;
+
     const { data: pending } = await supabase
       .from('gmail_messages')
       .select('*')
@@ -84,8 +94,6 @@ Deno.serve(async (req) => {
           results.push(await handleAssemblers(supabase, accessToken, gm));
         } else if (gm.classification === 'weekly_report') {
           results.push(await handleWeekly(supabase, accessToken, gm));
-        } else {
-          await supabase.from('gmail_messages').update({ processed: true }).eq('id', gm.id);
         }
       } catch (e) {
         const msg = String((e as Error)?.message ?? e);
@@ -94,7 +102,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    return json({ ok: true, processed: results.length, results });
+    return json({ ok: true, processed: results.length, otherSwept, results });
   } catch (e) {
     return json({ error: String((e as Error)?.message ?? e) }, 500);
   }
