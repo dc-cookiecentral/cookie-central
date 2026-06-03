@@ -14,6 +14,7 @@ import Reference from './pages/Reference';
 import Payments from './pages/Payments';
 import PaymentDetail from './pages/PaymentDetail';
 import EomSnapshot from './pages/EomSnapshot';
+import LotTrace from './pages/LotTrace';
 import AuditLog from './pages/AuditLog';
 import PageStub from './pages/PageStub';
 
@@ -41,6 +42,7 @@ export default function App() {
                 <Route path="inventory" element={<Inventory />} />
                 <Route path="snapshot" element={<EomSnapshot />} />
                 <Route path="reference" element={<Reference />} />
+                <Route path="trace" element={<LotTrace />} />
                 <Route path="audit" element={<AuditLog />} />
                 <Route path="uploads" element={<Uploads />} />
               </Route>

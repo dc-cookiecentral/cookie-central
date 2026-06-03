@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import Pill from '../components/Pill';
 import { ITEM_MASTER, ITEM_STATUS } from '../data/itemMaster';
 import { useRawMaterials } from '../hooks/useRawMaterials';
@@ -653,6 +653,17 @@ function MaterialDetail({ code, onBack }) {
                       <td className="px-2 py-1 text-right">{qty(l.quantity)}</td>
                       <td className={`px-2 py-1 text-[9px] ${expired ? 'text-red-600 font-bold' : 'text-gr'}`}>
                         {expired ? 'EXPIRED' : formatDate(l.expiry_date)}
+                      </td>
+                      <td className="px-2 py-1 text-right">
+                        {l.lot_number && (
+                          <Link
+                            to={`/trace?lot=${encodeURIComponent(l.lot_number)}`}
+                            className="text-[9px] text-pk hover:text-pm underline underline-offset-2 whitespace-nowrap"
+                            title={`Trace lot ${l.lot_number}`}
+                          >
+                            Trace ↗
+                          </Link>
+                        )}
                       </td>
                     </tr>
                   );

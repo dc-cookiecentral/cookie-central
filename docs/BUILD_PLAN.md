@@ -3,7 +3,7 @@
 ## Timeline
 - **Start:** Wednesday May 21, 2026
 - **Phase 1 demo:** delivered June 2026 (Marc + David) ✅
-- **Phase 1 ship:** in progress. Demo modules are live; remaining work: AI email reader (Day 10), Cortina real-file reconciliation, lot-traceability chain UI.
+- **Phase 1 ship:** in progress. Demo modules are live; AI email reader (Day 10) ✅ and lot-traceability chain UI (Day 11) ✅ done. Remaining work: Cortina NetSuite real-file reconciliation (waiting on Harshita's sample).
 - **Phase 2:** weeks following Phase 1 ship
 - **Phase 3:** late summer 2026
 
@@ -19,7 +19,7 @@
 
 ## Phase 1 outcome (as of 2026-06-01)
 
-**Status:** demo modules shipped + live on Vercel + populated against the seeded Assemblers workbook. NOT a launch-ready Phase 1 yet — still outstanding: the AI email reader (Day 10), Cortina/DOT/QBO real-file reconciliation, and the lot-traceability chain UI (Day 11). 15 migrations applied; 7 prototype POs + Assemblers Production workbook seeded.
+**Status:** demo modules shipped + live on Vercel + populated against the seeded Assemblers workbook. AI email reader (Day 10) ✅ and lot-traceability chain UI (Day 11) ✅ now done. Last outstanding ship blocker: Cortina NetSuite real-file reconciliation (waiting on Harshita's sample); DOT/QBO real-file reconciliation remain non-blocking. 15 migrations applied; 7 prototype POs + Assemblers Production workbook seeded.
 
 Module-by-module:
 
@@ -47,7 +47,7 @@ Module-by-module:
 **Ship blockers (must close before declaring Phase 1 shipped):**
 - [x] **AI email reader** — Day 10.1–10.5 — built + deployed (3 Edge Functions, OAuth connected to systems@, 6-way classification, structured extraction + attachment auto-import + parked-email back-fill). See RUNBOOK §9.
 - [ ] **Cortina NetSuite real-file reconciliation** — Harshita sample → column-mapping pass against parser
-- [ ] **Lot Traceability chain UI** — Day 11.1–11.4
+- [x] **Lot Traceability chain UI** — Day 11.1–11.4 — built: `/trace` page resolves any lot code (raw / FG / outbound) both directions, "Trace ↗" deep-links from Delivery & Lots + Reference FIFO, in-memory normalised join (handles 11.3 format drift), recall report with CSV copy. See `src/pages/LotTrace.jsx` + `src/hooks/useLotTrace.js`.
 
 **Already done:**
 - [x] Eight demo modules functional + live on Vercel
@@ -165,14 +165,14 @@ The agent reads systems@dirtycookie.com via Gmail API, classifies each message i
 | 10.4 | Swap PO-detail AI Insight card from stub → live extraction | 1h | Same component, reads `extracted_data` + recent agent runs rather than deriving from PO state. |
 | 10.5 | Auto-capture supplier confirmations → update pending orders | 4h | Extracted ship-date / cost / BOL → update matching `raw_material_orders` or PO. Audit-logged. |
 
-### Day 11 (Phase 1 ship blocker): Lot Traceability chain UI
-The tables hold the full traceability chain — raw_material_lots → production_subcomponents.raw_lot_code → production_runs.fg_lot_code → production_pallets → lot_shipments → po_lot_numbers — but nothing in the UI surfaces it. Recall scenarios + cost rollup + FIFO discipline all need this view to be useful, so it's a Phase 1 ship blocker.
+### Day 11 (Phase 1 ship blocker): Lot Traceability chain UI — ✅ DELIVERED
+The tables hold the full traceability chain — raw_material_lots → production_subcomponents.raw_lot_code → production_runs.fg_lot_code → production_pallets → lot_shipments → po_lot_numbers — but nothing in the UI surfaced it. Recall scenarios + cost rollup + FIFO discipline all need this view to be useful, so it was a Phase 1 ship blocker. Built as `src/pages/LotTrace.jsx` (route `/trace`) + `src/hooks/useLotTrace.js`; nav item added; "Trace ↗" deep-links wired from Delivery & Lots and Reference FIFO.
 | # | Task | Est | Notes |
 |---|------|-----|-------|
-| 11.1 | `/trace` page: enter any lot code, render full chain both directions | 5h | Backward from FG lot → which raw lots fed the batch (subcomponents joined to raw_material_lots). Forward from FG lot → which pallets it made + which shipments it left in + which PO it arrived against (po_lot_numbers). Same view handles raw, FG, and outbound lot codes by inferring direction from the table it's found in. |
-| 11.2 | "Trace this lot" deep-link from Delivery & Lots, PO-detail, and Reference > Raw Materials FIFO table | 1h | Each row in those tables gets a trace icon → `/trace?lot=<code>`. |
-| 11.3 | Reconcile production_subcomponents.raw_lot_code text against raw_material_lots.lot_number | 3h | Phase 1 stores raw_lot_code as plain text — needs normalisation (case, whitespace) and a join helper so the trace view doesn't drop rows on format drift. Optionally promote to FK in a later migration. |
-| 11.4 | Recall report — "every PO/customer touching raw lot X" | 2h | One-page export. Critical if a raw-material recall lands; today this is a chain of manual SQL. |
+| 11.1 | ✅ `/trace` page: enter any lot code, render full chain both directions | 5h | Backward from FG lot → raw lots that fed the batch (subcomponents joined to raw_material_lots). Forward → pallets, shipments, and the PO it arrived against (po_lot_numbers). Direction inferred from which table the code is found in; chain anchored on FG lot codes so raw / FG / outbound entry points all resolve. |
+| 11.2 | ✅ "Trace this lot" deep-link from Delivery & Lots and Reference > Raw Materials FIFO table | 1h | Each lot row gets a `Trace ↗` link → `/trace?lot=<code>`. (PO-detail's lots live in the Delivery & Lots card, so it's covered there.) |
+| 11.3 | ✅ Reconcile production_subcomponents.raw_lot_code text against raw_material_lots.lot_number | 3h | Handled in the join layer: `useLotTrace` pulls each table once and joins in memory on a normalised key (`normLot` = trim + uppercase + drop whitespace) so the trace doesn't drop rows on format drift. Promote to a FK in a later migration if volume demands it. |
+| 11.4 | ✅ Recall report — "every PO/customer touching raw lot X" | 2h | On-page recall panel listing every distinct PO/retailer/destination reachable from the queried lot, with "Copy as CSV". |
 
 ---
 
