@@ -167,13 +167,15 @@ async function handleStructured(
     .single();
   if (emailErr) throw emailErr;
 
-  // Finished-good lots (only meaningful once linked to a PO).
+  // Finished-good lots — persisted even when the PO isn't in the DB yet (po_id
+  // null = "parked"). A later NetSuite load back-fills po_id via the
+  // link_parked_po_emails RPC, joining on extracted_from_email_id.
   let lotCount = 0;
-  if (poId && ext.lots.length) {
+  if (ext.lots.length) {
     const rows = ext.lots
       .filter((l) => l.lot_number)
       .map((l) => ({
-        po_id: poId,
+        po_id: poId, // may be null (parked); back-filled when the PO arrives
         lot_number: String(l.lot_number),
         sku: l.sku ?? null,
         quantity_cases: l.quantity_cases ?? null,

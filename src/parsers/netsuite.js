@@ -105,9 +105,10 @@ function parse(rows) {
   };
 }
 
-async function importRecords(records) {
-  const { supabase } = await import('../lib/supabase');
+async function importRecords(records, { client } = {}) {
+  const supabase = client ?? (await import('../lib/supabase')).supabase;
   let inserted = 0;
+  let linked = 0;
 
   for (const po of records) {
     const { _lines, ...poFields } = po;
@@ -129,9 +130,22 @@ async function importRecords(records) {
       );
       if (lineErr) throw lineErr;
     }
+
+    // Back-fill: attach any parked email extractions (po_emails + their lots)
+    // that arrived from systems@ before this PO existed, matched by po_number.
+    // SECURITY DEFINER RPC (migration 20260602160000) — links null→this PO
+    // without a client UPDATE policy. Best-effort: a failure must not abort the
+    // import (e.g. the migration not yet applied → silent no-op).
+    const { data: linkedCount, error: linkErr } = await supabase.rpc('link_parked_po_emails', {
+      p_po_id: saved.id,
+      p_po_number: po.po_number,
+    });
+    if (linkErr) console.warn(`link_parked_po_emails(${po.po_number}):`, linkErr.message);
+    else linked += linkedCount ?? 0;
+
     inserted += 1;
   }
-  return { inserted };
+  return { inserted, linked };
 }
 
 export default {
