@@ -1,5 +1,5 @@
 import { useState, Fragment } from 'react';
-import { WEEKLY_REPORTS } from '../data/weeklyReports';
+import { useWeeklyReports } from '../hooks/useWeeklyReports';
 import { useAlerts } from '../hooks/useAlerts';
 
 const usd = (n) => (n == null ? '--' : '$' + Math.round(n).toLocaleString());
@@ -201,9 +201,16 @@ function AttachmentDetail({ d }) {
 }
 
 export default function WeeklyReport() {
-  const [wk, setWk] = useState(WEEKLY_REPORTS[0].wk);
-  const rpt = WEEKLY_REPORTS.find((r) => r.wk === wk) ?? WEEKLY_REPORTS[0];
+  const { reports } = useWeeklyReports();
+  // `selected` is null until the user clicks a tab, so the view defaults to the
+  // newest week (reports[0]) and follows it as the live table loads — WK17 shows
+  // on arrival without overriding a manual selection.
+  const [selected, setSelected] = useState(null);
+  const wk = selected ?? reports[0]?.wk;
+  const rpt = reports.find((r) => r.wk === wk) ?? reports[0];
   const { alerts } = useAlerts();
+
+  if (!rpt) return null;
 
   return (
     <div>
@@ -211,8 +218,8 @@ export default function WeeklyReport() {
 
       {/* Week selector + manual refresh (refresh is live once the email parser ships) */}
       <div className="flex gap-1.5 mb-3 items-stretch">
-        {WEEKLY_REPORTS.map((r) => (
-          <WeekTab key={r.wk} rpt={r} active={wk === r.wk} onClick={() => setWk(r.wk)} />
+        {reports.map((r) => (
+          <WeekTab key={r.wk} rpt={r} active={wk === r.wk} onClick={() => setSelected(r.wk)} />
         ))}
         <button
           title="Manual refresh — live once the Bentonville Merchants email parser ships (Phase 1, 8.2)"
