@@ -25,7 +25,7 @@ Module-by-module:
 
 - **Day 1 — Foundation:** ✅ complete (1.1–1.9).
 - **Day 2 — Parsers + upload pipeline:** ✅ pipeline + upload log + parsers. Assemblers report (one workbook) is the canonical Assemblers upload — Inventory delegated through to the original assemblers.js parser; DOT/QBO/NetSuite behind column-mapping seams ("format unconfirmed").
-- **Day 3 — Product Orders:** ✅ list (3.1) + detail (3.2) + Fulfillment Timeline + 3 DOT-leg columns. Email thread renders `po_emails` (3.3). **AI Insight card (3.4)** built as a Phase-1 stub deriving one-liners from PO state.
+- **Day 3 — Product Orders:** ✅ list (3.1) + detail (3.2) + Fulfillment Timeline + 3 DOT-leg columns. Email thread renders `po_emails` (3.3). **AI Insight card (3.4)** now reads live `po_emails.extracted_data` from the systems@ agent (with a PO-state fallback before any email lands).
 - **Day 4 — Inventory Warehouse:** ✅ 3-view toggle (4.1), DOT (4.2), Assemblers raw + packaging (4.3 + 4.4), raw→Reference deep-link (4.5), per-warehouse upload links + timestamps (4.6).
 - **Day 5 — Reorder + landing + product view:** ✅ reorder preview (5.3) with distributor/brand select (5.5) + Marc override (5.4). **Product view (5.1)** + **Adjust Inventory (5.2)** built — shrink/expired/damaged/disposed with audit-log writes. Landing flow added (lot origin: land date + 1:many lots). Allocation view (5.6) pending real production-consumption data.
 - **Day 6 — Payments / Reference / Weekly:** ✅ Payments list (6.1) + detail (6.2) with 3-stage timeline. Reference > Products (6.3) from Walmart item master. **Reference > Raw Materials (6.4)** with distributor / FIFO / orders / usage + inline + Add Distributor / + Add Order. **Reference > Transitions (6.5)** with interactive checklist + new-transition form. Weekly Report shell + WK16 Bentonville parser (6.6).
@@ -45,7 +45,7 @@ Module-by-module:
 ## Launch checklist
 
 **Ship blockers (must close before declaring Phase 1 shipped):**
-- [ ] **AI email reader** — Day 10.1–10.5
+- [x] **AI email reader** — Day 10.1–10.5 — built + deployed (3 Edge Functions, OAuth connected to systems@, 6-way classification, structured extraction + attachment auto-import + parked-email back-fill). See RUNBOOK §9.
 - [ ] **Cortina NetSuite real-file reconciliation** — Harshita sample → column-mapping pass against parser
 - [ ] **Lot Traceability chain UI** — Day 11.1–11.4
 
@@ -68,8 +68,8 @@ Module-by-module:
 - [ ] **Ingredient master data** (`raw_material_suppliers`: distributor, brand, cost/unit, MOQ, lead time per ingredient) — needs population. Two paths to confirm with Marc: (a) one-time spreadsheet entry, or (b) let the Day 10 AI agent backfill from order confirmation emails as they arrive. Option (b) is incremental + lower upfront effort but slower to a complete picture.
 - [ ] **Subdomain on dirtycookie.com** — hidden + protected entry. David owns the website infra; conversation needed on which subdomain (`ops.`/`central.`/something else), how to gate access beyond Supabase Auth (IP allowlist? Vercel password protection? basic auth at the edge?), and who manages DNS + the cert.
 - [x] **Anthropic console + ANTHROPIC_API_KEY** — provisioned + stored in Supabase Vault.
-- [ ] **Talk to David about Gmail OAuth for systems@dirtycookie.com** — the AI agent (now Phase 1, see Day 10+) reads systems@ inbox via the Gmail API. Needs an OAuth client (Google Cloud Console project) + the systems@ account granting refresh-token consent. David confirms who owns Workspace billing + admin access.
-- [ ] **AI Agent build (Day 10.1 – 10.5)** — Gmail OAuth, polling Edge Function, structured extraction (dates/costs/BOLs/lot numbers) into `po_emails` + `po_lot_numbers` + `po_changes`, swap PO-detail AI Insight card to live extraction, auto-capture supplier confirmations.
+- [x] **Gmail OAuth for systems@dirtycookie.com** — OAuth client provisioned; systems@ granted refresh-token consent; token stored in Vault. Agent connected and processing live mail.
+- [x] **AI Agent build (Day 10.1 – 10.5)** — Gmail OAuth, polling Edge Function (daily cron + button), six-way classification, structured extraction into `po_emails` + `po_lot_numbers` + `po_changes`, PO-detail AI Insight card swapped to live extraction, supplier-confirmation + emailed-Assemblers/weekly auto-capture. Deployed. (Cron migration `..150000` applied separately; see RUNBOOK §9.1.)
 
 ---
 
@@ -103,7 +103,7 @@ Module-by-module:
 | 3.1 | Product Orders list view | 2h | Retailer badges, Days column, urgency sort, KPIs, alerts |
 | 3.2 | PO detail view | 2h | Info cards, line items, NOVA changes |
 | 3.3 | Email thread display | 1h | Timeline UI with extracted data tags |
-| 3.4 | AI agent insight card (placeholder) | 0.5h | Static for Phase 1, live in Phase 2 |
+| 3.4 | AI agent insight card | 0.5h | Was a Phase-1 stub; now reads live `po_emails.extracted_data` (Day 10 agent) |
 | 3.5 | NetSuite CSV parser (if sample received) | 3h | Map Harshita's fields to schema |
 
 ### Day 4 (Mon May 26): Inventory — Warehouse View
@@ -155,8 +155,8 @@ Module-by-module:
 | 8.4 | Week archive navigation | 1h | |
 | 8.5 | Bug fixes from demo feedback | 2h | |
 
-### Day 10+ (Phase 1 extension): AI Agent over systems@
-The agent reads systems@dirtycookie.com via Gmail API, classifies each thread, and extracts structured data into the existing PO tables — replacing the Phase 1 state-derived AI Insight stub with real extraction. Anthropic key already provisioned (in Supabase Vault); Gmail OAuth pending the David conversation (L15).
+### Day 10+ (Phase 1 extension): AI Agent over systems@ — ✅ DELIVERED
+The agent reads systems@dirtycookie.com via Gmail API, classifies each message into six categories, and extracts structured data into the existing PO tables — replacing the Phase 1 state-derived AI Insight stub with real extraction. Built as three Edge Functions (`gmail-oauth-callback`, `gmail-poll`, `gmail-extract`) + 5 migrations (`20260602*`); deployed and processing live mail. Anthropic key + Gmail OAuth creds in Vault. Beyond the original scope: also auto-imports emailed Assemblers production workbooks and the Bentonville weekly through the existing parsers, and back-fills parked PO emails when their NetSuite PO loads. See `docs/RUNBOOK.md` §9 and ADR-021/022/023.
 | # | Task | Est | Notes |
 |---|------|-----|-------|
 | 10.1 | Gmail OAuth + refresh-token storage | 3h | Google Cloud Console project, OAuth client, systems@ grants consent. Tokens in Supabase Vault next to ANTHROPIC_API_KEY. |

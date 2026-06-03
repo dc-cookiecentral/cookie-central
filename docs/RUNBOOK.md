@@ -328,7 +328,8 @@ Three Edge Functions + four migrations + the Vault secrets back it.
 
 1. Apply the migrations (SQL editor, filename order):
    `20260602120000_vault_secret_helpers.sql`, `20260602130000_gmail_agent_tables.sql`,
-   `20260602140000_upload_log_source.sql`. (Hold `..150000_gmail_poll_cron.sql` for step 4.)
+   `20260602140000_upload_log_source.sql`, and `20260602160000_link_parked_po_emails.sql`
+   (the NetSuite back-fill RPC — see §9.6). (Hold `..150000_gmail_poll_cron.sql` for step 4.)
 2. Confirm the secrets are in Vault (Project Settings → Vault): `ANTHROPIC_API_KEY`,
    `GMAIL_OAUTH_CLIENT_ID`, `GMAIL_OAUTH_CLIENT_SECRET`. Sanity check as service role:
    `select public.get_secret('ANTHROPIC_API_KEY') is not null;`
@@ -381,6 +382,25 @@ then Check for new. A failed message has `processed=true` + an `error` string.
 
 Reconnect via the button (§9.2) — it overwrites `GMAIL_REFRESH_TOKEN`. To rotate the
 Anthropic key, see §8.3 (the functions read it from Vault, no redeploy needed).
+
+### 9.6 · Parked PO emails (email arrived before the PO)
+
+A PO/BOL email is matched to its `purchase_orders` row by `po_number`. If the email lands
+**before** NetSuite has loaded that PO, the agent stores it "parked" — `po_emails.po_id`
+(and any `po_lot_numbers.po_id`) is null, with the number kept in `extracted_data.po_number`.
+Nothing is lost; it just doesn't show on a PO yet.
+
+The NetSuite parser calls `link_parked_po_emails(po_id, po_number)` for every PO it upserts,
+so parked rows **auto-attach the moment their PO loads** (requires migration
+`20260602160000`). To reconcile by hand:
+
+```sql
+select public.link_parked_po_emails(
+  (select id from purchase_orders where po_number = 'PO14451'), 'PO14451');
+```
+
+Find parked emails: `select extracted_data->>'po_number' po, count(*) from po_emails
+where po_id is null and source='email' group by 1;`
 
 ## 10 · Escalation
 

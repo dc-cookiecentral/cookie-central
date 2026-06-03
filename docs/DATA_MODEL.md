@@ -21,15 +21,22 @@ production_runs ──< production_pallets         (FG output, pallet-level)
 production_runs ──< production_subcomponents   (raw lots consumed → FG lot)
 production_runs ──< production_rejects         (per-event waste/loss)
 lot_shipments (standalone, lot-level outbound from Assemblers facility)
-purchase_orders ──< po_emails                  (extracted email thread)
+purchase_orders ──< po_emails                  (extracted email thread; po_id null = "parked" until the PO loads)
 purchase_orders ──< po_changes                 (every PO field mutation, audit-linked)
-purchase_orders ──< po_lot_numbers             (delivered FG lots + BOL)
-weekly_reports (standalone, from email)
+purchase_orders ──< po_lot_numbers             (delivered FG lots + BOL; po_id null when parked)
+po_emails ──< po_lot_numbers                   (extracted_from_email_id — lots the agent pulled from an email)
+weekly_reports (standalone; Bentonville email — manual upload OR systems@ agent auto-ingest)
+gmail_messages (standalone; one row per systems@ email — classification + processing audit)
+gmail_sync_state (standalone; Gmail connection + poll cursor, one logical row)
 audit_log (standalone, logs all changes)
-upload_log (standalone, tracks every uploaded file)
+upload_log (standalone, tracks every uploaded file; source = manual | email)
 user_role_seeds ──> user_profiles              (role assignment at first sign-in)
 auth.users ──> user_profiles                   (1:1 via trigger; ON DELETE CASCADE)
 ```
+
+The **systems@ AI email agent** (Phase 2, live) writes into `po_emails`, `po_lot_numbers`,
+`po_changes` (`change_source='email'`), `weekly_reports`, and `upload_log` (`source='email'`).
+See the Gmail-agent tables + functions at the end of this doc.
 
 ## Tables
 
@@ -94,7 +101,7 @@ Defines UOM conversion chains per product category.
 | ship_to_dot_date | date | Planned ship-to-DOT date (upstream of retailer ship) |
 | ship_to_dot_actual | date | Actual ship-to-DOT; UI flags red if after planned |
 | dot_receipt_date | date | DOT-confirmed receipt at warehouse |
-| bol_number | text | BOL captured from delivery email (Phase 2 AI extracts) |
+| bol_number | text | BOL number; the systems@ agent surfaces it from delivery emails as an advisory `po_changes` row (doesn't write this column directly) |
 | created_at | timestamptz | |
 | updated_at | timestamptz | |
 
@@ -259,15 +266,16 @@ One ingredient can have multiple distributors, each with different brands/pricin
 | raw_email_data | jsonb | Parsed email content for reference |
 
 ### po_emails
+Email thread per PO. Written by the systems@ agent (`source='email'`) on PO/BOL/supplier_confirmation classes, and renderable on PO detail.
 | Column | Type | Notes |
 |--------|------|-------|
 | id | uuid PK | |
-| po_id | uuid FK → purchase_orders | |
+| po_id | uuid FK → purchase_orders | **Nullable.** Null = "parked" — the email arrived before the PO was loaded from NetSuite; `extracted_data.po_number` holds the number, and `link_parked_po_emails` attaches it when the PO lands |
 | email_timestamp | timestamptz | When the email was sent (column name avoids clash with the `timestamp` type; hooks alias as `timestamp`) |
 | sender_name | text | |
 | sender_org | text | "Cortina", "DC Ops", "SunTeck" |
-| summary | text | |
-| extracted_data | jsonb | {shipDate, carrier, etc.} |
+| summary | text | Agent's one/two-line plain-language summary |
+| extracted_data | jsonb | Normalized agent fields: po_number, carrier, bol_number, ship_date, mabd, delivery_date, total_amount, total_cases, destination_dc, lots (count), anomalies[], classification |
 | source | text | email, manual |
 
 ### po_changes
@@ -285,11 +293,11 @@ Per-field PO mutation history (drives the "Original vs Current" diff + Change Hi
 | created_at | timestamptz | |
 
 ### po_lot_numbers
-FG lots that arrived for a PO (the traceability key from outbound → received). Phase 1 entry is manual; Phase 2 AI extracts from delivery emails.
+FG lots that arrived for a PO (the traceability key from outbound → received). Entered manually (Delivery & Lots UI) or extracted by the systems@ agent (`source='email'`).
 | Column | Type | Notes |
 |--------|------|-------|
 | id | uuid PK | |
-| po_id | uuid FK → purchase_orders ON DELETE CASCADE | |
+| po_id | uuid FK → purchase_orders ON DELETE CASCADE | **Nullable.** Null when the parent email is parked; back-filled with the email via `link_parked_po_emails` |
 | lot_number | text | "6147AM" (matches production_runs.fg_lot_code) |
 | sku | text | "WCCB" |
 | quantity_cases | int | |
@@ -322,6 +330,7 @@ FG lots that arrived for a PO (the traceability key from outbound → received).
 | row_count | int | |
 | status | text | processing, complete, error |
 | errors | jsonb | |
+| source | text | manual (drag-drop) or email (systems@ agent auto-import, e.g. an emailed Assemblers workbook) |
 | uploaded_at | timestamptz | |
 
 ### user_profiles
@@ -447,3 +456,44 @@ Pallet/lot-level outbound from the Assemblers facility (Shipment sheet) — DIST
 | status | text | planning, in_progress, complete |
 | notes | text | |
 | checklist | jsonb | Array of {task, done} |
+
+## Gmail agent tables (Phase 2 — live)
+
+The systems@ AI email agent runs as three Supabase Edge Functions (`gmail-oauth-callback`, `gmail-poll`, `gmail-extract`). These two tables hold its state; everything it extracts lands in the existing PO / weekly / upload tables above. RLS is read-only for app users — all writes come from the Edge Functions via the service role.
+
+### gmail_sync_state
+Gmail connection + poll cursor. One logical row.
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid PK | |
+| connected_email | text | The granted inbox (expect `systems@dirtycookie.com`) |
+| connected_at | timestamptz | When OAuth was completed |
+| last_history_id | text | Gmail historyId cursor (reserved) |
+| last_polled_at | timestamptz | Last poll run |
+| last_poll_count | int | New messages classified on the last run |
+| updated_at | timestamptz | |
+
+### gmail_messages
+One row per systems@ message — dedupe key + classification + an audit trail of what the agent did with it.
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid PK | |
+| gmail_message_id | text UNIQUE | Dedupe key (makes polling idempotent) |
+| gmail_thread_id | text | |
+| internal_date | timestamptz | |
+| from_email / from_name | text | |
+| subject / snippet | text | |
+| classification | text | PO, BOL, supplier_confirmation, assemblers_report, weekly_report, other (Haiku) |
+| classified_at | timestamptz | |
+| processed | boolean | false until acted on; "other" is bulk-swept to true |
+| po_id | uuid FK → purchase_orders | Set if the extraction matched a PO |
+| po_email_id | uuid FK → po_emails | The po_emails row this produced |
+| upload_log_id | uuid FK → upload_log | The import row (assemblers_report) this produced |
+| error | text | Failure detail (still marked processed to avoid retry loops) |
+| raw | jsonb | Attachment metadata + downstream refs (e.g. weekly_report_id) |
+| created_at | timestamptz | |
+
+## Database functions (Phase 2)
+
+- **`get_secret(name)` / `set_secret(name, value)`** — `SECURITY DEFINER`, service-role only. Read/write Vault secrets (`ANTHROPIC_API_KEY`, `GMAIL_OAUTH_CLIENT_ID/SECRET`, `GMAIL_REFRESH_TOKEN`) from Edge Functions, since the `vault` schema isn't exposed to PostgREST. (migration `20260602120000`)
+- **`link_parked_po_emails(p_po_id, p_po_number)`** — `SECURITY DEFINER`, returns count. Attaches parked `po_emails` + their `po_lot_numbers` (po_id null) to a PO, matched by `po_number`. Called by the NetSuite parser per upserted PO so email extractions that arrived before the PO back-fill automatically. (migration `20260602160000`)

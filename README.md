@@ -40,7 +40,14 @@ Migrations live in `supabase/migrations/`. The Supabase + GitHub integration is 
 20260601160000_update_user_seeds               # roster reconciliation
 20260601170000_user_profiles_cascade_delete    # cascade FK fix
 20260601180000_raw_materials_write_policies    # ops/admin INSERT/DELETE
+20260602120000_vault_secret_helpers            # get_secret/set_secret (Vault) for Edge Functions
+20260602130000_gmail_agent_tables              # gmail_sync_state + gmail_messages
+20260602140000_upload_log_source               # upload_log.source (manual|email)
+20260602150000_gmail_poll_cron                 # daily pg_cron → gmail-poll (apply last)
+20260602160000_link_parked_po_emails           # back-fill parked email extractions on PO load
 ```
+
+The Gmail-agent migrations (`20260602*`) and Edge Function deploy steps are in `docs/RUNBOOK.md` §9.
 
 Optional seed data for a populated demo: `supabase/seeds/demo_purchase_orders.sql` (7 prototype POs + line items + emails + payment events). Idempotent; safe to drop later when real Cortina data lands.
 
@@ -75,19 +82,19 @@ cookie-central/
 
 | Route | Built | Source data |
 |-------|-------|-------------|
-| `/weekly` | Weekly Report shell + WK16 parsed scorecard | Bentonville Merchants email + 3 .xlsx attachments |
+| `/weekly` | Weekly Report — renders from `weekly_reports` (agent auto-ingest + legacy seed), newest week first | Bentonville Merchants email (via systems@ agent or manual) |
 | `/orders` | Product Orders list + KPIs + Attention banner | `purchase_orders` + `po_line_items` |
-| `/orders/:po` | PO detail + Fulfillment Timeline + email thread + Delivery & Lots + AI Insight | + `po_emails`, `po_changes`, `po_lot_numbers` |
+| `/orders/:po` | PO detail + Fulfillment Timeline + email thread + Delivery & Lots + **live AI Insight** (from `po_emails.extracted_data`) | + `po_emails`, `po_changes`, `po_lot_numbers` |
 | `/payments` + `/payments/:po` | Two-stage payment list + 3-stage timeline | `purchase_orders` + `invoices` + `payments` |
 | `/inventory` | Warehouse + Product views + Reorder + Landing | `dot_inventory` + `raw_materials` + lots + orders |
 | `/snapshot` | EOM Snapshot (month-pinned KPIs + deltas) | All of the above, month-scoped |
 | `/reference` | Products + Raw Materials + Transitions | Walmart item master + `raw_materials` + `transitions` |
 | `/audit` | Audit log viewer (admin/finance only) | `audit_log` |
-| `/uploads` | Drag-drop pipeline + upload history | `upload_log` |
+| `/uploads` | Drag-drop pipeline + upload history + **systems@ Inbox** (Connect Gmail, Check for new) | `upload_log`, `gmail_sync_state` |
 
-## Phase 2 (next)
+## Phase 2
 
-See `docs/BUILD_PLAN.md` Phase 2 section. Headline items: NetSuite API replacing CSV uploads, AI agent over `systems@` emails, supplier-confirmation auto-capture, production-plan allocation surface.
+The **AI agent over `systems@` emails is live** — Gmail OAuth, daily poll + on-demand button, six-way classification, structured extraction into the PO tables, auto-import of emailed Assemblers/weekly reports, and parked-email back-fill (see `docs/RUNBOOK.md` §9 + ADR-021/022). Remaining Phase 2 items in `docs/BUILD_PLAN.md`: NetSuite API replacing CSV uploads, QBO API, production-plan allocation surface.
 
 ## Key Links
 

@@ -58,14 +58,37 @@
 
 ### Automated (Primary)
 1. **Cortina NetSuite** — POs, shipments, invoices, payments. CSV upload today (Phase 1), API target (Phase 2).
-2. **systems@ email AI agent** — PO emails, BOLs, supplier confirmations. Phase 1 surfaces a stub AI Insight card on PO detail; Phase 2 swaps in live structured extraction.
-3. **Bentonville Merchants email** — Weekly Retail Link readout. Parsed every Monday 9:30 AM CT into `weekly_reports`; the 3 .xlsx attachments add markdowns / supply plan / per-PO OTIF detail.
+2. **systems@ email AI agent** (Phase 2, **live**) — reads systems@dirtycookie.com (Gmail, read-only), classifies each message into six categories, and acts: PO/BOL/supplier_confirmation → structured extraction into `po_emails` (+ `po_lot_numbers`, advisory `po_changes`); assemblers_report → auto-imports the emailed .xlsx through the production parser; weekly_report → parses the body into `weekly_reports`; other → logged. The PO-detail AI Insight card now reads the real `extracted_data`. See **AI Email Agent** below.
+3. **Bentonville Merchants email** — Weekly Retail Link readout. Lands in `weekly_reports` either via manual upload or the systems@ agent's `weekly_report` path; `/weekly` renders from that table (merged with the legacy seed). The 3 .xlsx attachments (markdowns / supply plan / per-PO OTIF) are a TBD format — recorded but not yet parsed.
 
 ### Manual (Supplement)
 4. **DOT portal CSV** — finished goods inventory, 48-hr lag (parser behind column-mapping seam)
 5. **Assemblers report (one .xlsx)** — Production + Reject + Inventory + Shipment + N Job sheets in a single workbook. The Production parser dispatches each sheet to its respective table; the Inventory sheet delegates through to the standalone assemblers.js parser/importer.
 6. **QBO CSV** (Phase 1) → QBO API (Phase 2) — invoices, payments
 7. **Manual entry** — reorders + landing, inventory adjustments, transitions, raw-material distributor additions
+
+## AI Email Agent (systems@dirtycookie.com)
+
+Three Supabase Edge Functions over the read-only Gmail API, with Anthropic for classify/extract. Secrets live in Vault, read via the `get_secret`/`set_secret` SECURITY DEFINER RPCs.
+
+```
+Connect Gmail (button) → gmail-oauth-callback → Google consent → refresh token → Vault
+"Check for new" (button) ─┐
+once-daily pg_cron        ┴→ gmail-poll → list new mail → Haiku classify (6 labels)
+                                        → gmail_messages (dedupe) → tail-call gmail-extract
+                                                         │ dispatch by classification
+   PO / BOL / supplier_confirmation     assemblers_report            weekly_report      other
+   Sonnet structured extract            download .xlsx →             parse email body   sweep
+   → po_emails (+ po_lot_numbers,       production.js parser →       → weekly_reports    (mark
+     advisory po_changes 'email')       upload_log(source='email')                       processed)
+```
+
+Design notes:
+- **Models:** Haiku 4.5 classifies every email (cheap); Sonnet 4.6 extracts the three structured classes (forced tool-use → validated JSON). System+schema prompt is prompt-cached.
+- **Advisory extraction:** PO/BOL/confirmation never mutate `purchase_orders` directly — they write `po_emails` + `po_lot_numbers` + `po_changes(change_source='email')` for review, avoiding double-logging against the `log_po_changes` trigger.
+- **Reuse, not rewrites:** assemblers_report and weekly_report run the *same* `production.js` / `weeklyEmail.js` parsers the manual `/uploads` flow uses (client dependency-injected so they run under Deno).
+- **Parked emails:** if a PO email arrives before the PO is in the DB, it's stored with `po_id` null (po_number in `extracted_data`); the NetSuite parser back-fills it via `link_parked_po_emails` when the PO loads.
+- **Idempotent:** `gmail_messages.gmail_message_id` is unique (dedupe); `processed` gates reprocessing; `other` is bulk-swept each run.
 
 ## Tech Stack
 
