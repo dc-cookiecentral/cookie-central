@@ -3,7 +3,7 @@
 Operational dashboard for Dirty Cookie's white-label retail business (Walmart + Kroger) through Cortina Foods.
 
 **Stack:** React + Vite + Tailwind + Supabase + Vercel
-**Status:** Phase 1 complete — demo shipped (June 2026). All eight build-plan modules functional against live Supabase data. Now in launch hardening / Phase 2 prep.
+**Status:** Phase 1 demo shipped (June 2026); launch hardening in progress. All demo modules are live against Supabase, plus the `systems@` AI email agent (Day 10) and the Lot Traceability chain UI (Day 11). One ship blocker remains before Phase 1 is declared shipped: Cortina NetSuite real-file reconciliation (awaiting Harshita's export sample). See `docs/BUILD_PLAN.md`.
 **Builder:** Caroline Friedrich
 **Users:** Shahira (CEO/admin), Marc (COO/ops), David + Paul (Biz Exec/admin), Maria (Ops — onboarding later)
 **Primary sign-in:** `systems@dirtycookie.com` (admin)
@@ -86,13 +86,14 @@ cookie-central/
 | `/payments` + `/payments/:po` | Two-stage payment list + 3-stage timeline | `purchase_orders` + `invoices` + `payments` |
 | `/inventory` | Warehouse + Product views + Reorder + Landing | `dot_inventory` + `raw_materials` + lots + orders |
 | `/snapshot` | EOM Snapshot (month-pinned KPIs + deltas) | All of the above, month-scoped |
+| `/trace` | Lot Traceability — enter any lot (raw / FG / outbound), chain both directions + recall report | `raw_material_lots`, `production_runs`/`_subcomponents`/`_pallets`, `lot_shipments`, `po_lot_numbers` |
 | `/reference` | Products + Raw Materials + Transitions | Walmart item master + `raw_materials` + `transitions` |
 | `/audit` | Audit log viewer (admin/finance only) | `audit_log` |
 | `/uploads` | Drag-drop pipeline + upload history + **systems@ Inbox** (Connect Gmail, Check for new) | `upload_log`, `gmail_sync_state` |
 
 ## Phase 2
 
-The **AI agent over `systems@` emails is live** — Gmail OAuth, daily poll + on-demand button, six-way classification, structured extraction into the PO tables, auto-import of emailed Assemblers/weekly reports, and parked-email back-fill (see `docs/RUNBOOK.md` §9 + ADR-021/022). Remaining Phase 2 items in `docs/BUILD_PLAN.md`: NetSuite API replacing CSV uploads, QBO API, production-plan allocation surface.
+The **`systems@` AI email agent (a Phase 1 extension, Day 10) is live** — Gmail OAuth, daily poll + on-demand button, six-way classification, structured extraction into the PO tables, auto-import of emailed Assemblers/weekly reports, and parked-email back-fill (see `docs/RUNBOOK.md` §9 + ADR-021/022). Remaining Phase 2 items in `docs/BUILD_PLAN.md`: NetSuite API replacing CSV uploads, QBO API, production-plan allocation surface.
 
 ## Key Links
 
