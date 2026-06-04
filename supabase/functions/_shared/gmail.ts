@@ -15,6 +15,12 @@ export interface ParsedAttachment {
   mimeType: string;
   attachmentId: string;
   size: number;
+  // Inline/signature images carry a Content-ID and/or Content-Disposition:
+  // inline. True report attachments are "attachment" with no CID. We use this
+  // to keep only standalone data images (Retail Link screenshots) and drop
+  // logos / promo banners embedded in the email signature.
+  contentId: string | null;
+  inline: boolean;
 }
 
 export interface ParsedMessage {
@@ -164,11 +170,19 @@ export function parseMessage(msg: any): ParsedMessage {
     if (!part) return;
     const mime = part.mimeType ?? '';
     if (part.filename && part.body?.attachmentId) {
+      const partHeaders = part.headers ?? [];
+      const rawCid = header(partHeaders, 'Content-ID') || header(partHeaders, 'X-Attachment-Id');
+      const contentId = rawCid ? rawCid.replace(/^<|>$/g, '').trim() : null;
+      const disposition = header(partHeaders, 'Content-Disposition') ?? '';
       attachments.push({
         filename: part.filename,
         mimeType: mime,
         attachmentId: part.body.attachmentId,
         size: part.body.size ?? 0,
+        contentId,
+        // Inline if Gmail tagged it inline OR it has a Content-ID (CID refs are
+        // almost always signature logos / banners).
+        inline: /inline/i.test(disposition) || !!contentId,
       });
     }
     if (mime === 'text/plain' && part.body?.data) text += b64urlToText(part.body.data);

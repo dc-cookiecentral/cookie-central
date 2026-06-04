@@ -21,7 +21,7 @@ export async function importWeekly(
     from: string | null;
     date: string | null;
     body: string;
-    attachments: { filename: string }[];
+    attachments: { filename: string; inline?: boolean }[];
   },
 ): Promise<{ id: string; week_number: string }> {
   const rep = weeklyReportFromParts({
@@ -29,7 +29,9 @@ export async function importWeekly(
     date: email.date,
     from: email.from,
     plainBody: email.body,
-    attachments: email.attachments.map((a) => a.filename),
+    // Drop inline/CID parts (signature logos + promo banners) from the recorded
+    // filename list so they never surface on /weekly — only real attachments.
+    attachments: email.attachments.filter((a) => !a.inline).map((a) => a.filename),
   });
 
   const receivedAt = safeIso(email.date);

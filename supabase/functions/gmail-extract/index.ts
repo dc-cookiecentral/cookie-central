@@ -281,34 +281,99 @@ function safeName(name: string): string {
   return String(name || '').replace(/[^a-zA-Z0-9._-]/g, '_') || 'image';
 }
 
-// Download the email's inline Retail Link screenshots, store them in the public
-// weekly-report-attachments bucket (path: <week>/<NN>-<name>, NN preserving
-// email order), and return their public URLs for the weekly_reports row. A
-// single bad image is skipped rather than failing the whole weekly ingest.
+const isImageAtt = (a: ParsedAttachment) =>
+  IMAGE_MIME.test(a.mimeType ?? '') || IMAGE_EXT.test(a.filename ?? '');
+
+// Signature logos/banners are small; Retail Link screenshots are 1000px+. A
+// readable dimension below this is treated as decoration and dropped (backstop
+// for a logo that arrives as a real attachment rather than inline/CID).
+const MIN_DATA_IMAGE_DIM = 400;
+
+// Best-effort intrinsic dimension sniff (max of width/height) for the common
+// raster formats, read straight from the file header. Returns null if unknown
+// (in which case we keep the image — never drop on uncertainty).
+function imageMaxDim(b: Uint8Array): number | null {
+  const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  // PNG: \x89PNG, IHDR width@16 / height@20 (big-endian u32)
+  if (b.length > 24 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) {
+    return Math.max(dv.getUint32(16), dv.getUint32(20));
+  }
+  // GIF: "GIF8", width@6 / height@8 (little-endian u16)
+  if (b.length > 10 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) {
+    return Math.max(dv.getUint16(6, true), dv.getUint16(8, true));
+  }
+  // JPEG: walk segments to a SOF marker (0xC0–0xCF, excl. C4/C8/CC)
+  if (b.length > 4 && b[0] === 0xff && b[1] === 0xd8) {
+    let o = 2;
+    while (o + 9 < b.length) {
+      if (b[o] !== 0xff) { o++; continue; }
+      const marker = b[o + 1];
+      if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+        return Math.max(dv.getUint16(o + 7), dv.getUint16(o + 5)); // width, height
+      }
+      const len = dv.getUint16(o + 2);
+      if (len < 2) break;
+      o += 2 + len;
+    }
+  }
+  return null;
+}
+
+// Download the email's Retail Link data screenshots, store them in the public
+// weekly-report-attachments bucket (path <week>/<NN>-<name>, NN preserving
+// email order), and return their public URLs for the weekly_reports row.
+//
+// Filtering: keep only true attachments (skip inline/CID parts — signature
+// logos + promo banners), then drop any that sniff smaller than a real report
+// screenshot. Existing objects for the week are cleared first so re-processing
+// replaces them (no orphaned/filtered images linger). A single bad image is
+// skipped rather than failing the whole weekly ingest.
 async function storeWeeklyImages(
   supabase: SupabaseClient,
   accessToken: string,
   messageId: string,
   weekNumber: string,
   attachments: ParsedAttachment[],
-): Promise<{ name: string; url: string; mimeType: string; size: number }[]> {
-  const images = attachments.filter(
-    (a) => IMAGE_MIME.test(a.mimeType ?? '') || IMAGE_EXT.test(a.filename ?? ''),
-  );
-  const stored: { name: string; url: string; mimeType: string; size: number }[] = [];
+): Promise<{
+  images: { name: string; url: string; mimeType: string; size: number }[];
+  skippedInline: number;
+  skippedSmall: number;
+}> {
+  const prefix = safeName(weekNumber);
 
-  for (let i = 0; i < images.length; i++) {
-    const att = images[i];
+  // Clear previously-stored objects for this week (drops images filtered by the
+  // updated heuristics on re-process).
+  const { data: existing } = await supabase.storage.from(WEEKLY_IMAGE_BUCKET).list(prefix);
+  if (existing?.length) {
+    await supabase.storage
+      .from(WEEKLY_IMAGE_BUCKET)
+      .remove(existing.map((o) => `${prefix}/${o.name}`));
+  }
+
+  const imageAtts = attachments.filter(isImageAtt);
+  const skippedInline = imageAtts.filter((a) => a.inline).length;
+  const candidates = imageAtts.filter((a) => !a.inline);
+
+  const images: { name: string; url: string; mimeType: string; size: number }[] = [];
+  let skippedSmall = 0;
+  let n = 0;
+  for (const att of candidates) {
     try {
       const bytes = await getAttachment(accessToken, messageId, att.attachmentId);
-      const path = `${safeName(weekNumber)}/${String(i + 1).padStart(2, '0')}-${safeName(att.filename)}`;
+      const dim = imageMaxDim(bytes);
+      if (dim !== null && dim < MIN_DATA_IMAGE_DIM) {
+        skippedSmall++;
+        continue;
+      }
+      n++;
+      const path = `${prefix}/${String(n).padStart(2, '0')}-${safeName(att.filename)}`;
       const { error: upErr } = await supabase.storage
         .from(WEEKLY_IMAGE_BUCKET)
         .upload(path, bytes, { contentType: att.mimeType || 'image/png', upsert: true });
       if (upErr) throw upErr;
       const { data } = supabase.storage.from(WEEKLY_IMAGE_BUCKET).getPublicUrl(path);
-      stored.push({
-        name: att.filename || `image${i + 1}`,
+      images.push({
+        name: att.filename || `image${n}`,
         url: data.publicUrl,
         mimeType: att.mimeType || 'image/png',
         size: att.size ?? bytes.length,
@@ -317,7 +382,7 @@ async function storeWeeklyImages(
       // Skip this image; keep the rest.
     }
   }
-  return stored;
+  return { images, skippedInline, skippedSmall };
 }
 
 async function handleWeekly(supabase: SupabaseClient, accessToken: string, gm: any) {
@@ -330,17 +395,16 @@ async function handleWeekly(supabase: SupabaseClient, accessToken: string, gm: a
     attachments: parsed.attachments,
   });
 
-  // Pull the inline screenshots into Storage and record their URLs on the row.
-  const images = await storeWeeklyImages(
+  // Pull the data screenshots into Storage and record their URLs on the row
+  // (always sync — an empty array clears stale images on re-process).
+  const { images, skippedInline, skippedSmall } = await storeWeeklyImages(
     supabase,
     accessToken,
     gm.gmail_message_id,
     rep.week_number,
     parsed.attachments,
   );
-  if (images.length) {
-    await supabase.from('weekly_reports').update({ image_attachments: images }).eq('id', rep.id);
-  }
+  await supabase.from('weekly_reports').update({ image_attachments: images }).eq('id', rep.id);
 
   await supabase
     .from('gmail_messages')
@@ -357,5 +421,8 @@ async function handleWeekly(supabase: SupabaseClient, accessToken: string, gm: a
     week_number: rep.week_number,
     weeklyReportId: rep.id,
     imagesStored: images.length,
+    imagesSkipped: skippedInline + skippedSmall,
+    skippedInline,
+    skippedSmall,
   };
 }

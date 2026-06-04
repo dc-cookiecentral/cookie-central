@@ -308,12 +308,14 @@ export default function WeeklyReport() {
   if (!rpt) return null;
 
   // Image attachments (with stored URLs) render as a gallery; spreadsheet/file
-  // attachments stay as descriptive cards. Image *filenames* with no stored URL
-  // yet (a pre-image-support poll) surface as a "pending download" note.
+  // attachments stay as descriptive cards. If a week lists data-image filenames
+  // but none are stored yet (a pre-image-support poll), show a "re-run" note.
+  // Signature/inline images are already filtered out server-side, so any image
+  // filenames here are real Retail Link screenshots.
   const images = rpt.images ?? [];
   const fileAttachments = (rpt.attachments ?? []).filter((a) => !isImageName(a));
-  const pendingImageFiles =
-    images.length === 0 ? (rpt.attachments ?? []).filter(isImageName) : [];
+  const pendingImageCount =
+    images.length === 0 ? (rpt.attachments ?? []).filter(isImageName).length : 0;
 
   return (
     <div>
@@ -355,11 +357,11 @@ export default function WeeklyReport() {
           <div className="mt-1.5 px-2.5 py-1.5 bg-bg rounded-md text-[11px] font-semibold text-dk">
             {rpt.hl}
           </div>
-          {pendingImageFiles.length > 0 && (
+          {pendingImageCount > 0 && (
             <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 text-[8px] text-amber-800">
-              {pendingImageFiles.length} screenshot{pendingImageFiles.length === 1 ? '' : 's'} on this
-              email aren&apos;t downloaded yet ({pendingImageFiles.join(', ')}). Re-run the Gmail agent
-              on this week to fetch + render them.
+              {pendingImageCount} data screenshot{pendingImageCount === 1 ? '' : 's'} on this email
+              {pendingImageCount === 1 ? " hasn't" : " haven't"} been downloaded yet. Re-run the Gmail
+              agent on this week to fetch + render them.
             </div>
           )}
 
