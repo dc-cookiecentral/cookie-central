@@ -2,15 +2,12 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Pill from '../components/Pill';
 import FulfillmentTimeline from '../components/FulfillmentTimeline';
 import { OriginalVsCurrent, ChangeHistory } from '../components/PoChangeHistory';
-import { DeliveryLots } from '../components/PoDeliveryLots';
+import PoLineItemsLots from '../components/PoLineItemsLots';
 import { usePurchaseOrder, usePoChanges, usePurchaseOrders } from '../hooks/usePurchaseOrders';
 import { useRetailerFilter } from '../contexts/RetailerFilterContext';
 import { useUOM } from '../contexts/UOMContext';
 import DetailPager from '../components/DetailPager';
 import { formatDate } from '../utils/dates';
-
-const TH = 'px-2 py-2 text-left text-[9px] font-bold text-gr uppercase tracking-wider';
-const THR = TH + ' text-right';
 
 // Rule-based fallback: derives a one-liner from observable PO state (NOVA edits,
 // ship-date shifts, lateness vs MABD, missing BOL) so the card never reads empty
@@ -176,40 +173,8 @@ export default function PurchaseOrderDetail() {
         ))}
       </div>
 
-      {/* line items */}
-      <div className="px-[18px] pb-3">
-        <div className="text-[8px] font-bold text-pk uppercase mb-1.5 pb-1 border-b-2 border-lt">
-          Line Items
-        </div>
-        <table className="w-full border-collapse text-[11px]">
-          <thead>
-            <tr className="bg-pc">
-              <th className={TH}>SKU</th>
-              <th className={THR}>Cases</th>
-              <th className={THR}>Rev/cs</th>
-              <th className={THR}>Line Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {lines.map((l) => (
-              <tr key={l.id} className="border-b border-bg">
-                <td className="px-2 py-1.5 font-bold">{l.sku}</td>
-                <td className="px-2 py-1.5 text-right">{(l.quantity_cases ?? 0).toLocaleString()}</td>
-                <td className="px-2 py-1.5 text-right text-gr">
-                  {revPerCase != null ? `$${Number(revPerCase).toFixed(2)}` : '--'}
-                </td>
-                <td className="px-2 py-1.5 text-right font-semibold">
-                  {l.line_total != null
-                    ? `$${Number(l.line_total).toLocaleString()}`
-                    : revPerCase != null
-                    ? `$${(l.quantity_cases * revPerCase).toLocaleString()}`
-                    : '--'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {/* Line items with finished-good lot entry inline per SKU */}
+      <PoLineItemsLots poId={order.id} lines={lines} revPerCase={revPerCase} />
 
       {/* NOVA changes */}
       {order.nova_changes && (
@@ -219,10 +184,6 @@ export default function PurchaseOrderDetail() {
           </div>
         </div>
       )}
-
-      {/* Finished-good lots shipped outbound to DOT (from delivery emails / manual).
-          Inbound BOLs live in Inventory → Reorder / Landing, not here. */}
-      <DeliveryLots poId={order.id} />
 
       {/* AI insight card (3.4) — synthesizes the agent's email extractions
           (po_emails.extracted_data: carrier/BOL/lots/anomalies, ship-date vs

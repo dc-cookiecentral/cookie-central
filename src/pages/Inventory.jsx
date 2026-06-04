@@ -12,8 +12,6 @@ const VIEWS = [
 
 export default function Inventory() {
   const [view, setView] = useState('warehouse');
-  // Bumped when a reorder creates new orders, so the landing list refetches.
-  const [landingReload, setLandingReload] = useState(0);
 
   return (
     <div>
@@ -34,22 +32,33 @@ export default function Inventory() {
         ))}
       </div>
 
-      {view === 'warehouse' && <WarehouseView />}
-      {view === 'product' && <ProductView />}
-      {view === 'reorder' && (
+      {/* Incoming first (Landing / Receiving), then current stock — Ops sees what's
+          arriving before what's on hand. */}
+      {view === 'warehouse' && (
         <div className="space-y-4">
           <div>
             <div className="text-[11px] font-extrabold uppercase tracking-wider text-pk mb-2">
-              Raw Ingredient Reorder
+              Incoming — Landing / Receiving
             </div>
-            <ReorderView onOrdersCreated={() => setLandingReload((k) => k + 1)} />
+            <LandingView />
           </div>
           <div>
             <div className="text-[11px] font-extrabold uppercase tracking-wider text-pk mb-2">
-              Landing / Receiving
+              Current Stock
             </div>
-            <LandingView reloadKey={landingReload} />
+            <WarehouseView />
           </div>
+        </div>
+      )}
+
+      {view === 'product' && <ProductView />}
+
+      {view === 'reorder' && (
+        <div>
+          <div className="text-[11px] font-extrabold uppercase tracking-wider text-pk mb-2">
+            Raw Ingredient Reorder
+          </div>
+          <ReorderView />
         </div>
       )}
     </div>

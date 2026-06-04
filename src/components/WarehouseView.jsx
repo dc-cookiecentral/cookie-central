@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import Pill from './Pill';
 import { useDotInventory } from '../hooks/useDotInventory';
 import { useAssemblersInventory } from '../hooks/useAssemblersInventory';
+import { useIncomingInventory } from '../hooks/useRawMaterialOrders';
 import { formatDateTime } from '../utils/dates';
 
 const TH = 'px-2 py-2 text-left text-[9px] font-bold text-gr uppercase tracking-wider';
@@ -37,6 +38,7 @@ export default function WarehouseView() {
   const navigate = useNavigate();
   const dot = useDotInventory();
   const asm = useAssemblersInventory();
+  const incoming = useIncomingInventory();
   const [open, setOpen] = useState({ dot: true, asm: true });
   const toggle = (k) => setOpen((o) => ({ ...o, [k]: !o[k] }));
 
@@ -131,23 +133,33 @@ export default function WarehouseView() {
           </div>
         ) : (
           <>
-            <div className="px-3 pt-1.5 pb-0.5 text-[8px] font-semibold text-md uppercase">
-              Raw Materials — click for Reference detail
+            <div className="px-3 pt-1.5 pb-0.5 text-[8px] font-semibold text-md uppercase flex items-center justify-between flex-wrap gap-1">
+              <span>Raw Materials — click for Reference detail</span>
+              <span className="normal-case font-normal text-gr">
+                On Hand received ·{' '}
+                <span className="text-blue-700 font-semibold">Ordered</span> placed ·{' '}
+                <span className="text-violet-700 font-semibold">Shipped</span> in transit · Total Expected = sum
+              </span>
             </div>
             <table className="w-full border-collapse text-[11px]">
               <thead>
                 <tr className="bg-pc">
                   <th className={TH}>Code</th>
                   <th className={TH}>Ingredient</th>
-                  <th className={THR}>Qty</th>
+                  <th className={THR}>On Hand</th>
+                  <th className={THR + ' text-blue-700'}>Ordered</th>
+                  <th className={THR + ' text-violet-700'}>Shipped</th>
+                  <th className={THR + ' font-extrabold'}>Total Exp</th>
                   <th className={THR}>Lead</th>
-                  <th className={THR}>Makes</th>
-                  <th className={THR}>Wks</th>
                   <th className={THC}>Flag</th>
                 </tr>
               </thead>
               <tbody>
-                {asm.rawMaterials.map((rm) => (
+                {asm.rawMaterials.map((rm) => {
+                  const inc = incoming[rm.id] || { ordered: 0, shipped: 0 };
+                  const onHand = rm.quantity ?? 0;
+                  const totalExp = onHand + inc.ordered + inc.shipped;
+                  return (
                   <tr
                     key={rm.code}
                     onClick={() => navigate(`/reference?material=${encodeURIComponent(rm.code)}`)}
@@ -169,20 +181,40 @@ export default function WarehouseView() {
                       )}
                     </td>
                     <td className="px-2 py-1.5 text-right font-bold">
-                      {(rm.quantity ?? 0).toLocaleString()}
+                      {onHand.toLocaleString()}
+                      <span className="text-[8px] text-gr ml-0.5">{rm.unit}</span>
+                    </td>
+                    <td className="px-2 py-1.5 text-right">
+                      {inc.ordered > 0 ? (
+                        <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-blue-100 text-blue-700">
+                          +{inc.ordered.toLocaleString()}
+                        </span>
+                      ) : (
+                        <span className="text-lt">--</span>
+                      )}
+                    </td>
+                    <td className="px-2 py-1.5 text-right">
+                      {inc.shipped > 0 ? (
+                        <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-violet-100 text-violet-700">
+                          +{inc.shipped.toLocaleString()}
+                        </span>
+                      ) : (
+                        <span className="text-lt">--</span>
+                      )}
+                    </td>
+                    <td className="px-2 py-1.5 text-right font-extrabold">
+                      {totalExp.toLocaleString()}
                       <span className="text-[8px] text-gr ml-0.5">{rm.unit}</span>
                     </td>
                     <td className={`px-2 py-1.5 text-right ${rm.default_lead_days >= 21 ? 'text-amber-600' : 'text-gr'}`}>
                       {rm.default_lead_days != null ? `${rm.default_lead_days}d` : '--'}
                     </td>
-                    {/* Makes/Wks need production consumption rates (Assemblers production report) */}
-                    <td className="px-2 py-1.5 text-right text-gr">--</td>
-                    <td className="px-2 py-1.5 text-right text-gr">--</td>
                     <td className="px-2 py-1.5 text-center">
                       <Pill status={rm.expiry_status} />
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
 
