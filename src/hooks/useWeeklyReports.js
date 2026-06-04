@@ -25,6 +25,7 @@ function rowToReport(row) {
     findings: Array.isArray(row.findings) ? row.findings : [],
     todos: Array.isArray(row.todos) ? row.todos : [],
     attachments: raw.attachments || [],
+    images: row.image_attachments || raw.image_attachments || [],
     pos: raw.pos,
     otif: raw.otif,
     parsed: false, // agent-ingested → "Auto from email" badge (no attachment detail yet)
@@ -44,7 +45,8 @@ export function useWeeklyReports() {
       .from('weekly_reports')
       .select(
         `week_number, report_date, headline, kpis, findings, todos,
-         source_email, source_subject, received_at, auto_generated, raw_email_data`
+         source_email, source_subject, received_at, auto_generated, raw_email_data,
+         image_attachments`
       )
       .then(({ data, error }) => {
         if (!active) return;

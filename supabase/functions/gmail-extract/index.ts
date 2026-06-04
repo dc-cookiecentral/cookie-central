@@ -24,6 +24,7 @@ import {
   getMessage,
   parseMessage,
   getAttachment,
+  type ParsedAttachment,
 } from '../_shared/gmail.ts';
 import { extractEmail } from '../_shared/anthropic.ts';
 import { runEmailImport } from '../_shared/emailUpload.ts';
@@ -102,7 +103,16 @@ Deno.serve(async (req) => {
       }
     }
 
-    return json({ ok: true, processed: results.length, otherSwept, results });
+    // Weekly-report images are downloaded + stored only for messages processed
+    // by THIS run. Historical weeks already marked processed=true won't be
+    // revisited — to back-fill their screenshots, reset those gmail_messages to
+    // processed=false (and clear `error`), then re-run gmail-extract.
+    const note =
+      'Weekly-report images are stored only for messages processed in this run. ' +
+      'To back-fill historical weeks, set gmail_messages.processed=false (and ' +
+      'error=null) for those weekly_report messages and re-run gmail-extract.';
+
+    return json({ ok: true, processed: results.length, otherSwept, results, note });
   } catch (e) {
     return json({ error: String((e as Error)?.message ?? e) }, 500);
   }
@@ -262,7 +272,54 @@ async function handleAssemblers(supabase: SupabaseClient, accessToken: string, g
   };
 }
 
-// ── weekly_report → existing weekly parser ──────────────────────────────────
+// ── weekly_report → existing weekly parser + image attachments ──────────────
+const WEEKLY_IMAGE_BUCKET = 'weekly-report-attachments';
+const IMAGE_MIME = /^image\//i;
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp)$/i;
+
+function safeName(name: string): string {
+  return String(name || '').replace(/[^a-zA-Z0-9._-]/g, '_') || 'image';
+}
+
+// Download the email's inline Retail Link screenshots, store them in the public
+// weekly-report-attachments bucket (path: <week>/<NN>-<name>, NN preserving
+// email order), and return their public URLs for the weekly_reports row. A
+// single bad image is skipped rather than failing the whole weekly ingest.
+async function storeWeeklyImages(
+  supabase: SupabaseClient,
+  accessToken: string,
+  messageId: string,
+  weekNumber: string,
+  attachments: ParsedAttachment[],
+): Promise<{ name: string; url: string; mimeType: string; size: number }[]> {
+  const images = attachments.filter(
+    (a) => IMAGE_MIME.test(a.mimeType ?? '') || IMAGE_EXT.test(a.filename ?? ''),
+  );
+  const stored: { name: string; url: string; mimeType: string; size: number }[] = [];
+
+  for (let i = 0; i < images.length; i++) {
+    const att = images[i];
+    try {
+      const bytes = await getAttachment(accessToken, messageId, att.attachmentId);
+      const path = `${safeName(weekNumber)}/${String(i + 1).padStart(2, '0')}-${safeName(att.filename)}`;
+      const { error: upErr } = await supabase.storage
+        .from(WEEKLY_IMAGE_BUCKET)
+        .upload(path, bytes, { contentType: att.mimeType || 'image/png', upsert: true });
+      if (upErr) throw upErr;
+      const { data } = supabase.storage.from(WEEKLY_IMAGE_BUCKET).getPublicUrl(path);
+      stored.push({
+        name: att.filename || `image${i + 1}`,
+        url: data.publicUrl,
+        mimeType: att.mimeType || 'image/png',
+        size: att.size ?? bytes.length,
+      });
+    } catch (_e) {
+      // Skip this image; keep the rest.
+    }
+  }
+  return stored;
+}
+
 async function handleWeekly(supabase: SupabaseClient, accessToken: string, gm: any) {
   const parsed = parseMessage(await getMessage(accessToken, gm.gmail_message_id));
   const rep = await importWeekly(supabase, {
@@ -273,6 +330,18 @@ async function handleWeekly(supabase: SupabaseClient, accessToken: string, gm: a
     attachments: parsed.attachments,
   });
 
+  // Pull the inline screenshots into Storage and record their URLs on the row.
+  const images = await storeWeeklyImages(
+    supabase,
+    accessToken,
+    gm.gmail_message_id,
+    rep.week_number,
+    parsed.attachments,
+  );
+  if (images.length) {
+    await supabase.from('weekly_reports').update({ image_attachments: images }).eq('id', rep.id);
+  }
+
   await supabase
     .from('gmail_messages')
     .update({
@@ -282,5 +351,11 @@ async function handleWeekly(supabase: SupabaseClient, accessToken: string, gm: a
     })
     .eq('id', gm.id);
 
-  return { id: gm.id, classification: gm.classification, week_number: rep.week_number, weeklyReportId: rep.id };
+  return {
+    id: gm.id,
+    classification: gm.classification,
+    week_number: rep.week_number,
+    weeklyReportId: rep.id,
+    imagesStored: images.length,
+  };
 }

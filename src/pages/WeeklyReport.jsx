@@ -48,6 +48,55 @@ function describeAttachment(filename) {
   return { name: String(filename).replace(/\.xlsx?$/i, ''), contents: 'Walmart Retail Link export' };
 }
 
+const isImageName = (name) => /\.(png|jpe?g|gif|webp|bmp)$/i.test(String(name || ''));
+
+// Best-effort label for a Retail Link screenshot. Filenames are usually generic
+// (image001.png …), so we fall back to the typical email order; if a name does
+// carry a keyword (otif/sqep/sales) we honour it.
+function imageLabel(name, i) {
+  const n = String(name || '').toLowerCase();
+  if (/sqep/.test(n)) return 'SQEP Compliance';
+  if (/otif/.test(n) && /(l4w|l4|4\s*w|4wk|last.?4)/.test(n)) return 'OTIF — Last 4 Weeks';
+  if (/otif/.test(n)) return 'OTIF Performance';
+  if (/(sales|pos|trend|velocity|performance)/.test(n)) return 'Sales Performance';
+  const seq = ['OTIF — Week', 'OTIF — Last 4 Weeks', 'SQEP Compliance', 'Sales Performance'];
+  return seq[i] || `Retail Link screenshot ${i + 1}`;
+}
+
+// Renders the email's Walmart Retail Link screenshots inline (click any to open
+// full size). Replaces the old bare-filename listing for image attachments.
+function ImageGallery({ images }) {
+  return (
+    <div className="px-[18px] pb-3">
+      <div className="flex items-center gap-2 flex-wrap mb-1.5">
+        <SectionLabel>Retail Link screenshots ({images.length})</SectionLabel>
+        <SourceTag>Walmart Retail Link via {BROKER.org}</SourceTag>
+      </div>
+      <div className="grid sm:grid-cols-2 gap-3">
+        {images.map((img, i) => (
+          <figure key={img.url || img.name || i} className="bg-bg border border-lt rounded-lg overflow-hidden">
+            <a href={img.url} target="_blank" rel="noreferrer" title="Click to open full size">
+              <img
+                src={img.url}
+                alt={imageLabel(img.name, i)}
+                loading="lazy"
+                className="w-full h-auto block bg-white max-h-[420px] object-contain"
+              />
+            </a>
+            <figcaption className="px-2.5 py-1.5 border-t border-lt">
+              <div className="text-[10px] font-bold text-dk">{imageLabel(img.name, i)}</div>
+              <div className="text-[7px] text-gr font-mono truncate" title={img.name}>{img.name}</div>
+            </figcaption>
+          </figure>
+        ))}
+      </div>
+      <div className="mt-1 text-[7px] text-gr italic">
+        Labels are inferred from attachment order — click any image to view full size.
+      </div>
+    </div>
+  );
+}
+
 // Format a scorecard value by inferring its kind from the metric label.
 function fmtScore(label, v) {
   if (v == null) return '--';
@@ -258,6 +307,14 @@ export default function WeeklyReport() {
 
   if (!rpt) return null;
 
+  // Image attachments (with stored URLs) render as a gallery; spreadsheet/file
+  // attachments stay as descriptive cards. Image *filenames* with no stored URL
+  // yet (a pre-image-support poll) surface as a "pending download" note.
+  const images = rpt.images ?? [];
+  const fileAttachments = (rpt.attachments ?? []).filter((a) => !isImageName(a));
+  const pendingImageFiles =
+    images.length === 0 ? (rpt.attachments ?? []).filter(isImageName) : [];
+
   return (
     <div>
       <h1 className="text-xl font-bold text-dk mb-3">Weekly Report</h1>
@@ -298,16 +355,24 @@ export default function WeeklyReport() {
           <div className="mt-1.5 px-2.5 py-1.5 bg-bg rounded-md text-[11px] font-semibold text-dk">
             {rpt.hl}
           </div>
-          {rpt.attachments?.length > 0 && (
+          {pendingImageFiles.length > 0 && (
+            <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 text-[8px] text-amber-800">
+              {pendingImageFiles.length} screenshot{pendingImageFiles.length === 1 ? '' : 's'} on this
+              email aren&apos;t downloaded yet ({pendingImageFiles.join(', ')}). Re-run the Gmail agent
+              on this week to fetch + render them.
+            </div>
+          )}
+
+          {fileAttachments.length > 0 && (
             <div className="mt-2">
               <div className="flex items-center gap-2 flex-wrap mb-1">
                 <span className="text-[8px] font-semibold text-md uppercase tracking-wider">
-                  Attached reports ({rpt.attachments.length})
+                  Attached reports ({fileAttachments.length})
                 </span>
                 <SourceTag>Walmart Retail Link via {BROKER.org}</SourceTag>
               </div>
               <div className="grid sm:grid-cols-2 gap-1.5">
-                {rpt.attachments.map((a) => {
+                {fileAttachments.map((a) => {
                   const meta = describeAttachment(a);
                   return (
                     <div key={a} className="bg-bg border border-lt rounded-lg px-2.5 py-1.5">
@@ -353,6 +418,9 @@ export default function WeeklyReport() {
             </div>
           ))}
         </div>
+
+        {/* Retail Link screenshots (OTIF / SQEP / sales charts) rendered inline */}
+        {images.length > 0 && <ImageGallery images={images} />}
 
         {/* Attachment-derived detail (markdowns, supply plan, OTIF PO detail) */}
         {rpt.detail && <AttachmentDetail d={rpt.detail} />}
