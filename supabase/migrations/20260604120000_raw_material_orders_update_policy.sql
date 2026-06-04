@@ -10,6 +10,10 @@
 -- (bol_reference) all ride on that UPDATE, so none of them persisted. Mirrors
 -- the ops/admin write pattern already used on raw_materials / raw_material_lots.
 
+-- Idempotent: the live DB already had this policy created out-of-band (dashboard),
+-- so drop-then-create keeps the migration safe to (re)apply and correct for fresh
+-- environments (db reset).
+DROP POLICY IF EXISTS "Ops/admin update" ON raw_material_orders;
 CREATE POLICY "Ops/admin update" ON raw_material_orders FOR UPDATE
 USING (
   EXISTS (SELECT 1 FROM user_profiles WHERE id = auth.uid() AND role IN ('admin', 'ops'))
