@@ -1,6 +1,7 @@
 import { useState, Fragment } from 'react';
 import { useWeeklyReports } from '../hooks/useWeeklyReports';
 import { useAlerts } from '../hooks/useAlerts';
+import { checkForNew } from '../hooks/useGmail';
 
 const usd = (n) => (n == null ? '--' : '$' + Math.round(n).toLocaleString());
 const qty = (n) => (n == null ? '--' : n.toLocaleString());
@@ -296,7 +297,23 @@ function AttachmentDetail({ d }) {
 }
 
 export default function WeeklyReport() {
-  const { reports } = useWeeklyReports();
+  const { reports, refetch } = useWeeklyReports();
+  const [polling, setPolling] = useState(false);
+  const [pollMsg, setPollMsg] = useState(null); // { tone: 'ok'|'err', text }
+
+  const onCheckForNew = async () => {
+    setPolling(true);
+    setPollMsg(null);
+    const { data, error } = await checkForNew();
+    if (error) {
+      setPollMsg({ tone: 'err', text: error });
+    } else {
+      const n = data?.classified ?? 0;
+      setPollMsg({ tone: 'ok', text: n > 0 ? `${n} new email${n === 1 ? '' : 's'}` : 'No new emails' });
+      await refetch();
+    }
+    setPolling(false);
+  };
   // `selected` is null until the user clicks a tab, so the view defaults to the
   // newest week (reports[0]) and follows it as the live table loads — WK17 shows
   // on arrival without overriding a manual selection.
@@ -326,12 +343,25 @@ export default function WeeklyReport() {
         {reports.map((r) => (
           <WeekTab key={r.wk} rpt={r} active={wk === r.wk} onClick={() => setSelected(r.wk)} />
         ))}
-        <button
-          title="Manual refresh — live once the Bentonville Merchants email parser ships (Phase 1, 8.2)"
-          className="ml-auto self-center bg-gradient-to-br from-pk to-pm text-white px-3 py-1.5 rounded-md text-[9px] font-bold hover:opacity-90"
-        >
-          Check for new
-        </button>
+        <div className="ml-auto self-center flex items-center gap-2">
+          {pollMsg && (
+            <span
+              className={`text-[9px] font-semibold ${
+                pollMsg.tone === 'err' ? 'text-red-600' : 'text-emerald-700'
+              }`}
+            >
+              {pollMsg.text}
+            </span>
+          )}
+          <button
+            onClick={onCheckForNew}
+            disabled={polling}
+            title="Poll systems@dirtycookie.com for new weekly reports (and other agent mail)"
+            className="bg-gradient-to-br from-pk to-pm text-white px-3 py-1.5 rounded-md text-[9px] font-bold hover:opacity-90 disabled:opacity-60"
+          >
+            {polling ? 'Checking…' : 'Check for new'}
+          </button>
+        </div>
       </div>
 
       <div className="bg-cd border border-lt rounded-xl">

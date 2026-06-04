@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { WEEKLY_REPORTS } from '../data/weeklyReports';
 import { formatDate } from '../utils/dates';
@@ -39,28 +39,25 @@ export function useWeeklyReports() {
   );
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let active = true;
-    supabase
+  const refetch = useCallback(async () => {
+    const { data, error } = await supabase
       .from('weekly_reports')
       .select(
         `week_number, report_date, headline, kpis, findings, todos,
          source_email, source_subject, received_at, auto_generated, raw_email_data,
          image_attachments`
-      )
-      .then(({ data, error }) => {
-        if (!active) return;
-        if (!error && data) {
-          const byWk = new Map(WEEKLY_REPORTS.map((r) => [r.wk, r]));
-          for (const row of data) byWk.set(row.week_number, rowToReport(row)); // DB wins
-          setReports([...byWk.values()].sort((a, b) => wkNum(b.wk) - wkNum(a.wk)));
-        }
-        setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
+      );
+    if (!error && data) {
+      const byWk = new Map(WEEKLY_REPORTS.map((r) => [r.wk, r]));
+      for (const row of data) byWk.set(row.week_number, rowToReport(row)); // DB wins
+      setReports([...byWk.values()].sort((a, b) => wkNum(b.wk) - wkNum(a.wk)));
+    }
+    setLoading(false);
   }, []);
 
-  return { reports, loading };
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
+
+  return { reports, loading, refetch };
 }
