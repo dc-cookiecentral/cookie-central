@@ -1,11 +1,26 @@
 import { Fragment, useEffect, useState } from 'react';
-import { useRawMaterialOrders, receiveRawMaterialOrder } from '../hooks/useRawMaterialOrders';
+import {
+  useRawMaterialOrders,
+  receiveRawMaterialOrder,
+  markRawMaterialOrderShipped,
+} from '../hooks/useRawMaterialOrders';
 import { formatDate } from '../utils/dates';
 
 const TH = 'px-3 py-2 text-left text-[9px] font-bold text-gr uppercase tracking-wider';
 const THR = TH + ' text-right';
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const emptyLot = () => ({ lot_number: '', quantity: '', expiry_date: '' });
+
+const STATUS_BADGE = {
+  ordered: ['Ordered', 'bg-blue-100 text-blue-700'],
+  shipped: ['Shipped', 'bg-violet-100 text-violet-700'],
+  pending: ['Pending', 'bg-slate-100 text-slate-600'],
+  confirmed: ['Confirmed', 'bg-slate-100 text-slate-600'],
+};
+function StatusBadge({ status }) {
+  const [label, cls] = STATUS_BADGE[status] || [status || '—', 'bg-bg text-gr'];
+  return <span className={`px-1.5 py-0.5 rounded-full text-[8px] font-semibold ${cls}`}>{label}</span>;
+}
 
 // Landing / receiving (the lot-origin point). For each open order, capture the
 // land date + the lot number(s) and expiry the product actually arrived with.
@@ -18,6 +33,21 @@ export default function LandingView({ reloadKey }) {
   const [lots, setLots] = useState([emptyLot()]);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState(null);
+  const [shippingId, setShippingId] = useState(null);
+  const [actionError, setActionError] = useState(null);
+
+  const onMarkShipped = async (order) => {
+    setShippingId(order.id);
+    setActionError(null);
+    try {
+      await markRawMaterialOrderShipped(order.id);
+      refresh();
+    } catch (e) {
+      setActionError(e.message);
+    } finally {
+      setShippingId(null);
+    }
+  };
 
   useEffect(() => {
     if (reloadKey !== undefined) refresh();
@@ -66,6 +96,7 @@ export default function LandingView({ reloadKey }) {
           Record land date + inbound BOL # + lot number(s) + expiry. Lot numbers and the
           inbound BOL (from the distributor) are captured here.
         </div>
+        {actionError && <div className="mt-1 text-[9px] text-red-600">{actionError}</div>}
       </div>
 
       {orders.length === 0 ? (
@@ -78,6 +109,7 @@ export default function LandingView({ reloadKey }) {
               <th className={TH}>Distributor / Brand</th>
               <th className={THR}>Ordered</th>
               <th className={THR}>Expected</th>
+              <th className={TH}>Status</th>
               <th className={TH}></th>
             </tr>
           </thead>
@@ -97,7 +129,19 @@ export default function LandingView({ reloadKey }) {
                     <span className="text-[8px] text-gr ml-0.5">{o.raw_materials?.unit}</span>
                   </td>
                   <td className="px-3 py-2 text-right text-gr">{formatDate(o.expected_delivery)}</td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-3 py-2">
+                    <StatusBadge status={o.status} />
+                  </td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap">
+                    {o.status === 'ordered' && openId !== o.id && (
+                      <button
+                        onClick={() => onMarkShipped(o)}
+                        disabled={shippingId === o.id}
+                        className="mr-3 text-[10px] font-semibold text-violet-700 hover:text-violet-900 disabled:opacity-40"
+                      >
+                        {shippingId === o.id ? 'Saving…' : 'Mark shipped'}
+                      </button>
+                    )}
                     <button
                       onClick={() => (openId === o.id ? setOpenId(null) : startReceive(o))}
                       className="text-[10px] font-semibold text-pk hover:text-pm underline"
@@ -108,7 +152,7 @@ export default function LandingView({ reloadKey }) {
                 </tr>
                 {openId === o.id && (
                   <tr className="bg-bg">
-                    <td colSpan={5} className="px-4 py-3">
+                    <td colSpan={6} className="px-4 py-3">
                       <div className="flex items-center gap-3 mb-2 flex-wrap">
                         <label className="text-[10px] font-semibold text-md">Land date</label>
                         <input

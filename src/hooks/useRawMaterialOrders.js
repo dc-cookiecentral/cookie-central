@@ -91,6 +91,16 @@ export function useIncomingInventory() {
   return incoming;
 }
 
+// Advance an order from 'ordered' to 'shipped' (in transit). RLS update policy
+// on raw_material_orders permits ops/admin.
+export async function markRawMaterialOrderShipped(orderId) {
+  const { error } = await supabase
+    .from('raw_material_orders')
+    .update({ status: 'shipped' })
+    .eq('id', orderId);
+  if (error) throw error;
+}
+
 // Land an order: record lots (1:many), mark delivered, bump material on-hand.
 // `lots`: [{ lot_number, quantity, expiry_date }]
 // `bolReference`: the BOL # the inbound delivery arrived with (from the distributor).
