@@ -5,6 +5,49 @@ import { useAlerts } from '../hooks/useAlerts';
 const usd = (n) => (n == null ? '--' : '$' + Math.round(n).toLocaleString());
 const qty = (n) => (n == null ? '--' : n.toLocaleString());
 
+// The Weekly Report is, by definition, the Walmart Retail Link readout from the
+// Walmart broker — Bentonville Merchants (Blayn Turner). It is NOT Cortina /
+// Harshita data. Attribution is canonical: if a row's source_email isn't a
+// Bentonville address (e.g. a mis-tagged agent ingest), we fall back to Blayn's.
+const BROKER = {
+  org: 'Bentonville Merchants',
+  role: 'Walmart Broker',
+  contact: 'Blayn Turner',
+  email: 'blayn@bentonvillemerchants.com',
+};
+const brokerEmail = (rpt) => (/bentonville/i.test(rpt?.src || '') ? rpt.src : BROKER.email);
+
+// Per-section provenance chip. tone 'wm' = straight from the Walmart Retail Link
+// email/attachments; tone 'cc' = Cookie Central's own derived/analysis layer.
+function SourceTag({ children, tone = 'wm' }) {
+  const cls =
+    tone === 'cc'
+      ? 'bg-[#EDE9FE] text-[#6D28D9] border-[#DDD6FE]'
+      : 'bg-blue-50 text-blue-700 border-blue-200';
+  return (
+    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[7px] font-semibold ${cls}`}>
+      <span className="opacity-70 uppercase tracking-wider">Source</span> {children}
+    </span>
+  );
+}
+
+// Map a raw attachment filename to a human report name + a one-line summary of
+// what it contains, so the page shows meaning instead of just a filename.
+function describeAttachment(filename) {
+  const f = String(filename).toLowerCase();
+  if (/supply plan/.test(f))
+    return { name: 'Forward Supply Plan', contents: 'Forward case orders by SKU, by month' };
+  if (/otif/.test(f))
+    return { name: 'OTIF Store Performance', contents: 'Per-PO on-time / in-full delivery detail' };
+  if (/markdown/.test(f))
+    return { name: 'Markdown Detail', contents: 'Markdown $ by SKU — last week and YTD' };
+  if (/scorecard/.test(f))
+    return { name: 'Vendor Scorecard', contents: 'Sales, inventory & margin metrics by period' };
+  if (/wk\s*\d|dirty cookie/.test(f))
+    return { name: 'Weekly Sales Report', contents: 'POS sales, in-stock %, units/store/week, on-hand by SKU' };
+  return { name: String(filename).replace(/\.xlsx?$/i, ''), contents: 'Walmart Retail Link export' };
+}
+
 // Format a scorecard value by inferring its kind from the metric label.
 function fmtScore(label, v) {
   if (v == null) return '--';
@@ -55,7 +98,10 @@ function AttachmentDetail({ d }) {
   const [scOpen, setScOpen] = useState(false);
   return (
     <div className="px-[18px] pb-3 space-y-2">
-      <SectionLabel>From attachments — parsed</SectionLabel>
+      <div className="flex items-center gap-2 flex-wrap mb-1.5">
+        <SectionLabel>From attachments — parsed</SectionLabel>
+        <SourceTag>Walmart Retail Link attachments via {BROKER.org}</SourceTag>
+      </div>
 
       {/* Markdowns */}
       {d.markdown && (
@@ -246,25 +292,54 @@ export default function WeeklyReport() {
             <span className="text-[8px] text-gr">Walmart only. Kroger reporting source TBD.</span>
           </div>
           <div className="text-[8px] text-gr">
-            From: {rpt.src} | {rpt.subj} | Mon 9:30 AM CT
+            From: <span className="font-semibold text-md">{BROKER.org}</span> ({BROKER.role})
+            {' · '}{BROKER.contact} &lt;{brokerEmail(rpt)}&gt; | {rpt.subj} | Mon 9:30 AM CT
           </div>
           <div className="mt-1.5 px-2.5 py-1.5 bg-bg rounded-md text-[11px] font-semibold text-dk">
             {rpt.hl}
           </div>
           {rpt.attachments?.length > 0 && (
-            <div className="mt-1.5 text-[8px] text-gr leading-relaxed">
-              <span className="font-semibold text-md uppercase tracking-wider">Attached reports</span>
-              <span className="italic"> — detail (supply plan, OTIF, SQEP) parsed separately, next step:</span>
-              <ul className="mt-0.5 space-y-px">
-                {rpt.attachments.map((a) => (
-                  <li key={a} className="font-mono text-[8px] text-md">• {a}</li>
-                ))}
-              </ul>
+            <div className="mt-2">
+              <div className="flex items-center gap-2 flex-wrap mb-1">
+                <span className="text-[8px] font-semibold text-md uppercase tracking-wider">
+                  Attached reports ({rpt.attachments.length})
+                </span>
+                <SourceTag>Walmart Retail Link via {BROKER.org}</SourceTag>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-1.5">
+                {rpt.attachments.map((a) => {
+                  const meta = describeAttachment(a);
+                  return (
+                    <div key={a} className="bg-bg border border-lt rounded-lg px-2.5 py-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[10px] font-bold text-dk">{meta.name}</span>
+                        <span
+                          className={`px-1.5 py-0.5 rounded-full text-[7px] font-semibold ${
+                            rpt.detail
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : 'bg-[#EDE9FE] text-[#6D28D9]'
+                          }`}
+                        >
+                          {rpt.detail ? 'Parsed ✓' : 'Pending parse'}
+                        </span>
+                      </div>
+                      <div className="text-[8px] text-md mt-0.5">{meta.contents}</div>
+                      <div className="text-[7px] text-gr font-mono mt-0.5 truncate" title={a}>
+                        {a}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
 
         {/* Scorecard KPIs */}
+        <div className="px-[18px] pb-1.5 flex items-center gap-2 flex-wrap">
+          <SectionLabel>Scorecard KPIs</SectionLabel>
+          <SourceTag>Walmart Retail Link via {BROKER.org}</SourceTag>
+        </div>
         <div className="px-[18px] pb-3 flex gap-1.5 flex-wrap">
           {rpt.kpis.map((k, i) => (
             <div key={i} className="bg-cd border border-lt rounded-lg px-3 py-2 flex-1 min-w-[80px]">
@@ -285,7 +360,10 @@ export default function WeeklyReport() {
         {/* Findings */}
         {rpt.findings.length > 0 && (
           <div className="px-[18px] pb-3">
-            <SectionLabel>Findings</SectionLabel>
+            <div className="flex items-center gap-2 flex-wrap">
+              <SectionLabel>Findings</SectionLabel>
+              <SourceTag tone="cc">Cookie Central — L10 analysis</SourceTag>
+            </div>
             {rpt.findings.map((f, i) => (
               <div key={i} className="mb-1.5 bg-bg border border-lt rounded-lg px-3 py-2">
                 <div className="flex gap-1.5 mb-0.5">
@@ -306,7 +384,10 @@ export default function WeeklyReport() {
         {/* EOS To-Dos */}
         {rpt.todos.length > 0 && (
           <div className="px-[18px] pb-3">
-            <SectionLabel>EOS To-Dos</SectionLabel>
+            <div className="flex items-center gap-2 flex-wrap">
+              <SectionLabel>EOS To-Dos</SectionLabel>
+              <SourceTag tone="cc">Cookie Central — L10 analysis</SourceTag>
+            </div>
             <div className="bg-dk rounded-lg px-3 py-2">
               {rpt.todos.map((td, i) => (
                 <div
@@ -341,7 +422,10 @@ export default function WeeklyReport() {
 
         {/* EOS Issues List (from Alerts engine once live) */}
         <div className="px-[18px] pb-2.5">
-          <SectionLabel tone="eos">EOS Issues List</SectionLabel>
+          <div className="flex items-center gap-2 flex-wrap">
+            <SectionLabel tone="eos">EOS Issues List</SectionLabel>
+            <SourceTag tone="cc">Cookie Central alerts engine</SourceTag>
+          </div>
           <div className="bg-[#FAF5FF] rounded-md px-2.5 py-1.5 border border-[#EDE9FE] text-[9px]">
             {alerts.length === 0 && (
               <div className="text-[9px] text-gr italic">No live issues.</div>

@@ -14,6 +14,7 @@ export default function LandingView({ reloadKey }) {
   const { orders, loading, error, refresh } = useRawMaterialOrders();
   const [openId, setOpenId] = useState(null);
   const [landDate, setLandDate] = useState(todayIso());
+  const [bol, setBol] = useState('');
   const [lots, setLots] = useState([emptyLot()]);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState(null);
@@ -25,6 +26,7 @@ export default function LandingView({ reloadKey }) {
   const startReceive = (order) => {
     setOpenId(order.id);
     setLandDate(todayIso());
+    setBol('');
     setLots([emptyLot()]);
     setFormError(null);
   };
@@ -43,7 +45,7 @@ export default function LandingView({ reloadKey }) {
     setBusy(true);
     setFormError(null);
     try {
-      await receiveRawMaterialOrder(order, { landDate, lots: valid });
+      await receiveRawMaterialOrder(order, { landDate, lots: valid, bolReference: bol });
       setOpenId(null);
       refresh();
     } catch (e) {
@@ -61,7 +63,8 @@ export default function LandingView({ reloadKey }) {
       <div className="px-4 py-2 border-b border-lt">
         <div className="text-[10px] font-bold text-pk uppercase">Awaiting landing</div>
         <div className="text-[9px] text-md">
-          Record land date + lot number(s) + expiry. Lot numbers are created here.
+          Record land date + inbound BOL # + lot number(s) + expiry. Lot numbers and the
+          inbound BOL (from the distributor) are captured here.
         </div>
       </div>
 
@@ -106,13 +109,20 @@ export default function LandingView({ reloadKey }) {
                 {openId === o.id && (
                   <tr className="bg-bg">
                     <td colSpan={5} className="px-4 py-3">
-                      <div className="flex items-center gap-3 mb-2">
+                      <div className="flex items-center gap-3 mb-2 flex-wrap">
                         <label className="text-[10px] font-semibold text-md">Land date</label>
                         <input
                           type="date"
                           value={landDate}
                           onChange={(e) => setLandDate(e.target.value)}
                           className="border border-lt rounded px-2 py-1 text-[10px]"
+                        />
+                        <label className="text-[10px] font-semibold text-md">BOL #</label>
+                        <input
+                          value={bol}
+                          onChange={(e) => setBol(e.target.value)}
+                          placeholder="Inbound BOL #"
+                          className="border border-lt rounded px-2 py-1 text-[10px] w-[150px]"
                         />
                         <span className="text-[10px] text-gr">
                           ordered {(o.quantity ?? 0).toLocaleString()} {o.raw_materials?.unit}

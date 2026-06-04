@@ -59,7 +59,8 @@ export async function createRawMaterialOrders(rows) {
 
 // Land an order: record lots (1:many), mark delivered, bump material on-hand.
 // `lots`: [{ lot_number, quantity, expiry_date }]
-export async function receiveRawMaterialOrder(order, { landDate, lots }) {
+// `bolReference`: the BOL # the inbound delivery arrived with (from the distributor).
+export async function receiveRawMaterialOrder(order, { landDate, lots, bolReference }) {
   const material = order.raw_materials;
   const totalReceived = lots.reduce((s, l) => s + (Number(l.quantity) || 0), 0);
   const baseFifo = material?.lot_count ?? 0;
@@ -78,10 +79,14 @@ export async function receiveRawMaterialOrder(order, { landDate, lots }) {
   );
   if (lotErr) throw lotErr;
 
-  // 2. Close the order.
+  // 2. Close the order — capture the inbound BOL # from the delivery.
   const { error: ordErr } = await supabase
     .from('raw_material_orders')
-    .update({ actual_delivery: landDate, status: 'delivered' })
+    .update({
+      actual_delivery: landDate,
+      status: 'delivered',
+      bol_reference: bolReference?.trim() || null,
+    })
     .eq('id', order.id);
   if (ordErr) throw ordErr;
 

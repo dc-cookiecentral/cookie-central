@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { usePoLots, addPoLot, updatePoBol } from '../hooks/usePurchaseOrders';
+import { usePoLots, addPoLot } from '../hooks/usePurchaseOrders';
 import { formatDate } from '../utils/dates';
 
 const TH = 'px-2 py-1.5 text-left text-[9px] font-bold text-gr uppercase tracking-wider';
@@ -20,30 +20,14 @@ function LotSourceBadge({ source }) {
 const EMPTY = { lot_number: '', sku: '', quantity_cases: '', received_date: '' };
 const inputCls = 'w-full px-2 py-1 rounded border border-lt text-[10px] bg-cd';
 
-export function DeliveryLots({ poId, bolNumber }) {
+export function DeliveryLots({ poId }) {
   const { lots, loading, refresh } = usePoLots(poId);
-
-  // Editable BOL
-  const [bol, setBol] = useState(bolNumber || '');
-  const [editingBol, setEditingBol] = useState(false);
-  const [savingBol, setSavingBol] = useState(false);
 
   // Add-lot form
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
-
-  const saveBol = async () => {
-    setSavingBol(true);
-    const { error } = await updatePoBol(poId, bol.trim());
-    setSavingBol(false);
-    if (error) setErr(error.message);
-    else {
-      setErr(null);
-      setEditingBol(false);
-    }
-  };
 
   const submitLot = async () => {
     if (!form.lot_number.trim()) return;
@@ -68,39 +52,10 @@ export function DeliveryLots({ poId, bolNumber }) {
   return (
     <div className="px-[18px] pb-3">
       <div className="text-[8px] font-bold text-pk uppercase mb-1.5 pb-1 border-b-2 border-lt">
-        Delivery &amp; Lots
+        Finished-Good Lots Shipped to DOT
       </div>
 
-      {/* BOL number — editable, auto-populated from email when available */}
-      <div className="flex items-center gap-2 mb-2 text-[10px]">
-        <span className="text-[8px] font-semibold uppercase text-gr">BOL #</span>
-        {editingBol ? (
-          <>
-            <input
-              autoFocus
-              value={bol}
-              onChange={(e) => setBol(e.target.value)}
-              placeholder="BOL-…"
-              className={inputCls + ' max-w-[180px]'}
-            />
-            <button onClick={saveBol} disabled={savingBol} className="text-pk font-semibold disabled:opacity-50">
-              {savingBol ? 'Saving…' : 'Save'}
-            </button>
-            <button onClick={() => { setBol(bolNumber || ''); setEditingBol(false); }} className="text-gr">
-              Cancel
-            </button>
-          </>
-        ) : (
-          <>
-            <span className="font-bold text-dk">{bol || '—'}</span>
-            <button onClick={() => setEditingBol(true)} className="text-[9px] text-pk underline underline-offset-2">
-              {bol ? 'Edit' : 'Add BOL #'}
-            </button>
-          </>
-        )}
-      </div>
-
-      {/* Lot numbers table */}
+      {/* Finished-good lot numbers table (outbound to DOT) */}
       {loading ? (
         <div className="text-[10px] text-gr py-2">Loading…</div>
       ) : lots.length === 0 ? (
@@ -171,8 +126,11 @@ export function DeliveryLots({ poId, bolNumber }) {
       {err && <div className="mt-1.5 text-[9px] text-red-600">{err}</div>}
 
       <div className="mt-2 text-[8px] text-gr italic">
-        Lot # is the traceability key — “Trace ↗” walks it back to the raw-material lots that
-        fed the batch and forward to every shipment + PO it touched (for recalls + shelf life).
+        These are the finished-good lots shipped outbound to DOT for this PO. Lot # is the
+        traceability key — “Trace ↗” walks it back to the raw-material lots that fed the
+        batch and forward to every shipment + PO it touched (for recalls + shelf life).
+        Inbound BOLs + raw-material lots are captured at receiving (Inventory → Reorder /
+        Landing).
       </div>
     </div>
   );

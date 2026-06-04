@@ -156,12 +156,3 @@ export async function addPoLot(poId, fields) {
   });
   return { error };
 }
-
-// Inline-editable BOL number on the PO.
-export async function updatePoBol(poId, bolNumber) {
-  const { error } = await supabase
-    .from('purchase_orders')
-    .update({ bol_number: bolNumber || null })
-    .eq('id', poId);
-  return { error };
-}

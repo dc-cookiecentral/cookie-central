@@ -23,10 +23,7 @@ function stateFindings(order) {
   }
   if (order.ship_status === 'pending' && order.ship_date_original) {
     const days = Math.round((new Date(order.ship_date_original) - new Date()) / 86400000);
-    if (days <= 3) findings.push(`Ships in ${days}d — confirm pallets + BOL ready.`);
-  }
-  if (order.ship_status === 'shipped' && !order.bol_number) {
-    findings.push('Shipped without a BOL number — capture from delivery email.');
+    if (days <= 3) findings.push(`Ships in ${days}d — confirm pallets ready.`);
   }
   if (order.payment_status === 'awaiting_retailer' || order.payment_status === 'awaiting_walmart') {
     findings.push('Retailer payment overdue — confirm invoice with Cortina.');
@@ -45,8 +42,6 @@ function liveFindings(order, emails) {
   const findings = [];
   const seen = (k) => withData.find((e) => e.extracted_data[k] != null)?.extracted_data[k];
 
-  const bol = seen('bol_number');
-  if (bol) findings.push(`BOL ${bol} captured from email${order.bol_number ? '' : ' — not yet on the PO'}.`);
   const carrier = seen('carrier');
   if (carrier && carrier !== order.carrier) findings.push(`Carrier per email: ${carrier}.`);
   const shipDate = seen('ship_date');
@@ -171,7 +166,6 @@ export default function PurchaseOrderDetail() {
           { l: 'Destination', v: order.destination_dc || 'TBD' },
           { l: 'Carrier', v: order.carrier || 'TBD' },
           { l: 'Freight', v: order.freight_handler || 'TBD' },
-          { l: 'BOL', v: order.bol_number || (order.bol_received ? 'Received' : 'Pending') },
           { l: 'Terms', v: order.payment_terms || '--' },
           { l: uom, v: format(order.total_cases ?? 0) },
         ].map((it) => (
@@ -226,8 +220,9 @@ export default function PurchaseOrderDetail() {
         </div>
       )}
 
-      {/* Delivery & Lots (BOL + lot numbers from delivery emails / manual) */}
-      <DeliveryLots poId={order.id} bolNumber={order.bol_number} />
+      {/* Finished-good lots shipped outbound to DOT (from delivery emails / manual).
+          Inbound BOLs live in Inventory → Reorder / Landing, not here. */}
+      <DeliveryLots poId={order.id} />
 
       {/* AI insight card (3.4) — synthesizes the agent's email extractions
           (po_emails.extracted_data: carrier/BOL/lots/anomalies, ship-date vs
