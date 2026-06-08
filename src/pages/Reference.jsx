@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, Fragment } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import Pill from '../components/Pill';
 import { ITEM_MASTER, ITEM_STATUS } from '../data/itemMaster';
@@ -147,8 +147,38 @@ function ProductsView() {
 
 // ── Raw Materials — Day 6.4 ────────────────────────────────────────────
 
+// Worst of a set of expiry statuses (partial_expired > almost_expired > good).
+function worstStatus(statuses) {
+  if (statuses.has('partial_expired')) return 'partial_expired';
+  if (statuses.has('almost_expired')) return 'almost_expired';
+  return 'good';
+}
+
+// Roll inventory items up to their normalized ingredient. Items linked to the
+// ingredient master (raw_materials.ingredient_id) group together; unlinked
+// items (FG batch / rework SKUs with no DC item #) stand alone under their own
+// name. Topline = ingredient total; the per-vendor rows expand underneath.
+function groupByIngredient(materials) {
+  const map = new Map();
+  for (const m of materials) {
+    const cat = m.ingredient_catalog;
+    const key = cat?.id ? `cat:${cat.id}` : `raw:${m.code}`;
+    if (!map.has(key)) {
+      map.set(key, { key, name: cat?.name || m.name, unit: m.unit, items: [], total: 0, statuses: new Set(), linked: !!cat?.id });
+    }
+    const g = map.get(key);
+    g.items.push(m);
+    g.total += m.quantity || 0;
+    g.statuses.add(m.expiry_status || 'good');
+  }
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
 function MaterialsList({ onSelect }) {
   const { materials, loading, error } = useRawMaterials();
+  const [expanded, setExpanded] = useState(() => new Set());
+  const groups = useMemo(() => groupByIngredient(materials), [materials]);
+
   if (loading) return <div className="text-sm text-gr py-10 text-center">Loading…</div>;
   if (error) return <div className="text-sm text-red-600">{error}</div>;
   if (!materials.length) {
@@ -161,49 +191,79 @@ function MaterialsList({ onSelect }) {
       </div>
     );
   }
+
+  const toggle = (key) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+
   return (
     <div className="bg-cd border border-lt rounded-xl overflow-hidden">
       <div className="px-3 py-2 text-[8px] font-semibold uppercase text-pk border-b border-lt">
-        Raw materials master · click for distributor detail
+        On-hand by ingredient · expand for the per-vendor breakdown
       </div>
       <table className="w-full border-collapse text-[11px]">
         <thead>
           <tr className="bg-pc">
-            <th className={TH}>Code</th>
             <th className={TH}>Ingredient</th>
-            <th className={THR}>Qty</th>
-            <th className={THR}>Lead</th>
-            <th className={TH}>Distributors</th>
+            <th className={THR}>Vendors</th>
+            <th className={THR}>On Hand</th>
             <th className={THC}>Flag</th>
           </tr>
         </thead>
         <tbody>
-          {materials.map((m) => {
-            const dists = (m.raw_material_suppliers ?? [])
-              .filter((s) => s.is_active !== false)
-              .map((s) => s.distributor)
-              .filter(Boolean);
-            const distText = [...new Set(dists)].join(', ') || '--';
+          {groups.map((g) => {
+            const isOpen = expanded.has(g.key);
             return (
-              <tr
-                key={m.code}
-                onClick={() => onSelect(m.code)}
-                className="border-b border-bg cursor-pointer hover:bg-pc"
-              >
-                <td className="px-3 py-2 font-mono text-[9px] text-gr">{m.code}</td>
-                <td className="px-3 py-2 font-semibold">{m.name}</td>
-                <td className="px-3 py-2 text-right font-bold">
-                  {qty(m.quantity)}
-                  <span className="text-[9px] text-gr ml-1">{m.unit}</span>
-                </td>
-                <td className={`px-3 py-2 text-right ${m.default_lead_days >= 21 ? 'text-amber-700' : 'text-gr'}`}>
-                  {m.default_lead_days}d
-                </td>
-                <td className="px-3 py-2 text-[10px] text-md">{distText}</td>
-                <td className="px-3 py-2 text-center">
-                  <Pill status={m.expiry_status || 'good'} />
-                </td>
-              </tr>
+              <Fragment key={g.key}>
+                <tr
+                  onClick={() => toggle(g.key)}
+                  className="border-b border-bg cursor-pointer hover:bg-pc"
+                >
+                  <td className="px-3 py-2 font-semibold text-dk">
+                    <span className="inline-block w-3 text-gr">{isOpen ? '▾' : '▸'}</span>
+                    {g.name}
+                    {!g.linked && (
+                      <span className="ml-1.5 text-[8px] uppercase text-gr">(unlinked)</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right text-md">{g.items.length}</td>
+                  <td className="px-3 py-2 text-right font-bold">
+                    {qty(g.total)}
+                    <span className="text-[9px] text-gr ml-1">{g.unit}</span>
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    <Pill status={worstStatus(g.statuses)} />
+                  </td>
+                </tr>
+                {isOpen &&
+                  g.items.map((m) => (
+                    <tr
+                      key={m.code}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelect(m.code);
+                      }}
+                      className="border-b border-bg cursor-pointer bg-bg/40 hover:bg-pc"
+                    >
+                      <td className="px-3 py-1.5 pl-8 text-[10px] text-md">
+                        {m.name}
+                        <span className="font-mono text-[8px] text-gr ml-1.5">{m.code}</span>
+                        <span className="text-pk text-[9px] ml-2 underline">detail →</span>
+                      </td>
+                      <td className="px-3 py-1.5" />
+                      <td className="px-3 py-1.5 text-right text-[10px]">
+                        {qty(m.quantity)}
+                        <span className="text-[9px] text-gr ml-1">{m.unit}</span>
+                      </td>
+                      <td className="px-3 py-1.5 text-center">
+                        <Pill status={m.expiry_status || 'good'} />
+                      </td>
+                    </tr>
+                  ))}
+              </Fragment>
             );
           })}
         </tbody>

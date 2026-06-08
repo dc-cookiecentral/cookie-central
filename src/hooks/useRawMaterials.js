@@ -13,7 +13,8 @@ export function useRawMaterials() {
     const { data, error } = await supabase
       .from('raw_materials')
       .select(
-        `id, code, name, quantity, unit, lot_count, expiry_status, default_lead_days, category,
+        `id, code, name, quantity, unit, lot_count, expiry_status, default_lead_days, category, ingredient_id,
+         ingredient_catalog ( id, name ),
          raw_material_suppliers ( id, distributor, brand, cost_per_unit, moq, lead_time_days, is_active )`
       )
       .eq('category', 'raw_material')
