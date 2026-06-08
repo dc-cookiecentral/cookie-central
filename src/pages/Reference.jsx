@@ -3,6 +3,7 @@ import { useSearchParams, Link } from 'react-router-dom';
 import Pill from '../components/Pill';
 import { ITEM_MASTER, ITEM_STATUS } from '../data/itemMaster';
 import { useRawMaterials } from '../hooks/useRawMaterials';
+import { useIngredientMaster } from '../hooks/useIngredientMaster';
 import {
   useRawMaterialDetail,
   addDistributor,
@@ -693,6 +694,160 @@ function RawMaterialsView({ initialCode }) {
   return <MaterialsList onSelect={setSelectedCode} />;
 }
 
+// ── Ingredient Master — sourcing catalog (ingredient_catalog/_suppliers) ──
+
+const CAT_LABEL = {
+  raw_material: 'Ingredient',
+  packaging: 'Packaging',
+  finished_good: 'Finished good',
+  wip: 'WIP',
+};
+
+function IngredientMasterList({ ingredients, onSelect }) {
+  return (
+    <div className="bg-cd border border-lt rounded-xl overflow-hidden">
+      <div className="px-3 py-2 text-[8px] font-semibold uppercase text-pk border-b border-lt">
+        Ingredient master · {ingredients.length} ingredients · click for sourcing detail
+      </div>
+      <table className="w-full border-collapse text-[11px]">
+        <thead>
+          <tr className="bg-pc">
+            <th className={TH}>Ingredient</th>
+            <th className={TH}>Type</th>
+            <th className={THR}>Sources</th>
+            <th className={THR}>From</th>
+            <th className={TH}>Distributors</th>
+          </tr>
+        </thead>
+        <tbody>
+          {ingredients.map((m) => {
+            const sups = m.ingredient_suppliers ?? [];
+            const dists = [...new Set(sups.map((s) => s.distributor).filter(Boolean))];
+            const costs = sups.map((s) => s.cost_per_unit).filter((c) => c != null);
+            const minCost = costs.length ? Math.min(...costs) : null;
+            return (
+              <tr
+                key={m.id}
+                onClick={() => onSelect(m.id)}
+                className="border-b border-bg cursor-pointer hover:bg-pc"
+              >
+                <td className="px-3 py-2 font-semibold text-dk">{m.name}</td>
+                <td className="px-3 py-2 text-[10px] text-md">{CAT_LABEL[m.category] || m.category}</td>
+                <td className="px-3 py-2 text-right font-bold">{sups.length}</td>
+                <td className="px-3 py-2 text-right text-md">
+                  {minCost != null ? `${usd(minCost)}/${m.unit || 'unit'}` : '--'}
+                </td>
+                <td className="px-3 py-2 text-[10px] text-md">{dists.join(', ') || '--'}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function IngredientMasterDetail({ ingredient, onBack }) {
+  const sups = (ingredient.ingredient_suppliers ?? [])
+    .slice()
+    .sort((a, b) => (a.cost_per_unit ?? Infinity) - (b.cost_per_unit ?? Infinity));
+  return (
+    <div className="bg-cd border border-lt rounded-xl p-4">
+      <div className="flex justify-between items-start mb-3">
+        <div>
+          <div className="text-lg font-black text-dk">{ingredient.name}</div>
+          <div className="text-[9px] text-gr mt-0.5">
+            {CAT_LABEL[ingredient.category] || ingredient.category} · {sups.length} sourcing option
+            {sups.length === 1 ? '' : 's'} · base unit {ingredient.unit || '--'}
+          </div>
+        </div>
+        <button onClick={onBack} className="bg-bg border border-lt rounded-md px-3 py-1 text-[10px] font-semibold text-md hover:text-pk">
+          Back
+        </button>
+      </div>
+
+      {sups.length ? (
+        <div className="overflow-x-auto border border-lt rounded-lg">
+          <table className="w-full border-collapse text-[11px] whitespace-nowrap">
+            <thead>
+              <tr className="bg-pc">
+                <th className={TH}>Distributor</th>
+                <th className={TH}>Brand</th>
+                <th className={TH}>DC Item #</th>
+                <th className={TH}>Supplier #</th>
+                <th className={TH}>Pkg</th>
+                <th className={THR}>Qty/Pkg</th>
+                <th className={TH}>Unit</th>
+                <th className={THR}>Cost</th>
+                <th className={THR}>Cost/Unit</th>
+                <th className={TH}>Priority</th>
+                <th className={TH}>Product Line</th>
+                <th className={TH}>Lead Time</th>
+                <th className={TH}>Shelf Life</th>
+                <th className={TH}>MOQ</th>
+                <th className={TH}>Terms</th>
+                <th className={TH}>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sups.map((s) => (
+                <tr key={s.id} className="border-b border-bg align-top">
+                  <td className="px-3 py-2 font-bold">{s.distributor || '--'}</td>
+                  <td className="px-3 py-2">{s.brand || '--'}</td>
+                  <td className="px-3 py-2 font-mono text-[9px] text-gr">{s.dc_item_number || '--'}</td>
+                  <td className="px-3 py-2 font-mono text-[9px] text-gr">{s.supplier_number || '--'}</td>
+                  <td className="px-3 py-2 text-md">{s.pkg_type || '--'}</td>
+                  <td className="px-3 py-2 text-right">{s.qty_per_package != null ? qty(s.qty_per_package) : '--'}</td>
+                  <td className="px-3 py-2 text-md">{s.unit || '--'}</td>
+                  <td className="px-3 py-2 text-right">{usd(s.cost)}</td>
+                  <td className="px-3 py-2 text-right font-semibold">{usd(s.cost_per_unit)}</td>
+                  <td className="px-3 py-2 text-md">{s.priority || '--'}</td>
+                  <td className="px-3 py-2 text-[10px] text-md">{s.product_line || '--'}</td>
+                  <td className="px-3 py-2 text-[10px] text-md">{s.lead_time_text || '--'}</td>
+                  <td className="px-3 py-2 text-[10px] text-md">{s.shelf_life_text || '--'}</td>
+                  <td className="px-3 py-2 text-[10px] text-md">{s.moq || '--'}</td>
+                  <td className="px-3 py-2 text-[10px] text-md">{s.terms || '--'}</td>
+                  <td className="px-3 py-2 text-[10px] text-gr max-w-xs whitespace-normal">{s.notes || '--'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="text-[10px] text-gr italic">No sourcing options recorded.</div>
+      )}
+      <div className="text-[7px] text-gr italic mt-2">
+        Sourcing catalog from the Ingredient Master upload — cost / MOQ / lead time per distributor.
+        Separate from live inventory (on-hand quantities + lots live under Raw Materials).
+      </div>
+    </div>
+  );
+}
+
+function IngredientMasterView() {
+  const { ingredients, loading, error } = useIngredientMaster();
+  const [selectedId, setSelectedId] = useState(null);
+
+  if (loading) return <div className="text-sm text-gr py-10 text-center">Loading…</div>;
+  if (error) return <div className="text-sm text-red-600">{error}</div>;
+  if (!ingredients.length) {
+    return (
+      <div className="bg-cd border border-lt rounded-xl p-8 text-center">
+        <div className="text-sm font-semibold text-dk mb-1">No ingredients yet</div>
+        <div className="text-xs text-md">
+          Import the catalog from Uploads → Reference Data → Ingredient Master.
+        </div>
+      </div>
+    );
+  }
+
+  const selected = ingredients.find((m) => m.id === selectedId);
+  if (selected) {
+    return <IngredientMasterDetail ingredient={selected} onBack={() => setSelectedId(null)} />;
+  }
+  return <IngredientMasterList ingredients={ingredients} onSelect={setSelectedId} />;
+}
+
 // ── Transitions — Day 6.5 ──────────────────────────────────────────────
 
 function TransitionCard({ tr, onToggle }) {
@@ -908,6 +1063,7 @@ function TransitionsView() {
 const VIEWS = [
   { key: 'products', label: 'Products' },
   { key: 'raw', label: 'Raw Materials' },
+  { key: 'ingredients', label: 'Ingredient Master' },
   { key: 'transitions', label: 'Transitions' },
 ];
 
@@ -937,6 +1093,7 @@ export default function Reference() {
 
       {view === 'products' && <ProductsView />}
       {view === 'raw' && <RawMaterialsView initialCode={material} />}
+      {view === 'ingredients' && <IngredientMasterView />}
       {view === 'transitions' && <TransitionsView />}
     </div>
   );
