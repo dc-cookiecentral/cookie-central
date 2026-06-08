@@ -1,0 +1,92 @@
+﻿Ingredient (Normalized),Brand/Supplier,DC Item #,Supplier #,Distributor,Pkg Type,Qty/Pkg,Unit,Cost,Cost/Unit,Priority,Product Line,Lead Time,Shelf Life,MOQ,Terms,Notes
+Liquid Eggs,Crystal Lake,110013,1100037,St Charles Trading Co,BIB,40,lbs,27.2,0.68,High,Kroger/Walmart,3-4 days,21 days,Pallet,$10K Net 30,$1.63 / lb Delivered to your facility
+Liquid Eggs,Newburg Egg,110014,WE-2120,Newburg Egg,BIB,30,lbs,29.4,0.98,High,Kroger/Walmart,1 wk,,Pallet,,
+Liquid Eggs,Rembrandt Foods,110014.2,0901R,Badger Murphy,BIB,40,lbs,44,1.1,High,Kroger/Walmart,1 wk,,N/A,Net 30,50 boxes per pallet.  12 wks shelf life.
+"Butter, Unsalted",Brand ?  80%,111011,,St Charles Trading Co,Box,50,lbs,92,1.84,Low,Everyday Baked Goods,,,,$10K Net 30,
+Flour,Ardent Mills - RTE Cake Flour,111001,4100277,St Charles Trading Co,Bags,50,lbs,27.65,0.553,High,Kroger/Walmart,1-2 days,365 days,FTL,$10K Net 30,50 bags per pallet - RTE Heat Treated Cake Flour
+Flour,Gold Medal - Pureasnow,111002,,St Charles Trading Co,Bags,50,lbs,17.5,0.35,Low,Everyday Baked Goods,,,,,
+Flour,Mennel Milling - RTE,111006,4100290,St Charles Trading Co,Bags,50,lbs,25,0.5,High,Kroger/Walmart,6-8 wks,365 days,FTL,$10K Net 30,850 Bags/ TL    50 bags/pallet    17 pallet / TL
+Flour,Siemer - RTE,111007,,St Charles Trading Co,Bags,50,lbs,27.5,0.55,High,Kroger/Walmart,3-4 wks,365 days,FTL,$10K Net 30,
+Flour,General Mills All-purpose - H & R,111010,,St Charles Trading Co,Bags,50,lbs,17,0.34,Low,Everyday Baked Goods,,365 days,,$10K Net 30,
+Margarine Trans Free,Bunge - 504,111005,990475,Dawn Foods,Box,50,lbs,56.11,1.1222,High,Kroger/Walmart,2 wks,,N/A,Net 30,"Lead times, we ask for about 2 weeks for a pallet or more. No MOQ- just hit order min of $740 total."
+Margarine Trans Free,Bunge - 500,111009,1060,Badger Murphy,Box,50,lbs,57.5,1.15,High,Kroger/Walmart,1 wk,,N/A,Net 30,
+Margarine Trans Free,Bunge - 578 - DF,111004,3091432,Dawn Foods,Box,50,lbs,50,1,High,Kroger/Walmart,2-3 wks,,N/A,Net 30,$56/cube for MOQ of 10 pallets (360 units total). ---36cs / pallet
+Margarine Trans Free,Bunge - 578 - SC,111008,Inactive,St Charles Trading Co,Box,50,lbs,50,1,High,Kroger/Walmart,,,,$10K Net 30,"50# cubes/36 per pallet - 20,000# MOQ - FOB Channahon, IL"
+Vanilla Blend,Molina Vanilla,112003,M010EX,Market 5201,Case,33.33,lbs,52.38,1.571557156,High,Kroger/Walmart,2 wks,,HTL,,"48 Boxes / Pallet  ---  1,152 cases (24 pallets)  3yr Shelf Life"
+Baking Soda,Natural Soda,113014,3000102,St Charles Trading Co,Bags,50,lbs,20.5,0.41,High,Kroger/Walmart,1-2 days,365 days,1 bag,$10K Net 30,"FOB McCook, IL"
+Baking Soda,Arm and Hammer,113015,,St Charles Trading Co,Bags,50,lbs,20.5,0.41,High,Kroger/Walmart,1-2 days,365 days,1 bag,$10K Net 30,
+Table Salt,Morton,113028,3100042,St Charles Trading Co,Bags,50,lbs,11.75,0.235,High,Kroger/Walmart,1-2 days,365 days,1 bag,$10K Net 30,"FOB McCook, IL"
+White Chocolate Chips 1000ct,Barry Callebaut,116047,2449777,Dawn Foods,Box,22,lbs,59,2.681818182,High,Walmart,2 wks,,N/A,Net 30,NOT REAL CHOCOLATE
+White Chocolate Chips 1000ct,Cacao - WCC1,116050,,National Cortina,Box,50,lbs,165.123,3.30246,High,Walmart,,,,,
+White Chocolate Chips 1000ct,IRCA - WCC1 30-lbs,116060,01981527,IRCA,Box,30,lbs,100.8,3.36,High,Walmart,4-6 wks,365 days,,,
+White Chocolate Chips 1000ct,IRCA - WCC1 50-lbs,116055,01982035,IRCA,Box,50,lbs,168,3.36,3.2,Walmart,4-6 wks,365 days,,,
+White Chocolate Chips 1000ct,Bachemy - WCC1,116068,,Barchemy,Box,25,lbs,82,3.28,,,,,,,
+White Chocolate Chips 4000ct,Barry Callebaut,116048,CHW-DR-2010602-036,Chris's Cookies,Box,30,lbs,178,5.933333333,High,Kroger,,,,,
+White Chocolate Chips 4000ct,,,,,Box,50,lbs,,,High,Kroger,,,,,
+White Chocolate Chips 4000ct,Cacao - WCC4,116051,1082844,National Cortina,Box,50,lbs,240.192,4.80384,High,Kroger,,,,,40 Cases / Pallet
+White Chocolate Chips 4000ct,IRCA - WCC4,116061,01981609,IRCA,Box,30,lbs,100.8,3.36,High,Kroger,4-6 wks,365 days,,,
+White Chocolate Chips 4000ct,Bachemy - WCC4,116069,,Barchemy,Box,25,lbs,,,,,,,,,
+Semi-Sweet Chocolate Chips 1000ct,Bakery Essentials - SSC1,116057,3048658,Dawn Foods,Box,25,lbs,124,4.96,High,Walmart,2 wks,,N/A,Net 30,"Lead times, we ask for about 2 weeks for a pallet or more. No MOQ- just hit order min of $740 total."
+Semi-Sweet Chocolate Chips 1000ct,Cacao - SSC1,116066,CCSS43-1M-CH-KP,National Cortina,Box,50,lbs,162.5,3.25,High,Walmart,,,,,
+Semi-Sweet Chocolate Chips 1000ct,IRCA - SSC1,116062,1981792,IRCA,Box,30,lbs,97.5,3.25,High,Walmart,4-6 wks,365 days,,,
+Semi-Sweet Chocolate Chips 1000ct,IRCA - SSC1,116067,1981794,IRCA,Box,50,lbs,162.5,3.25,High,Walmart,4-6 wks,365 days,,,
+Semi-Sweet Chocolate Chips 1000ct,Bachemy - SSC1,116059,,Barchemy,Box,25,lbs,83,3.32,High,Walmart,,,,,
+Peanut Butter Chips 1000ct,Hershey Reeses's 1k,116065,P335-250,TR Toppers,Box,25,lbs,107.97,4.3623,High,Walmart,,,,,Original Cost: $109.72
+Peanut Butter Chips 4000ct,Hershey Reeses's 4k,116063,P330-250,TR Toppers,Box,25,lbs,116.7,4.5369,High,Walmart,,,,,Original Cost: $117.45 ~ 4.7115
+Peanut Butter Chips 4000ct,Barchemy - PBC4,116049,ORAC23010501S,Barchemy,Box,25,lbs,61,2.4835,High,Walmart,,,,,"MOQ 21k (10 pallets)  -  84 case/ pallets  -  2,100-lbs/pallet    Ryan Walsh ~ Abe Froeman of transportation. Use price of $1250 (temperature controlled) for deliveries from Barchemy to Assemblers."
+Hazelnut,IRCA,,,IRCA,Pail,22.0462,lbs,89.2871,4.049999546,High,Everyday product,,,,,"FOB Duluth, GA"
+Strawberry Jam,Smucker's - 51500345573,116052,,St Charles Trading Co,Case,42,lbs,133.7,3.183333333,Low,Everyday product,,540 days,,$10K Net 30,Pulling from DOT?
+Grape Jelly,Smucker's,116053,2100332,St Charles Trading Co,Case,42,lbs,121.8,2.9,High,Walmart,2-3 wks,540 days,9 Pallets,$10K Net 30,Pulling from DOT ->   MOQ 15k-lbs (360 cases) -----40 cases per pallet---Need 6 pallets
+Grape Jelly,Smucker's,,51500727089,Smucker's,Case,42,lbs,108.48,2.582857143,High,Walmart,,,,,
+Fudge Filling,I. Rice & Co. - Premium,116056,,St Charles Trading Co,Case,60,lbs,151.2,2.52,High,Walmart,,,,$10K Net 30,
+Fudge Filling,I. Rice & Co. - Sundae Supreme,116058,,St Charles Trading Co,Case,47.625,lbs,94.2975,1.98,High,Walmart,,,,$10K Net 30,
+Fudge Filling,Sokol (Solina),116064,46-01-3575-AG,Solina,Pail,50,lbs,92,1.84,High,Walmart,4-6 wks,180 days,825 pails,,36 Pails/pallet -- Net Wt 1800-lbs -- Gross Wt 1908-lbs --756 pails / FTL -- $0.04/lb is for shipping.
+Fudge Filling,,,,IRCA,,,,,,High,Walmart,,,,,
+Marshmellow Fluff - RTU,Sweet Solutions,,900000,IRCA,Pail,30,lbs,76.8,2.56,High,Walmart,6-8wks,,Truckload,,
+Marshmellow Fluff,Sweet Solutions,,900001,IRCA,Pail,30,lbs,76.8,2.56,High,Walmart,,,,,
+Peanut Butter Spread,Fisher,116054,2500103 / 2300103,St Charles Trading Co,Pail,35,lbs,71.75,2.05,High,Walmart,4 wks,365 days,Pallet,$10K Net 30,"5,040 lbs (4 pallets MOQ) - 36 / pallet"
+Peanut Butter Spread,Jimbo,116070,2300216,St Charles Trading Co,Pail,35,lbs,66.5,1.9,High,Walmart,3 wks,365 days,,$10K Net 30,
+Granulated Sugar,Western Sugar,119001,,Dawn Foods,Bag,,lbs,26,,High,Kroger/Walmart,,,,,
+Granulated Sugar,Pioneer Sugar,119009,452152,Dawn Foods,Bag,50,lbs,26,0.52,High,Kroger/Walmart,2 wks,,N/A,Net 30,"Lead times, we ask for about 2 weeks for a pallet or more. No MOQ- just hit order min of $740 total."
+Light Brown Sugar,Bakery Essentials - LBS,119002,3028179,Dawn Foods,Bag,50,lbs,33,0.66,High,Kroger/Walmart,2 wks,,N/A,Net 30,Why $33.17 ?  See Invoice
+Granulated Sugar,Amerikoa Cane Sugar,119016,1530025,St Charles Trading Co,Bag,50,lbs,33,0.66,High,Kroger/Walmart,1 wk,365 days,,$10K Net 30,$0.60/lb if take a FTL
+Light Brown Sugar,Amerikoa Cane Brown Sugar,119017,1530023,St Charles Trading Co,Bag,50,lbs,34.5,0.69,High,Kroger/Walmart,,365 days,,$10K Net 30,
+"Sugar, Powdered (Confectionary) 10X",Amerikoa Cane Powdered Sugar,119018,1530022,St Charles Trading Co,Bag,50,lbs,36.5,0.73,High,Kroger,,365 days,,$10K Net 30,
+"Sugar, Powdered (Confectionary) 10X",Bakery Essentials - PSC,119003,2492784,Dawn Foods,Bag,50,lbs,30.9,0.618,High,Kroger/Walmart,2 wks,,N/A,Net 30,"Lead times, we ask for about 2 weeks for a pallet or more. No MOQ- just hit order min of $740 total."
+"Sugar, Powdered (Confectionary) 10X",Indiana Sugars,119010,3079560,Dawn Foods,Bag,50,lbs,29.9,0.598,High,Kroger/Walmart,,,,,
+Homemade Cookie Butter,Assemblers LLC,111368,,Assemblers LLC,Bag,50,lbs,,,High,See Ingredients Below,,,,,
+Homemade Cookie Butter,Chris's Cookie,111369,136-050CB,Chris's Cookies,Pail,45,lbs,221.95,4.932222222,High,See Ingredients Below,,,,,
+DC Homemade Cookie Butter - WMT,Fresh Coast Bakery,111370,CB370-050WMT,Fresh Coast Bakery,Pail,50,lbs,,,High,See Ingredients Below,,,,,
+DC Homemade Cookie Butter - KofK,Fresh Coast Bakery,111371,CB370-050KOFK,Fresh Coast Bakery,Pail,50,lbs,,,High,See Ingredients Below,,,,,
+Biscoff Crumble,Lotus - 3rd Party,119004,711biscrumbk,Webstaurant,Box,16.53465,lbs,69.29,4.190593693,High,Kroger/Walmart,,,,,STATUS
+Biscoff Crumble,Lotus - Direct,119011,52620,Lotus,Box,16.53465,lbs,50.33925,3.044470249,High,Kroger/Walmart,,,,,Cost is Delivered to McCook IL  ~  2.5% discount----40 boxes / Pallet
+GMO Free Palm Shortening,Bakery Essentials - PAS,119005,2505248,Dawn Foods,PET,50,lbs,70,1.4,High,Kroger/Walmart,2 wks,,N/A,Net 30,"Lead times, we ask for about 2 weeks for a pallet or more. No MOQ- just hit order min of $740 total."
+GMO Free Palm Shortening,Chris's Cookie,119012,,Chris's Cookie,,,,,1.28,,,,,,,
+GMO Free Canola Oil,Bakery Essentials - CAO,119006,2505298,Dawn Foods,PET,35,lbs,32,0.914285714,High,Kroger/Walmart,2 wks,,N/A,Net 30,"Lead times, we ask for about 2 weeks for a pallet or more. No MOQ- just hit order min of $740 total."
+GMO Free Canola Oil,Bakery Essentials - CAO MB,,,Dawn Foods,PET,35,lbs,,,High,Kroger/Walmart,2 wks,,N/A,Net 30,
+GMO Free Canola Oil,Chris's Cookie,119013,,Chris's Cookie,,,,,0.91,,,,,,,
+Citric Acid,Primient,119007,3000093,St Charles Trading Co,Bags,50,lbs,70.5,1.41,High,Kroger/Walmart,1-2 days,,1 bag,$10K Net 30,"FOB McCook, IL"
+Citric Acid,Chris's Cookie,119014,,Chris's Cookie,,,,,1.41,,,,,,,
+Sunflower Lecithin,Columbus Vegetable Oils,119008,2500169,St Charles Trading Co,Pail,44,lbs,116.16,2.64,High,Kroger/Walmart,1 week,,12 pail,$10K Net 30,36 / pallet
+Sunflower Lecithin,Chris's Cookie,119015,,Chris's Cookie,,,,,2.44,,,,,,,
+"Whole Milk, Powdered",Carlyn Dairy Products Inc,110015,9000082,St Charles Trading Co,Bags,50,lbs,170,3.4,Low,Everyday Baked Goods,1-2 wks,,Pallet,$10K Net 30,50 / pallet
+1,Moisturlok,111003,,PENDING,Pail,55,lbs,134.2,2.44,Low,Everyday Baked Goods,,,,,
+Moisturlok,Moisturlok,111003,23666,St Charles Trading Co,Pail,55,lbs,147.95,2.69,Low,Everyday Baked Goods,,,,$10K Net 30,"36 Pails per pallet.  1,980-lbs/pallet.   St Charles ($2.69/lbs)"
+Vanilla Pudding Powder,St Charles,112005,,St Charles Trading Co,,,,,,,,,,,$10K Net 30,
+Vanilla Pudding Powder,DYMA Brands,112004,,PENDING,,,lbs,,,Low,Everyday Baked Goods,2 wks,,N/A,,"Need Options - it's powder, Not crème"
+Tray,Five Star Packaging,120001,Tray (OSP) - Kroger,Five Star Packaging,Box,1080,Each,60.48,0.056,High,Kroger/Walmart,6-8 wks,,Truckload,,"812,160 (full load qty)-  56/m -----"
+Tray,Great River Plastic,121002,,Great River Plastic,,,,,,High,Kroger/Walmart,,,,,
+Film - Kroger WCCB,LallyPak,120002,0-11110-15412-5,LallyPak,Roll,3400,Each,312.8,0.092,High,Kroger,4-6 wks,,200000,,Weight per Roll ~ ??? / Feet ~ 2692    12 Rolls per Pallet
+Film - Kroger,LallyPak,,,LallyPak,Roll,3400,Each,,,High,Kroger,4-6 wks,,,,
+Film - Kroger,LallyPak,,,LallyPak,,,,,,,,,,,,
+Film - Kroger,LallyPak,,,LallyPak,Roll,3400,Each,,,High,Kroger,4-6 wks,,,,
+Film - Walmart WCCB,LallyPak,120003,,LallyPak,Roll,3500,Each,289,0.082571429,High,Walmart,4-6 wks,,,,
+Film - Walmart PBJ,LallyPak,120004,,LallyPak,Roll,3500,Each,289,0.082571429,High,Walmart,4-6 wks,,,,36 Rolls / pallet
+Film - Walmart CCF,LallyPak,120005,,LallyPak,Roll,3500,Each,289,0.082571429,High,Walmart,4-6 wks,,,,
+Black Currant Box,Green Bay Packaging,123007,13-1/16 x 11-3/4 x 7-1/2,Prime Packaging,Pallet,,Each,,,High,Walmart,,,,,
+SRP - 8 CT,Green Bay Packaging,123002,8-3/4 x 6-7/16 x 6-3/4,Green Bay Packaging,Pallet,1800,Each,550.75,0.305972222,High,Walmart,,,,,
+SRP - 12 CT,Green Bay Packaging,123001,6-1/2 x 13-3/4 x 7-1/2,Green Bay Packaging,Pallet,1600,Each,528,0.33,High,Kroger/Walmart,,,,,"Order QTY - 11/11 delivery of 15,120 pieces"
+DC Classic Frozen Dough - 12 ct 9 x 1.5oz - Kroger Film,Dirty Cookie,123003,C-F-SC-WCCB-12-13-KF,Dirty Cookie,Case,12,Each,15.12,1.26,High,Kroger/Walmart,,,,,"Order QTY - 11/11 delivery of 15,120 pieces"
+DC Classic Frozen Dough - 12 ct 4 x 3oz - WMT WCCB Film,Dirty Cookie,123004,C-F-SC-WCCB-12-12-WMT,Dirty Cookie,Case,12,Each,8.16,0.68,High,Walmart,,,,,"Order QTY - 11/11 delivery of 15,120 pieces"
+DC Classic Frozen Dough - 12 ct 4 x 3oz - WMT BPG Film,Dirty Cookie,123005,C-F-SC-PBG-12-12-WMT,Dirty Cookie,Case,12,Each,8.16,0.68,High,Walmart,,,,,
+DC Classic Frozen Dough - 12 ct 4 x 3oz - WMT CCF Film,Dirty Cookie,123006,C-F-SC-CCF-12-12-WMT,Dirty Cookie,Case,12,Each,8.16,0.68,High,Walmart,,,,,

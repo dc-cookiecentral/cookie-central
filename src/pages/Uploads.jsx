@@ -33,6 +33,13 @@ const SECTIONS = [
       { planned: true, title: 'Inventory', note: 'TBD' },
     ],
   },
+  {
+    origin: 'Reference Data',
+    note: 'Master catalogs that change rarely and underpin the operational feeds — sourcing options, specs, and the like. Independent of live inventory counts.',
+    items: [
+      { type: 'ingredient_master', title: 'Ingredient Master', note: 'Bulk import: one CSV of every ingredient × distributor × brand sourcing option (cost, MOQ, lead time, terms). Builds the ingredient_catalog + ingredient_suppliers tables.' },
+    ],
+  },
 ];
 
 function PlannedCard({ title, note }) {

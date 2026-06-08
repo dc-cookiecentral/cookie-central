@@ -4,9 +4,10 @@ import dot from './dot';
 import qbo from './qbo';
 import netsuite from './netsuite';
 import cortinaPO from './cortinaPO';
+import ingredientMaster from './ingredientMaster';
 
 // Registry keyed by upload_log.upload_type.
-export const PARSERS = { cortina_po: cortinaPO, netsuite, assemblers, production, dot, qbo };
+export const PARSERS = { cortina_po: cortinaPO, netsuite, assemblers, production, dot, qbo, ingredient_master: ingredientMaster };
 
 export function getParser(type) {
   return PARSERS[type] || null;
