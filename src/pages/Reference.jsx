@@ -4,6 +4,7 @@ import Pill from '../components/Pill';
 import { ITEM_MASTER, ITEM_STATUS } from '../data/itemMaster';
 import { useRawMaterials } from '../hooks/useRawMaterials';
 import { useIngredientMaster } from '../hooks/useIngredientMaster';
+import { groupByIngredient, worstStatus } from '../utils/ingredientGrouping';
 import {
   useRawMaterialDetail,
   addDistributor,
@@ -146,33 +147,6 @@ function ProductsView() {
 }
 
 // ── Raw Materials — Day 6.4 ────────────────────────────────────────────
-
-// Worst of a set of expiry statuses (partial_expired > almost_expired > good).
-function worstStatus(statuses) {
-  if (statuses.has('partial_expired')) return 'partial_expired';
-  if (statuses.has('almost_expired')) return 'almost_expired';
-  return 'good';
-}
-
-// Roll inventory items up to their normalized ingredient. Items linked to the
-// ingredient master (raw_materials.ingredient_id) group together; unlinked
-// items (FG batch / rework SKUs with no DC item #) stand alone under their own
-// name. Topline = ingredient total; the per-vendor rows expand underneath.
-function groupByIngredient(materials) {
-  const map = new Map();
-  for (const m of materials) {
-    const cat = m.ingredient_catalog;
-    const key = cat?.id ? `cat:${cat.id}` : `raw:${m.code}`;
-    if (!map.has(key)) {
-      map.set(key, { key, name: cat?.name || m.name, unit: m.unit, items: [], total: 0, statuses: new Set(), linked: !!cat?.id });
-    }
-    const g = map.get(key);
-    g.items.push(m);
-    g.total += m.quantity || 0;
-    g.statuses.add(m.expiry_status || 'good');
-  }
-  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
-}
 
 function MaterialsList({ onSelect }) {
   const { materials, loading, error } = useRawMaterials();

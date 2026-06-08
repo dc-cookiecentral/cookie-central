@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useMemo, Fragment } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Pill from './Pill';
 import { useDotInventory } from '../hooks/useDotInventory';
 import { useAssemblersInventory } from '../hooks/useAssemblersInventory';
 import { useIncomingInventory } from '../hooks/useRawMaterialOrders';
 import { formatDateTime } from '../utils/dates';
+import { groupByIngredient, worstStatus } from '../utils/ingredientGrouping';
 
 const TH = 'px-2 py-2 text-left text-[9px] font-bold text-gr uppercase tracking-wider';
 const THR = TH + ' text-right';
@@ -41,6 +42,17 @@ export default function WarehouseView() {
   const incoming = useIncomingInventory();
   const [open, setOpen] = useState({ dot: true, asm: true });
   const toggle = (k) => setOpen((o) => ({ ...o, [k]: !o[k] }));
+
+  // Topline raw-material stock rolled up to the normalized ingredient; vendor
+  // rows expand underneath (parallels Reference > Raw Materials).
+  const asmGroups = useMemo(() => groupByIngredient(asm.rawMaterials), [asm.rawMaterials]);
+  const [expanded, setExpanded] = useState(() => new Set());
+  const toggleGroup = (key) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
 
   return (
     <div className="bg-cd border border-lt rounded-xl overflow-hidden">
@@ -134,7 +146,7 @@ export default function WarehouseView() {
         ) : (
           <>
             <div className="px-3 pt-1.5 pb-0.5 text-[8px] font-semibold text-md uppercase flex items-center justify-between flex-wrap gap-1">
-              <span>Raw Materials — click for Reference detail</span>
+              <span>Raw Materials — on-hand by ingredient · expand for vendors</span>
               <span className="normal-case font-normal text-gr">
                 On Hand received ·{' '}
                 <span className="text-blue-700 font-semibold">Ordered</span> placed ·{' '}
@@ -144,7 +156,6 @@ export default function WarehouseView() {
             <table className="w-full border-collapse text-[11px]">
               <thead>
                 <tr className="bg-pc">
-                  <th className={TH}>Code</th>
                   <th className={TH}>Ingredient</th>
                   <th className={THR}>On Hand</th>
                   <th className={THR + ' text-blue-700'}>Ordered</th>
@@ -155,64 +166,121 @@ export default function WarehouseView() {
                 </tr>
               </thead>
               <tbody>
-                {asm.rawMaterials.map((rm) => {
-                  const inc = incoming[rm.id] || { ordered: 0, shipped: 0 };
-                  const onHand = rm.quantity ?? 0;
+                {asmGroups.map((g) => {
+                  const isOpen = expanded.has(g.key);
+                  const inc = g.items.reduce(
+                    (acc, m) => {
+                      const i = incoming[m.id] || { ordered: 0, shipped: 0 };
+                      acc.ordered += i.ordered;
+                      acc.shipped += i.shipped;
+                      return acc;
+                    },
+                    { ordered: 0, shipped: 0 }
+                  );
+                  const onHand = g.total;
                   const totalExp = onHand + inc.ordered + inc.shipped;
+                  const maxLead = g.items.reduce((mx, m) => Math.max(mx, m.default_lead_days || 0), 0);
+                  const expired = g.items.reduce((s, m) => s + (m.expired_quantity || 0), 0);
+                  const status = worstStatus(g.statuses);
                   return (
-                  <tr
-                    key={rm.code}
-                    onClick={() => navigate(`/reference?material=${encodeURIComponent(rm.code)}`)}
-                    className={`border-b border-bg cursor-pointer hover:bg-pc ${
-                      rm.expiry_status === 'partial_expired'
-                        ? 'bg-red-50'
-                        : rm.expiry_status === 'almost_expired'
-                        ? 'bg-amber-50'
-                        : ''
-                    }`}
-                  >
-                    <td className="px-2 py-1.5 font-semibold text-gr text-[8px] font-mono">{rm.code}</td>
-                    <td className="px-2 py-1.5 font-semibold">
-                      {rm.name}
-                      {rm.expired_quantity > 0 && (
-                        <span className="text-[8px] text-red-600 ml-1">
-                          ({rm.expired_quantity.toLocaleString()} exp)
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-2 py-1.5 text-right font-bold">
-                      {onHand.toLocaleString()}
-                      <span className="text-[8px] text-gr ml-0.5">{rm.unit}</span>
-                    </td>
-                    <td className="px-2 py-1.5 text-right">
-                      {inc.ordered > 0 ? (
-                        <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-blue-100 text-blue-700">
-                          +{inc.ordered.toLocaleString()}
-                        </span>
-                      ) : (
-                        <span className="text-lt">--</span>
-                      )}
-                    </td>
-                    <td className="px-2 py-1.5 text-right">
-                      {inc.shipped > 0 ? (
-                        <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-violet-100 text-violet-700">
-                          +{inc.shipped.toLocaleString()}
-                        </span>
-                      ) : (
-                        <span className="text-lt">--</span>
-                      )}
-                    </td>
-                    <td className="px-2 py-1.5 text-right font-extrabold">
-                      {totalExp.toLocaleString()}
-                      <span className="text-[8px] text-gr ml-0.5">{rm.unit}</span>
-                    </td>
-                    <td className={`px-2 py-1.5 text-right ${rm.default_lead_days >= 21 ? 'text-amber-600' : 'text-gr'}`}>
-                      {rm.default_lead_days != null ? `${rm.default_lead_days}d` : '--'}
-                    </td>
-                    <td className="px-2 py-1.5 text-center">
-                      <Pill status={rm.expiry_status} />
-                    </td>
-                  </tr>
+                    <Fragment key={g.key}>
+                      <tr
+                        onClick={() => toggleGroup(g.key)}
+                        className={`border-b border-bg cursor-pointer hover:bg-pc ${
+                          status === 'partial_expired'
+                            ? 'bg-red-50'
+                            : status === 'almost_expired'
+                            ? 'bg-amber-50'
+                            : ''
+                        }`}
+                      >
+                        <td className="px-2 py-1.5 font-semibold">
+                          <span className="inline-block w-3 text-gr">{isOpen ? '▾' : '▸'}</span>
+                          {g.name}
+                          {g.items.length > 1 && (
+                            <span className="text-[8px] text-gr ml-1">×{g.items.length}</span>
+                          )}
+                          {expired > 0 && (
+                            <span className="text-[8px] text-red-600 ml-1">
+                              ({expired.toLocaleString()} exp)
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-2 py-1.5 text-right font-bold">
+                          {onHand.toLocaleString()}
+                          <span className="text-[8px] text-gr ml-0.5">{g.unit}</span>
+                        </td>
+                        <td className="px-2 py-1.5 text-right">
+                          {inc.ordered > 0 ? (
+                            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-blue-100 text-blue-700">
+                              +{inc.ordered.toLocaleString()}
+                            </span>
+                          ) : (
+                            <span className="text-lt">--</span>
+                          )}
+                        </td>
+                        <td className="px-2 py-1.5 text-right">
+                          {inc.shipped > 0 ? (
+                            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-violet-100 text-violet-700">
+                              +{inc.shipped.toLocaleString()}
+                            </span>
+                          ) : (
+                            <span className="text-lt">--</span>
+                          )}
+                        </td>
+                        <td className="px-2 py-1.5 text-right font-extrabold">
+                          {totalExp.toLocaleString()}
+                          <span className="text-[8px] text-gr ml-0.5">{g.unit}</span>
+                        </td>
+                        <td className={`px-2 py-1.5 text-right ${maxLead >= 21 ? 'text-amber-600' : 'text-gr'}`}>
+                          {maxLead ? `${maxLead}d` : '--'}
+                        </td>
+                        <td className="px-2 py-1.5 text-center">
+                          <Pill status={status} />
+                        </td>
+                      </tr>
+                      {isOpen &&
+                        g.items.map((rm) => {
+                          const i = incoming[rm.id] || { ordered: 0, shipped: 0 };
+                          const itemExp = (rm.quantity ?? 0) + i.ordered + i.shipped;
+                          return (
+                            <tr
+                              key={rm.code}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`/reference?material=${encodeURIComponent(rm.code)}`);
+                              }}
+                              className="border-b border-bg cursor-pointer bg-bg/40 hover:bg-pc"
+                            >
+                              <td className="px-2 py-1 pl-7 text-[10px] text-md">
+                                {rm.name}
+                                <span className="font-mono text-[8px] text-gr ml-1.5">{rm.code}</span>
+                                <span className="text-pk text-[9px] ml-2 underline">detail →</span>
+                              </td>
+                              <td className="px-2 py-1 text-right text-[10px]">
+                                {(rm.quantity ?? 0).toLocaleString()}
+                                <span className="text-[8px] text-gr ml-0.5">{rm.unit}</span>
+                              </td>
+                              <td className="px-2 py-1 text-right text-[10px] text-blue-700">
+                                {i.ordered > 0 ? `+${i.ordered.toLocaleString()}` : <span className="text-lt">--</span>}
+                              </td>
+                              <td className="px-2 py-1 text-right text-[10px] text-violet-700">
+                                {i.shipped > 0 ? `+${i.shipped.toLocaleString()}` : <span className="text-lt">--</span>}
+                              </td>
+                              <td className="px-2 py-1 text-right text-[10px] font-semibold">
+                                {itemExp.toLocaleString()}
+                                <span className="text-[8px] text-gr ml-0.5">{rm.unit}</span>
+                              </td>
+                              <td className={`px-2 py-1 text-right text-[10px] ${rm.default_lead_days >= 21 ? 'text-amber-600' : 'text-gr'}`}>
+                                {rm.default_lead_days != null ? `${rm.default_lead_days}d` : '--'}
+                              </td>
+                              <td className="px-2 py-1 text-center">
+                                <Pill status={rm.expiry_status} />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </Fragment>
                   );
                 })}
               </tbody>

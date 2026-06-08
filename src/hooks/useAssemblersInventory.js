@@ -14,7 +14,7 @@ export function useAssemblersInventory() {
     let active = true;
     supabase
       .from('raw_materials')
-      .select('id, code, name, quantity, unit, lot_count, expiry_status, expired_quantity, default_lead_days, category, last_upload_at')
+      .select('id, code, name, quantity, unit, lot_count, expiry_status, expired_quantity, default_lead_days, category, last_upload_at, ingredient_id, ingredient_catalog ( id, name )')
       .in('category', ['raw_material', 'packaging'])
       .order('name')
       .then(({ data, error }) => {
