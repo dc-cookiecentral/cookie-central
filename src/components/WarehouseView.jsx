@@ -46,6 +46,7 @@ export default function WarehouseView() {
   // Topline raw-material stock rolled up to the normalized ingredient; vendor
   // rows expand underneath (parallels Reference > Raw Materials).
   const asmGroups = useMemo(() => groupByIngredient(asm.rawMaterials), [asm.rawMaterials]);
+  const pkgGroups = useMemo(() => groupByIngredient(asm.packaging), [asm.packaging]);
   const [expanded, setExpanded] = useState(() => new Set());
   const toggleGroup = (key) =>
     setExpanded((prev) => {
@@ -289,22 +290,54 @@ export default function WarehouseView() {
             {asm.packaging.length > 0 && (
               <>
                 <div className="px-3 pt-1.5 pb-0.5 text-[8px] font-semibold text-md uppercase border-t border-lt">
-                  Packaging
+                  Packaging — on-hand by item · expand for vendors
                 </div>
                 <table className="w-full border-collapse text-[11px]">
                   <tbody>
-                    {asm.packaging.map((pk) => (
-                      <tr key={pk.code} className="border-b border-bg">
-                        <td className="px-2 py-1.5 font-semibold text-gr text-[8px] font-mono w-[60px]">
-                          {pk.code}
-                        </td>
-                        <td className="px-2 py-1.5 font-semibold">{pk.name}</td>
-                        <td className="px-2 py-1.5 text-right font-bold">
-                          {(pk.quantity ?? 0).toLocaleString()}
-                          <span className="text-[8px] text-gr ml-0.5">{pk.unit}</span>
-                        </td>
-                      </tr>
-                    ))}
+                    {pkgGroups.map((g) => {
+                      const isOpen = expanded.has(g.key);
+                      return (
+                        <Fragment key={g.key}>
+                          <tr
+                            onClick={() => toggleGroup(g.key)}
+                            className="border-b border-bg cursor-pointer hover:bg-pc"
+                          >
+                            <td className="px-2 py-1.5 font-semibold">
+                              <span className="inline-block w-3 text-gr">{isOpen ? '▾' : '▸'}</span>
+                              {g.name}
+                              {g.items.length > 1 && (
+                                <span className="text-[8px] text-gr ml-1">×{g.items.length}</span>
+                              )}
+                            </td>
+                            <td className="px-2 py-1.5 text-right font-bold">
+                              {g.total.toLocaleString()}
+                              <span className="text-[8px] text-gr ml-0.5">{g.unit}</span>
+                            </td>
+                          </tr>
+                          {isOpen &&
+                            g.items.map((pk) => (
+                              <tr
+                                key={pk.code}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate(`/reference?material=${encodeURIComponent(pk.code)}`);
+                                }}
+                                className="border-b border-bg cursor-pointer bg-bg/40 hover:bg-pc"
+                              >
+                                <td className="px-2 py-1 pl-7 text-[10px] text-md">
+                                  {pk.name}
+                                  <span className="font-mono text-[8px] text-gr ml-1.5">{pk.code}</span>
+                                  <span className="text-pk text-[9px] ml-2 underline">detail →</span>
+                                </td>
+                                <td className="px-2 py-1 text-right text-[10px]">
+                                  {(pk.quantity ?? 0).toLocaleString()}
+                                  <span className="text-[8px] text-gr ml-0.5">{pk.unit}</span>
+                                </td>
+                              </tr>
+                            ))}
+                        </Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </>
