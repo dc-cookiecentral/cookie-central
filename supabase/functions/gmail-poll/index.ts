@@ -17,7 +17,14 @@ import {
   getMessage,
   parseMessage,
 } from '../_shared/gmail.ts';
-import { classifyEmail } from '../_shared/anthropic.ts';
+import { classifyEmail, type Classification } from '../_shared/anthropic.ts';
+
+// The Walmart weekly report is deterministic: subject "Dirty Cookie | Weekly
+// Reporting | WK##" from blayn@bentonvillemerchants.com. Match it directly and
+// skip the Haiku classification call — faster, cheaper, and more reliable than
+// AI for this fixed-format email.
+const WEEKLY_SUBJECT_RE = /Dirty Cookie.*Weekly Reporting.*WK(\d+)/i;
+const WEEKLY_SENDER = 'blayn@bentonvillemerchants.com';
 
 Deno.serve(async (req) => {
   const pre = handleCors(req);
@@ -58,13 +65,26 @@ Deno.serve(async (req) => {
       }
 
       const parsed = parseMessage(await getMessage(accessToken, m.id));
-      const label = await classifyEmail(apiKey, {
-        from: parsed.from,
-        subject: parsed.subject,
-        snippet: parsed.snippet,
-        body: parsed.body,
-        attachments: parsed.attachments,
-      });
+
+      // Fast-path: the weekly report is identifiable by subject + sender alone,
+      // so classify it deterministically and skip the Haiku call.
+      const wk = (parsed.subject ?? '').match(WEEKLY_SUBJECT_RE);
+      const isWeekly =
+        !!wk && (parsed.fromEmail ?? '').toLowerCase() === WEEKLY_SENDER;
+      const weekNumber = wk ? `WK${wk[1]}` : null;
+
+      let label: Classification;
+      if (isWeekly) {
+        label = 'weekly_report';
+      } else {
+        label = await classifyEmail(apiKey, {
+          from: parsed.from,
+          subject: parsed.subject,
+          snippet: parsed.snippet,
+          body: parsed.body,
+          attachments: parsed.attachments,
+        });
+      }
 
       const { error } = await supabase.from('gmail_messages').insert({
         gmail_message_id: parsed.id,
@@ -83,6 +103,7 @@ Deno.serve(async (req) => {
             attachmentId: a.attachmentId,
             mimeType: a.mimeType,
           })),
+          ...(weekNumber ? { week_number: weekNumber } : {}),
         },
       });
       if (error) {

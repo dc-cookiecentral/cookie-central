@@ -27,71 +27,136 @@ const num = (s) => {
 };
 
 // Parse extracted PDF text into one PO record (+ _lines). Pure + exported so the
-// regex is unit-testable without a PDF. Operates on a whitespace-flattened copy
-// so it's robust to how pdfjs lays out lines/spacing.
+// regex is unit-testable without a PDF.
+//
+// Resilience (the format varies PO-to-PO): header fields are pulled with
+// tolerant regexes off a whitespace-flattened copy; line items are scanned
+// PER LINE (any line ending in "<qty> $<unit> $<ext>" is an item, SKU = its
+// first token) so it handles N items and varying decimal precision. Every field
+// is extracted inside a guard that logs WHICH field failed instead of aborting
+// the whole parse, so one odd field never crashes the upload.
 export function parsePoText(text) {
   const errors = [];
-  const flat = String(text).replace(/\s+/g, ' ').trim();
-  const grab = (re) => flat.match(re)?.[1]?.trim() ?? null;
+  const raw = String(text ?? '');
+  const flat = raw.replace(/\s+/g, ' ').trim();
+  const rawLines = raw.split('\n').map((l) => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
 
-  const po_number = grab(/PO Number:\s*([A-Za-z0-9-]+)/i);
+  // Run one field's extractor; on an unexpected throw, record which field broke
+  // (and the message) and keep going with null.
+  const field = (name, fn) => {
+    try {
+      return fn();
+    } catch (e) {
+      errors.push({ row: 0, message: `Field "${name}": ${e?.message ?? e}` });
+      return null;
+    }
+  };
+  const grab = (re) => flat.match(re)?.[1]?.trim() ?? null;
+  const DATE = String.raw`\d{1,2}[-/]\d{1,2}[-/]\d{4}`; // MM-DD-YYYY or M/D/YYYY
+
+  const po_number = field('po_number', () =>
+    grab(/PO\s*(?:Number|No\.?|#)\s*:?\s*([A-Za-z0-9][A-Za-z0-9-]*)/i)
+  );
   if (!po_number) errors.push({ row: 0, message: 'PO Number not found in PDF' });
 
-  const order_date = isoDate(grab(/\bDate:\s*(\d{1,2}-\d{1,2}-\d{4})/i));
+  // Order date: the first labelled "Date: <date>" (Ship/Delivery dates carry
+  // their own labels and live in the terms row, so they don't collide here).
+  const order_date = field('order_date', () =>
+    isoDate(grab(new RegExp(String.raw`\bDate\s*:?\s*(${DATE})`, 'i')))
+  );
 
-  // Ship-to block: "Dot Foods <Retailer>" — the line after Dot Foods is the retailer.
-  const retailer = /Dot Foods\s+Kroger/i.test(flat) || /\bKroger\b/i.test(flat)
-    ? 'Kroger'
-    : 'Walmart';
-  const destination_dc = /Dot Foods/i.test(flat) ? 'Dot Foods' : null;
+  const retailer =
+    field('retailer', () => (/\bKroger\b/i.test(flat) ? 'Kroger' : 'Walmart')) ?? 'Walmart';
+  const destination_dc = field('destination_dc', () => (/Dot Foods/i.test(flat) ? 'Dot Foods' : null));
 
-  const incoterms = grab(/Incoterms\s+(.+?)\s+Payment Terms/i);
+  const incoterms = field('incoterms', () => grab(/Incoterms\s+(.+?)\s+Payment Terms/i));
 
-  // Payment-terms table: a header row then a values row. Anchor on the two
-  // delivery dates so the multi-word fields (terms, shipping method) split cleanly.
+  // Terms / ship date / required-delivery date / carrier. Primary path: split
+  // the values row after the "Shipping Method" header. Both date separators are
+  // accepted, and label-adjacent fallbacks below cover layouts where the dates
+  // sit on their own labelled lines instead of in the values row.
   let payment_terms = null;
   let customer_order_number = null;
   let ship_date_original = null;
   let mabd = null;
   let carrier = null;
-  const termsRow = grab(/Shipping Method\s+(.+?)\s+Item\s+Item Name/i);
-  if (termsRow) {
-    const t = termsRow.match(
-      /^(.+?)\s+(\S+)\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+(.+)$/
+
+  field('terms_row', () => {
+    const termsRow =
+      grab(/Shipping Method\s+(.+?)\s+Item\s+Item\s*Name/i) ||
+      grab(/Shipping Method\s+(.+?)\s+(?:Item\b|U\/M\b)/i);
+    if (!termsRow) return;
+    const dates = [...termsRow.matchAll(new RegExp(DATE, 'g'))].map((m) => m[0]);
+    if (dates[0]) ship_date_original = isoDate(dates[0]);
+    if (dates[1]) mabd = isoDate(dates[1]);
+
+    // Strict layout: "<terms> <custOrder> <date> <date> <carrier>".
+    const strict = termsRow.match(
+      new RegExp(String.raw`^(.+?)\s+(\S+)\s+${DATE}\s+${DATE}\s+(.+)$`)
     );
-    if (t) {
-      payment_terms = t[1].trim();
-      customer_order_number = /^(na|n\/a)$/i.test(t[2].trim()) ? null : t[2].trim();
-      ship_date_original = isoDate(t[3]);
-      mabd = isoDate(t[4]);
-      carrier = t[5].trim();
-    } else {
-      errors.push({ row: 0, message: `Could not split terms row: "${termsRow}"` });
+    if (strict) {
+      payment_terms = strict[1].trim();
+      customer_order_number = /^(na|n\/a|none)$/i.test(strict[2].trim()) ? null : strict[2].trim();
+      carrier = strict[3].trim();
+    } else if (dates.length) {
+      // Loose: terms = text before the first date; carrier = text after the last.
+      const first = dates[0];
+      const last = dates[dates.length - 1];
+      payment_terms = termsRow.slice(0, termsRow.indexOf(first)).trim() || null;
+      carrier = termsRow.slice(termsRow.lastIndexOf(last) + last.length).trim() || null;
     }
+  });
+
+  // Label-adjacent fallbacks (dates on their own labelled lines, not in the row).
+  if (!ship_date_original) {
+    ship_date_original = field('ship_date', () =>
+      isoDate(grab(new RegExp(String.raw`Ship Date\s*:?\s*(${DATE})`, 'i')))
+    );
+  }
+  if (!mabd) {
+    mabd = field('mabd', () =>
+      isoDate(
+        grab(
+          new RegExp(
+            String.raw`(?:Required Delivery Date|Must Arrive By(?: Date)?|MABD|Delivery Date)\s*:?\s*(${DATE})`,
+            'i'
+          )
+        )
+      )
+    );
+  }
+  if (!payment_terms) {
+    payment_terms = field('payment_terms', () =>
+      grab(/Payment Terms\s*:?\s*(.+?)\s+(?:Customer Order|Ship Date|Incoterms|Item\b)/i)
+    );
   }
 
-  const total_amount = num(grab(/Total\s+\$([\d,]+\.\d{2})/i));
+  // Grand total: the last "$amount" following a "Total" label (skips any subtotal).
+  const total_amount = field('total_amount', () => {
+    const all = [...flat.matchAll(/\bTotal\s*:?\s*\$?\s*([\d,]+\.\d{2})/gi)];
+    const last = all[all.length - 1];
+    return last ? num(last[1]) : null;
+  });
 
-  // Line items: the slice between the table header ("Ext. Cost") and "Comment"/Total.
-  // Item codes are 12+ char uppercase tokens; each amount row is "<qty> $<unit> $<ext>".
-  const section = flat.match(/Ext\.?\s*Cost\s+(.+?)\s+(?:Comment|Total\s+\$)/i)?.[1] ?? '';
-  const codes = section.match(/\b[A-Z][A-Z0-9]{11,}\b/g) ?? [];
-  const vals = [...section.matchAll(/([\d,]+)\s+\$(\d+(?:\.\d+)?)\s+\$([\d,]+\.\d{2})/g)];
-  const _lines = [];
-  for (let i = 0; i < Math.min(codes.length, vals.length); i++) {
-    _lines.push({
-      sku: codes[i],
-      quantity_cases: parseInt(String(vals[i][1]).replace(/,/g, ''), 10),
-      unit_cost: num(vals[i][2]),
-      line_total: num(vals[i][3]),
-    });
-  }
-  if (codes.length !== vals.length) {
-    errors.push({
-      row: 0,
-      message: `Line-item mismatch: ${codes.length} item code(s) vs ${vals.length} amount row(s)`,
-    });
-  }
+  // Line items: any line ending in "<qty> $<unit> $<ext>" — SKU is the first
+  // token. Handles any number of items and any unit-cost precision; the grand-
+  // total line (one amount, no qty/unit pair) and wrapped name lines don't match.
+  const _lines =
+    field('line_items', () => {
+      const out = [];
+      const LINE_RE = /^(\S+)\s+.*?([\d,]+)\s+\$?(\d+(?:\.\d+)?)\s+\$?([\d,]+\.\d{2})\s*$/;
+      for (const line of rawLines) {
+        const m = line.match(LINE_RE);
+        if (!m || /^total$/i.test(m[1])) continue;
+        out.push({
+          sku: m[1],
+          quantity_cases: parseInt(String(m[2]).replace(/,/g, ''), 10),
+          unit_cost: num(m[3]),
+          line_total: num(m[4]),
+        });
+      }
+      return out;
+    }) ?? [];
   if (!_lines.length) errors.push({ row: 0, message: 'No line items parsed' });
 
   const total_cases = _lines.reduce((s, l) => s + (l.quantity_cases || 0), 0);

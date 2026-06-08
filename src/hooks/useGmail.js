@@ -26,15 +26,34 @@ export function useGmailStatus() {
   return { status, loading, refresh };
 }
 
-// Invoke gmail-poll (which classifies new mail and tail-calls gmail-extract).
+// "Check for new": poll (classify) then extract (process), sequentially, from
+// the client. gmail-poll tail-calls gmail-extract server-side too, but that
+// tail-call has proven unreliable (fails silently — e.g. WK18 classified but
+// never extracted), so we invoke gmail-extract explicitly here to guarantee
+// extraction runs on every click. gmail-extract is idempotent (only touches
+// processed=false rows), so the redundant call is safe.
 // Returns { data, error } — data carries { scanned, classified, skipped, extract }.
 export async function checkForNew() {
-  const { data, error } = await supabase.functions.invoke('gmail-poll', {
-    body: { trigger: 'manual' },
-  });
-  if (error) return { error: error.message };
-  if (data?.error) return { error: data.error };
-  return { data };
+  // a) classify new mail
+  const poll = await supabase.functions.invoke('gmail-poll', { body: { trigger: 'manual' } });
+  if (poll.error) return { error: poll.error.message };
+  if (poll.data?.error) return { error: poll.data.error };
+
+  // b) process classified mail — don't rely on the server-side tail-call
+  const extract = await supabase.functions.invoke('gmail-extract', { body: { trigger: 'manual' } });
+  const extractData = extract.error
+    ? { error: extract.error.message }
+    : extract.data ?? null;
+
+  // c/d) hand back combined counts; the caller refetches data + shows the result
+  return {
+    data: {
+      scanned: poll.data?.scanned ?? 0,
+      classified: poll.data?.classified ?? 0,
+      skipped: poll.data?.skipped ?? 0,
+      extract: extractData,
+    },
+  };
 }
 
 // Absolute URL the "Connect Gmail" button navigates to (start mode of the
