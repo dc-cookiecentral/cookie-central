@@ -34,7 +34,7 @@ const rawMats=[
    orders:[],fifo:[],usage:[]}
 ];
 const packaging=[{code:"120001",name:"Trays",qty:2156558,unit:"units"},{code:"120003",name:"Film WCCB",qty:216711,unit:"units"},{code:"120004",name:"Film PBJ",qty:227500,unit:"units"},{code:"123001",name:"Master Cases",qty:10793,unit:"units"}];
-const today=new Date(2026,4,20);
+const today=new Date();
 const POs=[
   {id:"PO14371",inv:"TBD",dt:"May 8",mabd:"May 28",dc:"Kroger DC Shelbyville IN",ship:"pending",pay:"pending",cs:504,em:2,origShip:"May 21",actShip:null,shipDt:new Date(2026,4,21),lines:[{sku:"WCCB-KF",qty:504}],payAmt:"$15,724.80",paidAmt:"$0",nova:null,ret:"Kroger",terms:"Due on receipt",revPerCs:31.20},
   {id:"PO14400",inv:"TBD",dt:"May 14",mabd:"Jun 3",dc:"Kroger DC Forest Park GA",ship:"pending",pay:"pending",cs:504,em:2,origShip:"May 27",actShip:null,shipDt:new Date(2026,4,27),lines:[{sku:"WCCB-KF",qty:504}],payAmt:"$15,724.80",paidAmt:"$0",nova:null,ret:"Kroger",terms:"Due on receipt",revPerCs:31.20},

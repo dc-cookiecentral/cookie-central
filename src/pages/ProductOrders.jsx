@@ -93,8 +93,9 @@ export default function ProductOrders() {
               </thead>
               <tbody>
                 {rows.map((po) => {
-                  const days =
-                    po.ship_status === 'pending' ? daysUntil(po.ship_date_original) : null;
+                  // Days column sits beside MABD and counts down to it (negative
+                  // = past MABD → OVERDUE). Only while still pending.
+                  const days = po.ship_status === 'pending' ? daysUntil(po.mabd) : null;
                   return (
                     <tr
                       key={po.id}

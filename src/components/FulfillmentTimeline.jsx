@@ -43,7 +43,7 @@ function Step({ step, isLast }) {
           <div className="text-[10px] text-md">
             <span className="text-gr">Planned:</span> {formatDate(step.planned)}
             {days != null && step.planned && (
-              <span className="text-gr"> ({days <= 0 ? 'today' : `${days}d`})</span>
+              <span className="text-gr"> ({days < 0 ? 'overdue' : days === 0 ? 'today' : `${days}d`})</span>
             )}
           </div>
           <div className={`text-[11px] font-semibold ${late ? 'text-red-600' : done ? 'text-emerald-600' : 'text-gr'}`}>

@@ -11,7 +11,7 @@ export default function DaysTag({ days }) {
   if (days == null) return <span className="text-gr text-[9px]">--</span>;
   return (
     <span className={`px-[7px] py-[2px] rounded-full text-[9px] font-bold ${tier(days)}`}>
-      {days <= 0 ? 'TODAY' : `${days}d`}
+      {days < 0 ? 'OVERDUE' : days === 0 ? 'TODAY' : `${days}d`}
     </span>
   );
 }
