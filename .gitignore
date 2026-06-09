@@ -4,5 +4,8 @@ dist/
 .env.local
 .DS_Store
 
+# Office temp/lock files (e.g. ~$sample_production_report.xlsx)
+~$*
+
 # Supabase CLI local state (project linkage, pooler URL, etc.) — machine-local
 supabase/.temp/
