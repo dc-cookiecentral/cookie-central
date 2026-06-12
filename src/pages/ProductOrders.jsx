@@ -102,7 +102,14 @@ export default function ProductOrders() {
                       onClick={() => navigate(`/orders/${po.po_number}`)}
                       className="border-b border-bg cursor-pointer hover:bg-pc"
                     >
-                      <td className="px-3 py-2 font-bold">{po.po_number}</td>
+                      <td className="px-3 py-2 font-bold">
+                        {po.cortina_so_number || po.po_number}
+                        {po.walmart_po_number && (
+                          <div className="text-[8px] font-normal text-gr">
+                            WM PO {po.walmart_po_number}
+                          </div>
+                        )}
+                      </td>
                       <td className="px-3 py-2">
                         <span
                           className={`px-1.5 py-px rounded text-[8px] font-semibold ${

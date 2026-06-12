@@ -31,6 +31,9 @@ import { runEmailImport } from '../_shared/emailUpload.ts';
 import { importWeekly } from '../_shared/weeklyImport.ts';
 // Reuse the existing Assemblers workbook parser unchanged (client injected).
 import production from '../../../src/parsers/production.js';
+// Reuse the Cortina Walmart Orders parser (groups SOs → purchase_orders +
+// po_line_items + cortina_invoices). Client injected, same as production.
+import walmartOrders from '../../../src/parsers/walmartOrders.js';
 
 const STRUCTURED = new Set(['PO', 'BOL', 'supplier_confirmation']);
 
@@ -93,6 +96,8 @@ Deno.serve(async (req) => {
           results.push(await handleStructured(supabase, apiKey!, accessToken, gm));
         } else if (gm.classification === 'assemblers_report') {
           results.push(await handleAssemblers(supabase, accessToken, gm));
+        } else if (gm.classification === 'walmart_orders') {
+          results.push(await handleWalmartOrders(supabase, accessToken, gm));
         } else if (gm.classification === 'weekly_report') {
           results.push(await handleWeekly(supabase, accessToken, gm));
         }
@@ -256,6 +261,40 @@ async function handleAssemblers(supabase: SupabaseClient, accessToken: string, g
   const res = await runEmailImport(supabase, production as any, parsedOut, {
     filename: att.filename,
     uploadType: 'production',
+  });
+
+  await supabase
+    .from('gmail_messages')
+    .update({ processed: true, upload_log_id: res.uploadId, error: null })
+    .eq('id', gm.id);
+
+  return {
+    id: gm.id,
+    classification: gm.classification,
+    filename: att.filename,
+    inserted: res.inserted,
+    uploadId: res.uploadId,
+  };
+}
+
+// ── walmart_orders → Cortina Walmart Orders parser ──────────────────────────
+// The daily export carries the FULL order history, so the parser upserts on
+// cortina_so_number (no duplicates). Replaces the manual Cortina PO PDF upload.
+async function handleWalmartOrders(supabase: SupabaseClient, accessToken: string, gm: any) {
+  const parsed = parseMessage(await getMessage(accessToken, gm.gmail_message_id));
+  const att = parsed.attachments.find((a) => /Walmart_Orders_.*\.xlsx$/i.test(a.filename ?? ''))
+    ?? parsed.attachments.find((a) => /\.xlsx?$/i.test(a.filename ?? ''));
+  if (!att) throw new Error('walmart_orders but no .xlsx attachment found');
+
+  const bytes = await getAttachment(accessToken, gm.gmail_message_id, att.attachmentId);
+  const blob = new Blob([bytes], {
+    type: att.mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  const parsedOut = await (walmartOrders as any).parseFile(blob);
+
+  const res = await runEmailImport(supabase, walmartOrders as any, parsedOut, {
+    filename: att.filename,
+    uploadType: 'walmart_orders',
   });
 
   await supabase

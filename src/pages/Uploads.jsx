@@ -14,7 +14,8 @@ const SECTIONS = [
     origin: 'Cortina',
     note: 'POs flow through Cortina (NetSuite), enriched by Retail Link performance + NOVA edits. Cortina-paid status (Cortina → Dirty Cookie) is tracked from these feeds.',
     items: [
-      { type: 'cortina_po', title: 'Cortina PO (PDF)', note: 'Temporary — upload PO PDFs from Cortina until the NetSuite API is connected. Creates the purchase_orders record; parked systems@ email data auto-links on import.' },
+      { type: 'walmart_orders', title: 'Walmart Orders', note: 'Walmart orders from NetSuite. Auto-ingested nightly from systems@ email. Primary source for Product Orders + Payments — replaces the Cortina PO PDF. Upserts on SO#, so re-uploading the daily export is safe.' },
+      { type: 'cortina_po', title: 'Cortina PO (PDF)', note: 'Legacy — upload PO PDFs from Cortina. Superseded by the Walmart Orders export above; kept for one-off PDFs.' },
       { type: 'netsuite', title: 'NetSuite POs', note: 'Retail Link + NOVA' },
       { type: 'dot', title: 'DOT Reports' },
     ],

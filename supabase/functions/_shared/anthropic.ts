@@ -16,6 +16,7 @@ export const CLASSIFICATIONS = [
   'supplier_confirmation',
   'assemblers_report',
   'weekly_report',
+  'walmart_orders',
   'other',
 ] as const;
 export type Classification = (typeof CLASSIFICATIONS)[number];
@@ -51,6 +52,7 @@ const CLASSIFY_SYSTEM = `You are the mail-room classifier for The Dirty Cookie's
 - supplier_confirmation: an order confirmation / ship notice from a raw-material supplier or distributor (ingredients, packaging). Confirms quantities, costs, expected delivery.
 - assemblers_report: from Assemblers (the Chicago co-packer). Carries the production workbook as an .xlsx attachment (Production / Reject / Inventory / Shipment sheets).
 - weekly_report: the Bentonville Merchants weekly Retail Link report (subject like "Dirty Cookie | Weekly Reporting | WK##", from blayn@bentonvillemerchants.com).
+- walmart_orders: the Cortina Walmart Orders export (subject like "Walmart_Orders_YYYY-MM-DD", from DMorales@CortinaFoods.com), an .xlsx of all Walmart purchase orders. Note: gmail-poll usually matches this deterministically before reaching the classifier.
 - other: anything else (internal chatter, newsletters, spam, receipts).
 
 Use the sender, subject, and attachment filenames as strong signals. When an email plausibly fits two, prefer the more specific operational category over "other".`;

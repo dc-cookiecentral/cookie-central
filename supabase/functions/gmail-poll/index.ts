@@ -26,6 +26,12 @@ import { classifyEmail, type Classification } from '../_shared/anthropic.ts';
 const WEEKLY_SUBJECT_RE = /Dirty Cookie.*Weekly Reporting.*WK(\d+)/i;
 const WEEKLY_SENDER = 'blayn@bentonvillemerchants.com';
 
+// The Cortina Walmart Orders export is likewise deterministic: subject
+// "Walmart_Orders_YYYY-MM-DD" from DMorales@CortinaFoods.com, daily at 10 PM ET.
+// Match it directly and skip the Haiku call (same pattern as the weekly report).
+const WALMART_ORDERS_SUBJECT_RE = /Walmart_Orders_\d{4}-\d{2}-\d{2}/i;
+const WALMART_ORDERS_SENDER = 'dmorales@cortinafoods.com';
+
 Deno.serve(async (req) => {
   const pre = handleCors(req);
   if (pre) return pre;
@@ -73,9 +79,15 @@ Deno.serve(async (req) => {
         !!wk && (parsed.fromEmail ?? '').toLowerCase() === WEEKLY_SENDER;
       const weekNumber = wk ? `WK${wk[1]}` : null;
 
+      const isWalmartOrders =
+        WALMART_ORDERS_SUBJECT_RE.test(parsed.subject ?? '') &&
+        (parsed.fromEmail ?? '').toLowerCase() === WALMART_ORDERS_SENDER;
+
       let label: Classification;
       if (isWeekly) {
         label = 'weekly_report';
+      } else if (isWalmartOrders) {
+        label = 'walmart_orders';
       } else {
         label = await classifyEmail(apiKey, {
           from: parsed.from,

@@ -1,74 +1,51 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { daysUntil } from '../utils/dates';
 
-// Payments view = payment-centric re-pivot of purchase_orders. The PO row
-// carries the headline status + paid_amount; invoices + payments carry the
-// itemised history (two-stage: Cortina→DC, then Retailer→Cortina).
-//
-// Build plan 6.1 + 6.2 — David's primary surface.
-//
-// payment_status canonical values (per schema):
-//   pending           — Cortina hasn't paid DC yet
-//   paid_cortina      — stage 1 done (Cortina paid DC)
-//   awaiting_retailer — stage 1 done, retailer payment overdue
-//   paid_retailer     — stage 2 done (retailer paid Cortina; both legs settled)
-// Prototype legacy: 'paid_national' = paid_cortina, 'awaiting_walmart' =
-// awaiting_retailer, 'paid_dc' is overloaded — we treat it as paid_retailer.
+// Payments are driven by the Cortina Walmart Orders export (cortina_invoices),
+// which gives us Stage 1 (Cortina → DC) directly. Stage 2 (Walmart → Cortina)
+// isn't in this feed yet, so the UI shows it as "Not tracked".
 
-const PAYMENT_FIELDS = `
-  id, po_number, retailer, mabd, ship_status,
-  ship_date_original, ship_date_actual, delivery_date, dot_receipt_date,
-  payment_status, payment_terms, invoice_number,
-  total_cases, total_amount, paid_amount, revenue_per_case, nova_changes
+// ── Cortina invoices (real data, replaces the demo invoices/payments) ───────
+// The Cortina Walmart Orders export gives us Stage 1 (Cortina → DC) directly:
+// one cortina_invoices row per SO, with invoice + payment fields. Stage 2
+// (Walmart → Cortina) isn't in this feed, so it shows as "Not tracked".
+
+const INVOICE_SELECT = `
+  id, invoice_number, invoice_date, invoice_terms, invoice_amount,
+  payment_document, payment_date,
+  purchase_orders ( id, po_number, cortina_so_number, walmart_po_number, retailer,
+    total_cases, total_amount, ship_status )
 `;
 
-// Stage helpers — keep one source of truth so list and detail agree.
-const STAGE1_DONE = new Set(['paid_cortina', 'paid_national', 'paid_dc', 'paid_retailer', 'awaiting_retailer', 'awaiting_walmart']);
-const STAGE2_DONE = new Set(['paid_dc', 'paid_retailer']);
-const STAGE2_AWAITING = new Set(['awaiting_retailer', 'awaiting_walmart']);
-
-export function stage1Done(status) { return STAGE1_DONE.has(status); }
-export function stage2Done(status) { return STAGE2_DONE.has(status); }
-export function stage2Awaiting(status) { return STAGE2_AWAITING.has(status); }
-
-export function outstandingOf(po) {
-  const total = Number(po.total_amount ?? 0);
-  const paid = Number(po.paid_amount ?? 0);
-  return Math.max(0, total - paid);
+// Flatten the joined PO onto the invoice for easy rendering.
+function shapeInvoice(row) {
+  const po = row.purchase_orders ?? {};
+  return {
+    ...row,
+    po,
+    po_number: po.po_number,
+    retailer: po.retailer,
+    paid: !!row.payment_date,
+  };
 }
 
-// Urgency: biggest outstanding among unpaid first; then by MABD soonest.
-function urgencyRank(po) {
-  if (stage2Done(po.payment_status)) return 2;
-  if (stage1Done(po.payment_status)) return 1;
-  return 0;
-}
-function sortByUrgency(a, b) {
-  const r = urgencyRank(a) - urgencyRank(b);
-  if (r !== 0) return r;
-  const oa = outstandingOf(a);
-  const ob = outstandingOf(b);
-  if (oa !== ob) return ob - oa;
-  const da = daysUntil(a.mabd);
-  const db = daysUntil(b.mabd);
-  if (da == null) return 1;
-  if (db == null) return -1;
-  return da - db;
-}
-
-export function usePayments() {
+// List of every Cortina invoice, unpaid first, then most recent.
+export function useCortinaInvoices() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('purchase_orders')
-      .select(`${PAYMENT_FIELDS}, po_line_items ( id, sku, quantity_cases, unit_cost, line_total )`);
+    const { data, error } = await supabase.from('cortina_invoices').select(INVOICE_SELECT);
     if (error) setError(error.message);
-    else setRows((data ?? []).slice().sort(sortByUrgency));
+    else {
+      const shaped = (data ?? []).map(shapeInvoice).sort((a, b) => {
+        if (a.paid !== b.paid) return a.paid ? 1 : -1; // unpaid first
+        return (b.invoice_date || '').localeCompare(a.invoice_date || ''); // newest first
+      });
+      setRows(shaped);
+    }
     setLoading(false);
   }, []);
 
@@ -79,8 +56,8 @@ export function usePayments() {
   return { rows, loading, error, refresh };
 }
 
-// One PO with its line items, invoices, and payments — for /payments/:poNumber.
-export function usePaymentDetail(poNumber) {
+// Invoices for one PO (by po_number / cortina_so_number) + the PO itself.
+export function useCortinaInvoiceDetail(poNumber) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -91,10 +68,11 @@ export function usePaymentDetail(poNumber) {
     supabase
       .from('purchase_orders')
       .select(
-        `${PAYMENT_FIELDS},
-         po_line_items ( id, sku, quantity_cases, unit_cost, line_total ),
-         invoices ( id, invoice_number, invoice_date, total_amount, status ),
-         payments ( id, payment_type, payment_date, amount, deductions, notes, invoice_id, created_at )`
+        `id, po_number, cortina_so_number, walmart_po_number, retailer,
+         ship_status, payment_status, payment_terms, total_cases, total_amount,
+         paid_amount, revenue_per_case, order_date, ship_date_original, ship_date_actual,
+         po_line_items ( id, sku, quantity_cases, walmart_unit_price, line_total, destination_dc ),
+         cortina_invoices ( id, invoice_number, invoice_date, invoice_terms, invoice_amount, payment_document, payment_date )`
       )
       .eq('po_number', poNumber)
       .maybeSingle()

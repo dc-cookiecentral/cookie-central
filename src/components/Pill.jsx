@@ -2,7 +2,9 @@
 const MAP = {
   shipped:          ['bg-violet-100',  'text-violet-700',  'Shipped'],
   delivered:        ['bg-green-100',   'text-green-700',   'Delivered'],
+  partial:          ['bg-amber-100',   'text-amber-700',   'Partial'],
   pending:          ['bg-gray-100',    'text-gr',          'Pending'],
+  paid:             ['bg-green-100',   'text-green-700',   'Paid'],
   paid_cortina:     ['bg-blue-100',    'text-blue-700',    'Cortina Paid'],
   paid_dc:          ['bg-green-100',   'text-green-700',   'Paid'],
   paid_retailer:    ['bg-green-100',   'text-green-700',   'Paid'],

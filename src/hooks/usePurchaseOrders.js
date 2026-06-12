@@ -3,7 +3,8 @@ import { supabase } from '../lib/supabase';
 import { daysUntil } from '../utils/dates';
 
 const PO_FIELDS = `
-  id, po_number, retailer, order_date, mabd,
+  id, po_number, cortina_so_number, walmart_po_number, cortina_received_date,
+  retailer, order_date, mabd,
   ship_date_original, ship_date_actual, delivery_date,
   ship_to_dot_date, ship_to_dot_actual, dot_receipt_date,
   destination_dc, ship_status, payment_status, payment_terms,
@@ -64,7 +65,9 @@ export function usePurchaseOrder(poNumber) {
       .from('purchase_orders')
       .select(
         `${PO_FIELDS},
-         po_line_items ( id, sku, quantity_cases, unit_cost, line_total ),
+         po_line_items ( id, sku, quantity_cases, unit_cost, line_total,
+           cortina_item_number, upc, walmart_unit_price, store_upc, destination_dc, metadata ),
+         cortina_invoices ( id, invoice_number, invoice_date, invoice_terms, invoice_amount, payment_document, payment_date ),
          po_emails ( id, timestamp:email_timestamp, sender_name, sender_org, summary, extracted_data )`
       )
       .eq('po_number', poNumber)
