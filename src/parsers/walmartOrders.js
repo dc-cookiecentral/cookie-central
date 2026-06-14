@@ -214,31 +214,52 @@ async function parseFile(file) {
 }
 
 // ── import ──────────────────────────────────────────────────────────────────
-// Upsert each PO on cortina_so_number, replace its line items + invoices, then
-// back-link any parked systems@ email extractions. `client` lets the gmail agent
-// (Deno, service-role) reuse this; the browser path falls back to the anon client.
+// BATCHED by design: the daily export is ~400 SOs / ~600 lines. A per-SO loop of
+// upsert + delete + insert × N is ~2,300 sequential round-trips and blows the
+// Edge Function wall-clock limit. Instead we do a handful of set-based calls:
+// one bulk PO upsert, chunked line-item + invoice replace, and back-linking only
+// for the (usually zero) parked emails that actually match. `client` lets the
+// gmail agent (Deno, service-role) reuse this; the browser path falls back to
+// the lazy anon client.
+const CHUNK = 500;
+
+async function deleteByPoIds(supabase, table, poIds) {
+  for (let i = 0; i < poIds.length; i += 100) {
+    const { error } = await supabase.from(table).delete().in('po_id', poIds.slice(i, i + 100));
+    if (error) throw error;
+  }
+}
+
+async function insertChunked(supabase, table, rows) {
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const { error } = await supabase.from(table).insert(rows.slice(i, i + CHUNK));
+    if (error) throw error;
+  }
+}
+
 async function importRecords(records, { uploadId, client } = {}) {
   const supabase = client ?? (await import('../lib/supabase.js')).supabase;
-  let orders = 0;
-  let lineItems = 0;
-  let invoices = 0;
-  let linked = 0;
+  if (!records.length) return { inserted: 0, orders: 0, lineItems: 0, invoices: 0, linked: 0 };
 
+  // 1. Upsert every PO in one call; map cortina_so_number → id from the result.
+  const now = new Date().toISOString();
+  const poPayload = records.map(({ _lines, _invoices, ...po }) => ({ ...po, updated_at: now }));
+  const { data: savedPos, error: poErr } = await supabase
+    .from('purchase_orders')
+    .upsert(poPayload, { onConflict: 'cortina_so_number' })
+    .select('id, cortina_so_number');
+  if (poErr) throw poErr;
+  const idBySo = new Map(savedPos.map((p) => [p.cortina_so_number, p.id]));
+  const poIds = savedPos.map((p) => p.id);
+
+  // 2. Replace line items (delete-then-insert keeps re-imports idempotent).
+  await deleteByPoIds(supabase, 'po_line_items', poIds);
+  const lineRows = [];
   for (const rec of records) {
-    const { _lines, _invoices, ...poFields } = rec;
-
-    const { data: saved, error: poErr } = await supabase
-      .from('purchase_orders')
-      .upsert({ ...poFields, updated_at: new Date().toISOString() }, { onConflict: 'cortina_so_number' })
-      .select('id')
-      .single();
-    if (poErr) throw poErr;
-
-    // Line items: delete-then-insert keeps re-imports idempotent.
-    await supabase.from('po_line_items').delete().eq('po_id', saved.id);
-    if (_lines.length) {
-      const rows = _lines.map((l) => ({
-        po_id: saved.id,
+    const poId = idBySo.get(rec.cortina_so_number);
+    for (const l of rec._lines) {
+      lineRows.push({
+        po_id: poId,
         sku: l.sku,
         quantity_cases: l.quantity_cases,
         line_total: l.line_total,
@@ -248,37 +269,47 @@ async function importRecords(records, { uploadId, client } = {}) {
         store_upc: l.store_upc,
         destination_dc: l.destination_dc,
         metadata: l.metadata,
-      }));
-      const { error } = await supabase.from('po_line_items').insert(rows);
-      if (error) throw error;
-      lineItems += rows.length;
-    }
-
-    // Invoices (≤1 per SO in the data, but handle N): delete-then-insert by po_id
-    // — invoice_number is globally unique and each belongs to exactly one PO.
-    await supabase.from('cortina_invoices').delete().eq('po_id', saved.id);
-    if (_invoices.length) {
-      const rows = _invoices.map((i) => ({ ...i, po_id: saved.id, source_upload_id: uploadId ?? null }));
-      const { error } = await supabase.from('cortina_invoices').insert(rows);
-      if (error) throw error;
-      invoices += rows.length;
-    }
-
-    // Back-link parked systems@ extractions by either identifier (best-effort).
-    for (const ref of [rec.walmart_po_number, rec.cortina_so_number]) {
-      if (!ref) continue;
-      const { data: n, error } = await supabase.rpc('link_parked_po_emails', {
-        p_po_id: saved.id,
-        p_po_number: ref,
       });
-      if (error) console.warn(`link_parked_po_emails(${ref}):`, error.message);
-      else linked += n ?? 0;
     }
+  }
+  await insertChunked(supabase, 'po_line_items', lineRows);
 
-    orders += 1;
+  // 3. Replace invoices (invoice_number is globally unique; each belongs to one PO).
+  await deleteByPoIds(supabase, 'cortina_invoices', poIds);
+  const invRows = [];
+  for (const rec of records) {
+    const poId = idBySo.get(rec.cortina_so_number);
+    for (const i of rec._invoices) invRows.push({ ...i, po_id: poId, source_upload_id: uploadId ?? null });
+  }
+  await insertChunked(supabase, 'cortina_invoices', invRows);
+
+  // 4. Back-link parked systems@ extractions — but only for the emails that
+  // actually match one of this batch's PO/SO numbers (parked emails are few),
+  // so we never fire the RPC ~800× for nothing.
+  let linked = 0;
+  const idByRef = new Map();
+  for (const rec of records) {
+    const poId = idBySo.get(rec.cortina_so_number);
+    if (rec.walmart_po_number) idByRef.set(rec.walmart_po_number, poId);
+    idByRef.set(rec.cortina_so_number, poId);
+  }
+  const { data: parked } = await supabase
+    .from('po_emails')
+    .select('num:extracted_data->>po_number')
+    .is('po_id', null)
+    .eq('source', 'email');
+  const refs = new Set();
+  for (const e of parked ?? []) if (e.num && idByRef.has(e.num)) refs.add(e.num);
+  for (const ref of refs) {
+    const { data: n, error } = await supabase.rpc('link_parked_po_emails', {
+      p_po_id: idByRef.get(ref),
+      p_po_number: ref,
+    });
+    if (error) console.warn(`link_parked_po_emails(${ref}):`, error.message);
+    else linked += n ?? 0;
   }
 
-  return { inserted: orders, orders, lineItems, invoices, linked };
+  return { inserted: records.length, orders: records.length, lineItems: lineRows.length, invoices: invRows.length, linked };
 }
 
 export default {

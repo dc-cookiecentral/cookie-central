@@ -65,7 +65,7 @@ CREATE INDEX IF NOT EXISTS idx_cortina_invoices_po ON cortina_invoices(po_id);
 ALTER TABLE upload_log DROP CONSTRAINT IF EXISTS upload_log_upload_type_check;
 ALTER TABLE upload_log ADD CONSTRAINT upload_log_upload_type_check
   CHECK (upload_type IN ('dot','assemblers','production','qbo','netsuite',
-    'weekly_report','cortina_po','walmart_orders'));
+    'weekly_report','cortina_po','ingredient_master','walmart_orders'));
 
 ALTER TABLE gmail_messages DROP CONSTRAINT IF EXISTS gmail_messages_classification_check;
 ALTER TABLE gmail_messages ADD CONSTRAINT gmail_messages_classification_check
