@@ -10,7 +10,7 @@ const PO_FIELDS = `
   destination_dc, ship_status, payment_status, payment_terms,
   carrier, freight_handler, bol_received, customer_order_number,
   invoice_number, total_cases, total_amount, paid_amount,
-  nova_changes, revenue_per_case, bol_number
+  nova_changes, revenue_per_case, bol_number, archived, archived_at
 `;
 
 // Urgency: pending POs first, soonest ship-to-DOT (then retailer ship) first.
@@ -50,6 +50,17 @@ export function usePurchaseOrders() {
   }, [refresh]);
 
   return { orders, loading, error, refresh };
+}
+
+// Soft-archive (or restore) a PO. archived_at stamps the moment; cleared on
+// restore. `archived` is outside the track_po_changes trigger's watched columns,
+// so this doesn't write po_changes / audit_log rows. Returns { error }.
+export async function setPoArchived(id, archived) {
+  const { error } = await supabase
+    .from('purchase_orders')
+    .update({ archived, archived_at: archived ? new Date().toISOString() : null })
+    .eq('id', id);
+  return { error };
 }
 
 // Single PO by po_number, with line items + email thread.

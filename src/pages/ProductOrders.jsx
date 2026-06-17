@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import RetailerFilterPill from '../components/RetailerFilterPill';
 import AlertsPanel from '../components/AlertsPanel';
@@ -5,7 +6,7 @@ import Pill from '../components/Pill';
 import DaysTag from '../components/DaysTag';
 import { useRetailerFilter } from '../contexts/RetailerFilterContext';
 import { useUOM } from '../contexts/UOMContext';
-import { usePurchaseOrders } from '../hooks/usePurchaseOrders';
+import { usePurchaseOrders, setPoArchived } from '../hooks/usePurchaseOrders';
 import { daysUntil, formatDate, isLate } from '../utils/dates';
 
 const TH = 'px-3 py-2 text-left text-[9px] font-bold text-gr uppercase tracking-wider';
@@ -35,13 +36,74 @@ function ShipToDotCell({ po }) {
   return <span className="text-gr text-[9px]">--</span>;
 }
 
+// Generic comparator for a column's accessor value: empty/null always sorts to
+// the bottom (regardless of direction); numbers compare numerically; strings use
+// a numeric-aware locale compare so SO# "SO100" sorts after "SO99".
+function compareValues(a, b, dir) {
+  const ea = a == null || a === '';
+  const eb = b == null || b === '';
+  if (ea && eb) return 0;
+  if (ea) return 1;
+  if (eb) return -1;
+  let r;
+  if (typeof a === 'number' && typeof b === 'number') r = a - b;
+  else r = String(a).localeCompare(String(b), undefined, { numeric: true });
+  return dir === 'desc' ? -r : r;
+}
+
 export default function ProductOrders() {
   const navigate = useNavigate();
   const { filter } = useRetailerFilter();
   const { uom, format } = useUOM();
-  const { orders, loading, error } = usePurchaseOrders();
+  const { orders, loading, error, refresh } = usePurchaseOrders();
 
-  const rows = filter(orders, 'retailer');
+  // Sort state: null key = default urgency order from the hook. Clicking a
+  // header sets ascending; clicking the active header toggles direction.
+  const [sort, setSort] = useState({ key: null, dir: 'asc' });
+  const [showArchived, setShowArchived] = useState(false);
+  const [busyId, setBusyId] = useState(null);
+
+  // Column config (built here because the cases header label is the active UOM).
+  // `sort` is the accessor used for sorting; columns without one aren't clickable.
+  const COLUMNS = [
+    { key: 'po', label: 'PO', sort: (p) => p.cortina_so_number || p.po_number },
+    { key: 'retailer', label: 'Ret', sort: (p) => p.retailer },
+    { key: 'order_date', label: 'Issued', sort: (p) => p.order_date },
+    { key: 'mabd', label: 'MABD', sort: (p) => p.mabd },
+    { key: 'days', label: 'Days', sort: (p) => daysUntil(p.mabd) },
+    { key: 'products', label: 'Products' },
+    { key: 'cases', label: uom, sort: (p) => p.total_cases ?? 0 },
+    { key: 'ship_to_dot', label: 'Ship to DOT', sort: (p) => p.ship_to_dot_actual || p.ship_to_dot_date },
+    { key: 'ship', label: 'Ship', sort: (p) => p.ship_status },
+    { key: 'payment', label: 'Payment', sort: (p) => p.payment_status },
+  ];
+
+  const onSort = (col) => {
+    if (!col.sort) return;
+    setSort((s) =>
+      s.key === col.key
+        ? { key: col.key, dir: s.dir === 'asc' ? 'desc' : 'asc' }
+        : { key: col.key, dir: 'asc' }
+    );
+  };
+
+  const onArchive = async (po, archived) => {
+    setBusyId(po.id);
+    const { error: err } = await setPoArchived(po.id, archived);
+    if (!err) await refresh();
+    setBusyId(null);
+  };
+
+  const filtered = filter(orders, 'retailer');
+  const active = filtered.filter((p) => !p.archived);
+  const archivedCount = filtered.length - active.length;
+
+  // Visible set: active only, unless "Show archived" is on (then all).
+  let rows = showArchived ? filtered : active;
+  if (sort.key) {
+    const col = COLUMNS.find((c) => c.key === sort.key);
+    if (col?.sort) rows = [...rows].sort((a, b) => compareValues(col.sort(a), col.sort(b), sort.dir));
+  }
 
   return (
     <div>
@@ -68,27 +130,52 @@ export default function ProductOrders() {
         <>
           <AlertsPanel title="Attention" max={6} />
           <div className="flex gap-2 flex-wrap mb-3">
-            <Kpi label="Active POs" value={rows.length} />
-            <Kpi label="Pending Ship" value={rows.filter((p) => p.ship_status === 'pending').length} />
-            <Kpi label="In Transit" value={rows.filter((p) => p.ship_status === 'shipped').length} />
-            <Kpi label="Delivered" value={rows.filter((p) => p.ship_status === 'delivered').length} />
+            <Kpi label="Active POs" value={active.length} />
+            <Kpi label="Pending Ship" value={active.filter((p) => p.ship_status === 'pending').length} />
+            <Kpi label="In Transit" value={active.filter((p) => p.ship_status === 'shipped').length} />
+            <Kpi label="Delivered" value={active.filter((p) => p.ship_status === 'delivered').length} />
             <Kpi
               label="Unpaid"
-              value={rows.filter((p) => !p.paid_amount || Number(p.paid_amount) === 0).length}
+              value={active.filter((p) => !p.paid_amount || Number(p.paid_amount) === 0).length}
             />
+          </div>
+
+          <div className="flex items-center justify-end mb-2">
+            <label className="flex items-center gap-1.5 text-[10px] font-semibold text-gr cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showArchived}
+                onChange={(e) => setShowArchived(e.target.checked)}
+                className="accent-pk"
+              />
+              Show archived{archivedCount ? ` (${archivedCount})` : ''}
+            </label>
           </div>
 
           <div className="bg-cd border border-lt rounded-xl overflow-hidden">
             <table className="w-full border-collapse text-[11px]">
               <thead>
                 <tr className="bg-pc">
-                  {['PO', 'Ret', 'MABD', 'Days', 'Products', uom, 'Ship to DOT', 'Ship', 'Payment'].map(
-                    (h) => (
-                      <th key={h} className={TH}>
-                        {h}
+                  {COLUMNS.map((col) => {
+                    const activeSort = sort.key === col.key;
+                    return (
+                      <th
+                        key={col.key}
+                        className={`${TH} ${col.sort ? 'cursor-pointer hover:text-dk select-none' : ''} ${
+                          activeSort ? 'text-dk' : ''
+                        }`}
+                        onClick={() => onSort(col)}
+                      >
+                        {col.label}
+                        {col.sort && (
+                          <span className="ml-0.5 text-[8px]">
+                            {activeSort ? (sort.dir === 'asc' ? '▲' : '▼') : '↕'}
+                          </span>
+                        )}
                       </th>
-                    )
-                  )}
+                    );
+                  })}
+                  <th className={`${TH} text-right`}></th>
                 </tr>
               </thead>
               <tbody>
@@ -100,7 +187,9 @@ export default function ProductOrders() {
                     <tr
                       key={po.id}
                       onClick={() => navigate(`/orders/${po.po_number}`)}
-                      className="border-b border-bg cursor-pointer hover:bg-pc"
+                      className={`border-b border-bg cursor-pointer hover:bg-pc ${
+                        po.archived ? 'opacity-50' : ''
+                      }`}
                     >
                       <td className="px-3 py-2 font-bold">
                         {po.cortina_so_number || po.po_number}
@@ -121,6 +210,7 @@ export default function ProductOrders() {
                           {po.retailer}
                         </span>
                       </td>
+                      <td className="px-3 py-2 font-semibold">{formatDate(po.order_date)}</td>
                       <td className="px-3 py-2 font-semibold">{formatDate(po.mabd)}</td>
                       <td className="px-3 py-2">
                         {days != null ? (
@@ -147,13 +237,27 @@ export default function ProductOrders() {
                       <td className="px-3 py-2">
                         <Pill status={po.payment_status} />
                       </td>
+                      <td className="px-3 py-2 text-right">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onArchive(po, !po.archived);
+                          }}
+                          disabled={busyId === po.id}
+                          className="text-[9px] font-semibold text-gr hover:text-pk uppercase tracking-wider disabled:opacity-40"
+                        >
+                          {busyId === po.id ? '…' : po.archived ? 'Restore' : 'Archive'}
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
             <div className="px-3 py-1.5 text-[8px] text-gr italic border-t border-lt">
-              Sorted by urgency (soonest ship-to-DOT first).
+              {sort.key
+                ? `Sorted by ${COLUMNS.find((c) => c.key === sort.key)?.label} (${sort.dir}).`
+                : 'Sorted by urgency (soonest ship-to-DOT first). Click a column to re-sort.'}
             </div>
           </div>
         </>
