@@ -170,7 +170,15 @@ function parse(rows) {
 // `client` lets a server-side caller (the Gmail agent Edge Function, running in
 // Deno with a service-role client) reuse this importer. The browser passes none,
 // so it falls back to the lazy anon client — unchanged behavior.
-async function importRecords(records, { client } = {}) {
+//
+// Full-truth semantics: the Inventory Snapshot is the authoritative count for the
+// Assemblers warehouse, so any raw_materials row in that warehouse whose code is
+// absent from this snapshot is purged (and recorded in audit_log). Every item is
+// also appended to raw_material_snapshots, a rolling 4-week inventory history.
+const WAREHOUSE = 'assemblers';
+const HISTORY_RETENTION_DAYS = 28;
+
+async function importRecords(records, { client, uploadId } = {}) {
   const supabase = client ?? (await import('../lib/supabase.js')).supabase;
   const last_upload_at = new Date().toISOString();
   let inserted = 0;
@@ -192,6 +200,7 @@ async function importRecords(records, { client } = {}) {
           expiry_status: item.expiry_status,
           expired_quantity: item.expired_quantity,
           category: item.category,
+          warehouse: WAREHOUSE,
           last_upload_at,
           updated_at: last_upload_at,
         },
@@ -216,7 +225,59 @@ async function importRecords(records, { client } = {}) {
       if (lotErr) throw lotErr;
     }
   }
-  return { inserted };
+
+  // Full truth: purge Assemblers-warehouse materials absent from this snapshot,
+  // logging each removal to audit_log (raw_material_lots cascade on delete).
+  const snapshotCodes = new Set(records.map((r) => r.code));
+  const { data: existing, error: exErr } = await supabase
+    .from('raw_materials')
+    .select('id, code, name, quantity, unit')
+    .eq('warehouse', WAREHOUSE);
+  if (exErr) throw exErr;
+  const toPurge = (existing ?? []).filter((m) => !snapshotCodes.has(m.code));
+  let purged = 0;
+  if (toPurge.length) {
+    const { error: auditErr } = await supabase.from('audit_log').insert(
+      toPurge.map((m) => ({
+        table_name: 'raw_materials',
+        record_id: m.id,
+        action: 'DELETE',
+        field_name: 'inventory_snapshot_purge',
+        old_value: `${m.code} — ${m.name} (qty ${m.quantity ?? 0} ${m.unit ?? ''})`.trim(),
+      }))
+    );
+    if (auditErr) throw auditErr;
+    const { error: delErr } = await supabase
+      .from('raw_materials')
+      .delete()
+      .in('id', toPurge.map((m) => m.id));
+    if (delErr) throw delErr;
+    purged = toPurge.length;
+  }
+
+  // Append this snapshot to the rolling history, then prune entries > 4 weeks old.
+  if (records.length) {
+    const { error: histErr } = await supabase.from('raw_material_snapshots').insert(
+      records.map((r) => ({
+        snapshot_date: last_upload_at,
+        warehouse: WAREHOUSE,
+        code: r.code,
+        name: r.name,
+        category: r.category,
+        quantity: r.quantity,
+        unit: r.unit,
+        lot_count: r.lot_count,
+        expired_quantity: r.expired_quantity,
+        expiry_status: r.expiry_status,
+        upload_id: uploadId ?? null,
+      }))
+    );
+    if (histErr) throw histErr;
+  }
+  const cutoff = new Date(Date.now() - HISTORY_RETENTION_DAYS * 86400000).toISOString();
+  await supabase.from('raw_material_snapshots').delete().lt('snapshot_date', cutoff);
+
+  return { inserted, purged };
 }
 
 export default {
