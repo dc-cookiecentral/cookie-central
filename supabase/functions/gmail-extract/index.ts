@@ -29,8 +29,11 @@ import {
 import { extractEmail } from '../_shared/anthropic.ts';
 import { runEmailImport } from '../_shared/emailUpload.ts';
 import { importWeekly } from '../_shared/weeklyImport.ts';
-// Reuse the existing Assemblers workbook parser unchanged (client injected).
+// Reuse the existing Assemblers parsers unchanged (client injected):
+//   production — the multi-sheet production workbook (Production/Reject/…)
+//   assemblers — the standalone Inventory Snapshot Report (raw_materials/lots)
 import production from '../../../src/parsers/production.js';
+import assemblers from '../../../src/parsers/assemblers.js';
 // Reuse the Cortina Walmart Orders parser (groups SOs → purchase_orders +
 // po_line_items + cortina_invoices). Client injected, same as production.
 import walmartOrders from '../../../src/parsers/walmartOrders.js';
@@ -245,22 +248,65 @@ async function handleStructured(
   };
 }
 
-// ── assemblers_report → existing production parser ──────────────────────────
+// ── assemblers_report → production OR inventory-snapshot parser ──────────────
+// The classifier lumps several different Assemblers attachments under this one
+// label. We only have structured importers for two of them, told apart by the
+// workbook's actual shape:
+//   • production workbook — has a 'Production' (or 'Job …') sheet → production.js
+//     → production_* tables
+//   • Inventory Snapshot Report — a sheet whose header row carries 'Item code'
+//     plus 'Pallet Number'/'Inventory status' → assemblers.js → raw_materials
+//     (+ raw_material_lots)
+// Anything else (Mix Sheet, Batch Sheet, …) has no importer — fail loudly rather
+// than feed it to the wrong parser and record a misleading 0-row "success", which
+// is what routing everything to production.js used to do.
+function inventorySnapshotSheet(XLSX: any, wb: any): string | null {
+  for (const n of wb.SheetNames) {
+    const header = (XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, range: 0 })[0] ?? []) as unknown[];
+    const cols = new Set(header.map((h) => String(h ?? '').trim().toLowerCase()));
+    if (cols.has('item code') && (cols.has('pallet number') || cols.has('inventory status'))) return n;
+  }
+  return null;
+}
+
 async function handleAssemblers(supabase: SupabaseClient, accessToken: string, gm: any) {
   const parsed = parseMessage(await getMessage(accessToken, gm.gmail_message_id));
   const att = parsed.attachments.find((a) => /\.xlsx?$/i.test(a.filename ?? ''));
   if (!att) throw new Error('assemblers_report but no .xlsx attachment found');
 
   const bytes = await getAttachment(accessToken, gm.gmail_message_id, att.attachmentId);
-  // production.parseFileImpl reads via file.arrayBuffer() — a Blob satisfies it.
+  // Both parsers read via file.arrayBuffer() — a Blob satisfies them.
   const blob = new Blob([bytes], {
     type: att.mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   });
-  const parsedOut = await (production as any).parseFile(blob);
 
-  const res = await runEmailImport(supabase, production as any, parsedOut, {
+  const XLSX = await import('xlsx');
+  const wb = XLSX.read(await blob.arrayBuffer(), { type: 'array' });
+  const isProductionWorkbook = wb.SheetNames.some((n) => /^production$/i.test(n) || /^job\s/i.test(n));
+  const snapshotSheet = isProductionWorkbook ? null : inventorySnapshotSheet(XLSX, wb);
+
+  let parser: any;
+  let parsedOut: { records: any[]; errors?: { row?: number; message: string }[] };
+  let uploadType: string;
+  if (isProductionWorkbook) {
+    parser = production;
+    uploadType = 'production';
+    parsedOut = await (production as any).parseFile(blob);
+  } else if (snapshotSheet) {
+    parser = assemblers;
+    uploadType = 'assemblers';
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[snapshotSheet], { defval: null, raw: false });
+    parsedOut = (assemblers as any).parse(rows);
+  } else {
+    throw new Error(
+      `Unrecognized Assemblers workbook "${att.filename}" (sheets: ${wb.SheetNames.join(', ')}) — ` +
+      `no Production/Job sheet and no Inventory Snapshot columns. No structured importer; skipped.`
+    );
+  }
+
+  const res = await runEmailImport(supabase, parser, parsedOut, {
     filename: att.filename,
-    uploadType: 'production',
+    uploadType,
   });
 
   await supabase
@@ -271,6 +317,7 @@ async function handleAssemblers(supabase: SupabaseClient, accessToken: string, g
   return {
     id: gm.id,
     classification: gm.classification,
+    reportType: uploadType,
     filename: att.filename,
     inserted: res.inserted,
     uploadId: res.uploadId,
