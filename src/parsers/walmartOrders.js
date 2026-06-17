@@ -159,8 +159,17 @@ export function parseRows(rows) {
     const paid_amount = invoices.filter((i) => i.payment_date).reduce((s, i) => s + (i.invoice_amount || 0), 0);
     const terms = invoices.find((i) => i.invoice_terms != null)?.invoice_terms ?? null;
 
-    // ship_date_actual at PO level: latest actual delivery across DCs.
+    // ship_date_actual at PO level: latest actual delivery across DCs (col G).
     const actuals = lines.map((l) => l.actual_delivery_date).filter(Boolean).sort();
+
+    // ship_to_dot_actual: the "Warehouse Shipping Order Advice Sent Date" (col AB)
+    // — when the shipping-order advice went out, i.e. the actual Dirty-Cookie → DOT
+    // leg. SO-level in the export (repeats per row); take the latest non-empty
+    // across DCs. Null until an advice is actually sent, matching "actual" semantics.
+    const advices = grp
+      .map((r) => isoDate(r['Warehouse Shipping Order Advice Sent Date']))
+      .filter(Boolean)
+      .sort();
 
     records.push({
       cortina_so_number: so,
@@ -170,6 +179,7 @@ export function parseRows(rows) {
       order_date: isoDate(firstOf(grp, 'Date')),
       ship_date_original: isoDate(firstOf(grp, 'Delivery Date')),
       ship_date_actual: actuals.length ? actuals[actuals.length - 1] : null,
+      ship_to_dot_actual: advices.length ? advices[advices.length - 1] : null,
       cortina_received_date: isoDate(firstOf(grp, 'UDF 5')),
       ship_status,
       payment_status,
