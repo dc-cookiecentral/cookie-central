@@ -257,9 +257,10 @@ async function handleStructured(
 //   • Inventory Snapshot Report — a sheet whose header row carries 'Item code'
 //     plus 'Pallet Number'/'Inventory status' → assemblers.js → raw_materials
 //     (+ raw_material_lots)
-// Anything else (Mix Sheet, Batch Sheet, …) has no importer — fail loudly rather
-// than feed it to the wrong parser and record a misleading 0-row "success", which
-// is what routing everything to production.js used to do.
+// Anything else (Mix Sheet, Batch Sheet, …) has no structured importer, so it is
+// reclassified to 'other' (rather than fed to the wrong parser and logged as a
+// misleading 0-row "success", which is what routing everything to production.js
+// used to do).
 function inventorySnapshotSheet(XLSX: any, wb: any): string | null {
   for (const n of wb.SheetNames) {
     const header = (XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, range: 0 })[0] ?? []) as unknown[];
@@ -298,10 +299,19 @@ async function handleAssemblers(supabase: SupabaseClient, accessToken: string, g
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[snapshotSheet], { defval: null, raw: false });
     parsedOut = (assemblers as any).parse(rows);
   } else {
-    throw new Error(
-      `Unrecognized Assemblers workbook "${att.filename}" (sheets: ${wb.SheetNames.join(', ')}) — ` +
-      `no Production/Job sheet and no Inventory Snapshot columns. No structured importer; skipped.`
-    );
+    // Mix Sheet / Batch Sheet / any other Assemblers attachment we don't import:
+    // reclassify to 'other' so it isn't retried or shown as a failed import.
+    await supabase
+      .from('gmail_messages')
+      .update({ processed: true, classification: 'other', error: null })
+      .eq('id', gm.id);
+    return {
+      id: gm.id,
+      classification: 'other',
+      reclassifiedFrom: 'assemblers_report',
+      filename: att.filename,
+      reason: `no importer for sheets [${wb.SheetNames.join(', ')}]`,
+    };
   }
 
   const res = await runEmailImport(supabase, parser, parsedOut, {
