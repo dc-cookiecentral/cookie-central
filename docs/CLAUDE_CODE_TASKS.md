@@ -1,0 +1,98 @@
+# Claude Code — Task Breakdown
+
+Ordered, small, reversible tasks. Each is a commit on a feature branch. **Never build on `main`.** Read `EXTENSION_BUILD_PLAN.md` and `DATA_MODEL_ADDITIONS.md` first; reconcile every assumption against the real repo before writing code.
+
+---
+
+## Task 0 — Discovery (no code changes)
+```
+git checkout -b feat/product-spine-cookulator
+```
+Read and report back to Caroline BEFORE proceeding:
+1. Read `docs/DATA_MODEL.md`, `docs/ARCHITECTURE.md`, `.claude/instructions.md`, `README.md`.
+2. Read `supabase/migrations/20260521000000_initial_schema.sql` — identify the **finished-goods table** (real name + columns).
+3. Grep `src/` for every reference to that table (hooks, pages, parsers). Produce a **dependency map**: which modules read/write it.
+4. Confirm: RLS pattern, migration naming, page/hook structure, whether an addresses table exists, whether `/reference` item-master is separate from finished-goods.
+5. Write findings to `docs/DECISIONS.md` as ADR-0xx. **Stop. Report to Caroline. Await go.**
+
+---
+
+## Phase 1 — Product spine (Spec Sheet)
+
+### Task 1.1 — Product spine migration
+Write migration `*_create_product_spine.sql`: `products`, `eaches`, `inners`, `master_cases`, `stuffings` per `DATA_MODEL_ADDITIONS.md`, with RLS matching existing role patterns. **No derived columns** (no stored storage/temp/net-weight). Apply via SQL editor; confirm.
+
+### Task 1.2 — Price list view
+Write migration `*_price_list_view.sql`: thin `product_prices` table + `price_list` VIEW joining master cases → composition → prices. Prices null = TBD.
+
+### Task 1.3 — Seed from Cookulator prototype
+Reseed product data from the prototype reference (`prototype/` or the provided `cookulator_prototype.html` data). Include `sample_eligible` seeds (the 8 baked cookies already flagged).
+
+### Task 1.4 — Re-point modules (ONE per commit, test each)
+For each module in the Task 0 dependency map that referenced finished-goods, update its hook/query to the new `products` spine. Commit + verify the module still renders after each. Order: least-critical first.
+
+### Task 1.5 — Drop finished-goods
+Only after 1.4 verified: migration `*_drop_finished_goods.sql`. Confirm nothing references it (grep clean).
+
+### Task 1.6 — Spec Sheet UI
+Build `src/pages` for the Cookulator tabs (WIP/Cookies/Eaches/Inner/Master/Price Lists) per the prototype. Read-only default + edit-mode lock. Sample-eligibility toggle visible only in edit mode. Level-grouped column choosers over the price_list view.
+
+### Task 1.7 — ADR
+Record "Finished-goods replaced by Cookulator product model" in `docs/DECISIONS.md`. Open PR. **Caroline reviews before merge.**
+
+---
+
+## Phase 2 — Sample Central
+Branch: `feat/sample-central` (off updated `main` after Phase 1 merges).
+
+### Task 2.1 — Tables migration
+`*_sample_central_tables.sql`: `addresses` (if none exists), `shipments`, `shipment_items`, `sample_templates`. Salesperson by user id; items by product code; custom fields (`custom`, `custom_spec`, `project_no`) on shipment_items.
+
+### Task 2.2 — User dropdown flag
+`*_user_active_in_dropdown.sql`: add `active_in_dropdown` to users/`user_profiles`. Confirm `email` present.
+
+### Task 2.3 — Catalog page
+Sample Central catalog reading `products WHERE sample_eligible = true`, grouped Prep→Tier→Size, UOM "1 cookie · EA", full descriptions.
+
+### Task 2.4 — Shipment builder
+Salesperson + account first; address book w/ inline add; derived-temp badge + deprioritized override; required-by + rush; box_spec (intent); collateral checklist incl. Warming instructions; custom request lines with project #.
+
+### Task 2.5 — Mission control
+Pending shipments list, stat tiles, salesperson filter, status pipeline, custom-item badges + project #.
+
+### Task 2.6 — Quick start
+Saved assortment templates (user-manageable) + duplicate-past-shipment (filtered to salesperson).
+
+### Task 2.7 — Waffle switcher + role gate
+App switcher between Spec Sheet and Sample Central. Role-aware per existing auth: Cortina role sees only Sample Central; internal sees both. **Confirm role model from Task 0.**
+
+### Task 2.8 — ADR + PR. Caroline reviews before merge.
+
+---
+
+## Phase 3 — ShipStation (see SHIPSTATION_INTEGRATION.md)
+Branch: `feat/shipstation`.
+
+### Task 3.1 — Sandbox store + tag contract
+Set up sandbox store. Lock tag vocabulary + SKU-to-tag map with co-man (Caroline coordinates). Document in an ADR.
+
+### Task 3.2 — Order push Edge Function
+`POST /orders/createorder`. Tags per contract. Collateral→Notes. Custom→note+`custom-request` tag. Keys via existing Vault helpers. Store `shipstation_order_id`.
+
+### Task 3.3 — Webhook receiver Edge Function
+ORDER_NOTIFY / SHIP_NOTIFY → update `shipments.status`. Verify signatures. Handle the no-order-update-webhook + immutable-once-shipped gotchas.
+
+### Task 3.4 — ShipStation-side config doc
+Produce a checklist for Caroline to apply in ShipStation UI: box packages+rules, email BCC + order-confirmation recipient, packing-slip template token for collateral/warming.
+
+### Task 3.5 — Flip to production store after sandbox verified. ADR + PR.
+
+---
+
+## Standing rules for every task
+- Branch, never `main`. One logical change per commit.
+- Match existing conventions (migrations, RLS, hooks, pages, ADRs).
+- No stored derived values — grep to confirm before each PR.
+- Reference by code/id, never display string.
+- After each phase: PR, Caroline reviews, then merge.
+- Any deviation from these docs → record an ADR explaining why.

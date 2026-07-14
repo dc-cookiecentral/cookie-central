@@ -1,0 +1,964 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cookulator — Cookie Central</title>
+<style>
+:root{--grape:#4A2E6B;--grape-dk:#2D2235;--lilac:#B79BD6;--ink:#2B2B33;--muted:#7A7487;--line:#E7E2EE;--bg:#FAF8FC;
+--raw:#B5651D;--wip:#C9943B;--cookie:#7A5BA0;--each:#3A6EA5;--inner:#2E7D6B;--master:#1E5F8A;--pallet:#5B7A3A;}
+*{box-sizing:border-box}body{margin:0;font-family:'Outfit',-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:var(--bg);font-size:13px}
+.top{background:var(--grape-dk);color:#fff;padding:13px 22px;display:flex;align-items:center;gap:14px}
+.top h1{font-size:17px;margin:0;font-weight:700;letter-spacing:.3px}
+.top .tag{font-size:12px;color:var(--lilac);font-weight:500}
+.lockbtn{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;font-size:16px;width:38px;height:38px;border-radius:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s}
+.lockbtn:hover{background:rgba(255,255,255,.22)}
+.lockbtn.unlocked{background:#C2185B;border-color:#C2185B}
+.waffle{position:relative;margin-left:auto}
+.waffle-btn{width:38px;height:38px;border-radius:9px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.12);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+.waffle-btn:hover{background:rgba(255,255,255,.22)}
+.waffle-btn svg{width:18px;height:18px}
+.waffle-menu{position:absolute;top:46px;right:0;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 40px rgba(45,34,53,.25);padding:14px;width:280px;z-index:200}
+.waffle-menu .wm-head{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:2px 4px 10px}
+.wm-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.wm-app{display:flex;flex-direction:column;align-items:center;gap:8px;padding:15px 10px;border-radius:11px;border:1px solid var(--line);text-decoration:none;cursor:pointer;background:#fff;transition:.12s;text-align:center}
+.wm-app:hover{border-color:#C2185B;background:#FDF0F6}
+.wm-app.current{border-color:var(--grape);background:#F6F3FA;cursor:default}
+.wm-app .wm-icon{width:42px;height:42px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:22px}
+.wm-app .wm-name{font-size:12.5px;font-weight:800;color:var(--ink);line-height:1.25}
+.wm-app .wm-tag{font-size:10px;font-weight:700;color:var(--muted)}
+.wm-app.current .wm-tag{color:var(--grape)}
+.wm-note{font-size:10.5px;color:var(--muted);line-height:1.45;margin-top:12px;padding:9px 10px;background:var(--bg);border-radius:8px;border:1px solid var(--line)}
+.wm-bg{position:fixed;inset:0;z-index:150}
+.samptoggle{font-size:10.5px;font-weight:700;padding:4px 10px;border-radius:20px;border:1px solid var(--line);background:#fff;color:var(--muted);cursor:pointer;font-family:inherit;white-space:nowrap}
+.samptoggle:hover{border-color:#C2185B;color:#C2185B}
+.samptoggle.on{background:#C2185B;color:#fff;border-color:#C2185B}
+.chainbar{background:#fff;border-bottom:1px solid var(--line);padding:10px 22px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px}
+.chainbar .step{display:flex;align-items:center;gap:6px}
+.chainbar .node{padding:3px 10px;border-radius:13px;color:#fff;font-weight:700;font-size:10.5px;letter-spacing:.2px;cursor:pointer;border:0}
+.chainbar .arrow{color:var(--muted);font-size:13px}
+.chainbar .factor{font-size:9.5px;color:var(--muted);font-style:italic;margin:0 2px}
+.tiers{display:flex;gap:0;background:var(--grape-dk);padding:0 22px}
+.tiers button{border:0;background:transparent;color:#cdbfe0;cursor:pointer;border-bottom:3px solid transparent;padding:11px 16px;font-size:13px;font-weight:600}
+.tiers button.active{color:#fff;border-bottom-color:var(--lilac)}
+.tiers button:hover:not(.active){color:#fff}
+.wrap{padding:18px 22px}
+.head{font-size:12.5px;color:var(--ink);margin-bottom:6px;line-height:1.5}
+.head b{color:var(--grape)}
+.rollnote{font-size:11px;color:var(--muted);margin-bottom:12px;padding:7px 11px;background:#F3EFF8;border-radius:7px;border-left:3px solid var(--lilac)}
+.rollnote .up{color:var(--master);font-weight:600}.rollnote .down{color:var(--raw);font-weight:600}
+table{border-collapse:collapse;width:100%;background:#fff;border-radius:9px;overflow:hidden;box-shadow:0 1px 3px rgba(45,34,53,.07)}
+th,td{padding:7px 10px;text-align:left;border-bottom:1px solid var(--line);font-size:12px;white-space:nowrap}
+th{background:#F6F2FB;color:var(--grape);font-weight:700;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;position:sticky;top:0}
+tr:hover td{background:#FBF9FE}
+.modband th{font-size:9.5px;padding:4px 10px;color:#fff;text-align:center}
+.factor-col{background:#FFF8EC!important;font-weight:700;color:#9A6B1E}
+.chip{display:inline-block;padding:2px 9px;border-radius:11px;font-size:11px;font-weight:600}
+.pill{display:inline-block;padding:2px 9px;border-radius:11px;font-size:11px;font-weight:600;background:#EFE7F8;color:#5B3A86}
+.empty{color:#C3BCD0;font-style:italic}
+.tbd{background:#F0ECF5;color:#8A7AA0;font-style:italic;font-weight:600;padding:1px 7px;border-radius:5px;font-size:10.5px}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;background:#F2EEF8;padding:1px 5px;border-radius:4px}
+.linkup{color:var(--master);font-size:11px}.linkdown{color:var(--raw);font-size:11px}
+.subtitle{font-size:11px;color:var(--muted);margin:2px 0 0}
+th.sortable{cursor:pointer;user-select:none;position:relative}
+th.sortable:hover{background:#EFE7F8}
+th .sortarrow{font-size:9px;color:var(--lilac);margin-left:3px}
+th .filterbtn{cursor:pointer;margin-left:4px;font-size:10px;color:var(--muted);border:0;background:none}
+th .filterbtn.active{color:var(--grape);font-weight:900}
+.filterpop{position:absolute;top:100%;left:0;z-index:30;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 4px 16px rgba(45,34,53,.18);padding:8px;min-width:150px;text-align:left;font-weight:400;text-transform:none;letter-spacing:0}
+.filterpop label{display:block;font-size:11.5px;padding:3px 4px;cursor:pointer;white-space:nowrap}
+.filterpop label:hover{background:#F6F2FB;border-radius:4px}
+.filterpop .fpactions{display:flex;gap:6px;margin-top:6px;border-top:1px solid var(--line);padding-top:6px}
+.filterpop .fpactions button{flex:1;font-size:10.5px;padding:3px;border:1px solid var(--line);border-radius:5px;background:#fff;cursor:pointer}
+.oz1{background:#FBF1DF;color:#9A6B1E}.oz2{background:#F3D9A8;color:#7A4E12}.oz3{background:#E8B96B;color:#5C3A0A}
+.prep-baked{background:#F5E6D3;color:#9A5B1E}.prep-raw{background:#D6E4F0;color:#1E5F8A}
+.flav-chip{background:#EDE7F5;color:#5B3A86}
+/* provenance row (under column titles, toggleable) */
+tr.provrow th{font-size:8.5px;padding:2px 8px;text-align:left;font-weight:700;letter-spacing:.2px;text-transform:none;position:static}
+/* edit/add buttons */
+.tabactions{display:flex;gap:8px;margin-bottom:12px}
+.tabactions button{padding:7px 16px;border-radius:7px;border:1px solid var(--line);cursor:pointer;font-weight:700;font-size:12px}
+.btn-add{background:var(--grape);color:#fff;border-color:var(--grape)}
+.btn-add:hover{background:#3a2356}
+.btn-edit{background:#fff;color:var(--grape)}
+.btn-edit:hover{background:#F6F2FB}
+.btn-edit.on{background:var(--lilac);color:#fff;border-color:var(--lilac)}
+/* modal */
+.modalbg{position:fixed;inset:0;background:rgba(45,34,53,.45);z-index:100;display:flex;align-items:flex-start;justify-content:center;padding-top:60px}
+.modal{background:#fff;border-radius:13px;box-shadow:0 12px 40px rgba(45,34,53,.3);width:480px;max-width:92vw;max-height:80vh;overflow:auto}
+.modal h3{margin:0;padding:15px 20px;border-bottom:1px solid var(--line);font-size:15px;color:var(--grape)}
+.modal .body{padding:16px 20px}
+.modal .fld{margin-bottom:13px}
+.modal label{display:block;font-size:11.5px;font-weight:700;color:var(--ink);margin-bottom:4px}
+.modal label .req{color:#C0392B}
+.modal input,.modal select{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:7px;font-size:13px;font-family:inherit}
+.modal select{cursor:pointer;background:#fff}
+.modal .hint{font-size:10.5px;color:var(--muted);margin-top:3px;font-style:italic}
+.modal .pulled-note{font-size:10.5px;color:var(--wip);margin-top:3px;font-weight:600}
+.modal .foot{padding:14px 20px;border-top:1px solid var(--line);display:flex;gap:9px;justify-content:flex-end}
+.modal .foot button{padding:8px 18px;border-radius:7px;border:0;cursor:pointer;font-weight:700;font-size:12.5px}
+.modal .save{background:var(--grape);color:#fff}.modal .cancel{background:#EEE;color:#555}
+.modal .err{color:#C0392B;font-size:11.5px;margin-top:8px;font-weight:600}
+.editcell{outline:2px dashed var(--lilac);outline-offset:-2px;cursor:text}
+/* column chooser */
+.colchooser{position:relative;display:inline-block}
+.colchooser>button{padding:7px 14px;border-radius:7px;border:1px solid var(--line);background:#fff;color:var(--grape);cursor:pointer;font-weight:700;font-size:12px}
+.colchooser>button:hover{background:#F6F2FB}
+.colpanel{position:absolute;top:100%;left:0;margin-top:4px;z-index:40;background:#fff;border:1px solid var(--line);border-radius:9px;box-shadow:0 6px 20px rgba(45,34,53,.18);padding:10px;min-width:210px}
+.colpanel .grp{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin:8px 2px 4px}
+.colpanel .grp:first-child{margin-top:0}
+.colpanel label{display:block;font-size:12px;padding:4px 4px;cursor:pointer;border-radius:5px}
+.colpanel label:hover{background:#F6F2FB}
+.colpanel label.locked{color:var(--muted);cursor:default}
+.colpanel label.locked:hover{background:none}
+.brand-walmart{background:#E3EEF5;color:#1A5276}
+.brand-dirty{background:#F8E3EE;color:#A01C5B}
+.editor-badge{font-size:10px;font-weight:700;color:#1E6E45;background:#E6F4EC;padding:4px 10px;border-radius:11px;align-self:center;margin-left:auto}
+.editmode-toggle{padding:7px 16px;border-radius:7px;border:1px solid var(--line);background:#fff;color:var(--grape);cursor:pointer;font-weight:700;font-size:12px}
+.editmode-toggle:hover{background:#F6F2FB}
+.editmode-toggle.on{background:var(--grape);color:#fff;border-color:var(--grape)}
+.editmode-indicator{font-size:10.5px;font-weight:700;color:#9A5B1E;background:#FBF1DF;padding:5px 11px;border-radius:11px;align-self:center}
+.viewer-badge{font-size:11px;font-style:italic;color:var(--muted)}
+/* maintenance legend */
+.maint{background:#FFFDF7;border:1px solid #EAD9B0;border-radius:9px;padding:11px 14px;margin-bottom:14px;font-size:11.5px;line-height:1.65}
+.maint b{color:var(--grape)}
+.maint .row{display:flex;gap:8px;align-items:flex-start;margin:3px 0}
+.maint .lab{font-weight:700;min-width:118px;color:#9A6B1E}
+.maint .addhere{color:#1E6E45;font-weight:700}
+.maint .upstream{color:var(--wip);font-weight:700}
+</style></head><body>
+<div class="top"><h1>Cookulator</h1><span class="tag">Cookie Central · BOM explosion engine — dough ⟶ pallet</span><div class="waffle"><button class="waffle-btn" onclick="toggleWaffle(event)" title="Switch apps" aria-label="Switch apps"><svg viewBox="0 0 18 18" fill="currentColor"><circle cx="3" cy="3" r="1.8"/><circle cx="9" cy="3" r="1.8"/><circle cx="15" cy="3" r="1.8"/><circle cx="3" cy="9" r="1.8"/><circle cx="9" cy="9" r="1.8"/><circle cx="15" cy="9" r="1.8"/><circle cx="3" cy="15" r="1.8"/><circle cx="9" cy="15" r="1.8"/><circle cx="15" cy="15" r="1.8"/></svg></button><div id="waffleMenu"></div></div><button id="lockbtn" class="lockbtn" onclick="toggleEditMode()" title="Toggle edit / view-only"></button></div>
+<div class="chainbar" id="chainbar"></div>
+<div class="tiers" id="tiers"></div>
+<div class="wrap"><div class="head" id="head"></div><div class="rollnote" id="rollnote"></div><div id="grid"></div></div>
+<div id="modalmount"></div>
+<script>
+let RAW=[{"raw_sku": "1001", "name": "Cookie Dough", "family": "Stuffed", "subtype": "Classic", "batch_wt_oz": 1280, "co_mans": ["Kukibell"], "notes": "Base classic dough"}, {"raw_sku": "1002", "name": "Double Chocolate Dough", "family": "Stuffed", "subtype": "Classic", "batch_wt_oz": 1280, "co_mans": ["Kukibell"], "notes": "Base double chocolate"}, {"raw_sku": "1003", "name": "Gourmet Base Dough", "family": "Shot", "subtype": "Gourmet", "batch_wt_oz": 1280, "co_mans": ["Kukibell"], "notes": "Gourmet shot base"}, {"raw_sku": "1004", "name": "Gourmet Cookie Dough", "family": "Stuffed", "subtype": "Gourmet", "batch_wt_oz": 1280, "co_mans": ["Kukibell"], "notes": "Gourmet stuffed base"}, {"raw_sku": "1005", "name": "Gourmet Double Chocolate Dough", "family": "Stuffed", "subtype": "Gourmet", "batch_wt_oz": 1280, "co_mans": ["Kukibell"], "notes": "Gourmet stuffed double chocolate base"}], WIP=[{"wip_sku": "1501", "name": "Chocolate Chip", "type": "Shot", "subtype": "Gourmet", "raw_base": "", "mixins": "", "mixin_wt_oz": "", "raw_dough_portion_oz": "", "wip_batch_wt_oz": "", "co_mans": []}, {"wip_sku": "1502", "name": "Double Chocolate", "type": "Shot", "subtype": "Gourmet", "raw_base": "", "mixins": "", "mixin_wt_oz": "", "raw_dough_portion_oz": "", "wip_batch_wt_oz": "", "co_mans": []}, {"wip_sku": "1503", "name": "Red Velvet", "type": "Shot", "subtype": "Gourmet", "raw_base": "", "mixins": "", "mixin_wt_oz": "", "raw_dough_portion_oz": "", "wip_batch_wt_oz": "", "co_mans": []}, {"wip_sku": "1504", "name": "Churro", "type": "Shot", "subtype": "Gourmet", "raw_base": "", "mixins": "", "mixin_wt_oz": "", "raw_dough_portion_oz": "", "wip_batch_wt_oz": "", "co_mans": []}, {"wip_sku": "1505", "name": "Sugar/Shortbread", "type": "Shot", "subtype": "Gourmet", "raw_base": "", "mixins": "", "mixin_wt_oz": "", "raw_dough_portion_oz": "", "wip_batch_wt_oz": "", "co_mans": []}, {"wip_sku": "2001", "name": "Chocolate Chip Cookie", "type": "Mixed", "subtype": "Classic", "raw_base": "Cookie Dough", "mixins": "Chocolate chips", "mixin_wt_oz": "", "raw_dough_portion_oz": "", "wip_batch_wt_oz": "", "co_mans": []}, {"wip_sku": "2002", "name": "Double Chocolate Cookie", "type": "Mixed", "subtype": "Classic", "raw_base": "Double Chocolate Dough", "mixins": "Chocolate chips", "mixin_wt_oz": "", "raw_dough_portion_oz": "", "wip_batch_wt_oz": "", "co_mans": []}, {"wip_sku": "2003", "name": "White Chocolate Chip Cookie", "type": "Mixed", "subtype": "Classic", "raw_base": "Cookie Dough", "mixins": "White chocolate chips", "mixin_wt_oz": "", "raw_dough_portion_oz": "", "wip_batch_wt_oz": "", "co_mans": []}, {"wip_sku": "2004", "name": "Peanut Cookie", "type": "Mixed", "subtype": "Classic", "raw_base": "Cookie Dough", "mixins": "Peanut", "mixin_wt_oz": "", "raw_dough_portion_oz": "", "wip_batch_wt_oz": "", "co_mans": []}, {"wip_sku": "2005", "name": "Chocolate Chip Cookie (Gourmet)", "type": "Mixed", "subtype": "Gourmet", "raw_base": "Gourmet Cookie Dough", "mixins": "", "mixin_wt_oz": "", "raw_dough_portion_oz": "", "wip_batch_wt_oz": "", "co_mans": ["Kukibell"]}, {"wip_sku": "2006", "name": "Double Chocolate Chip (Gourmet)", "type": "Mixed", "subtype": "Gourmet", "raw_base": "Gourmet Double Chocolate Dough", "mixins": "", "mixin_wt_oz": "", "raw_dough_portion_oz": "", "wip_batch_wt_oz": "", "co_mans": ["Kukibell"]}, {"wip_sku": "2007", "name": "White Chocolate Chip (Gourmet)", "type": "Mixed", "subtype": "Gourmet", "raw_base": "Gourmet Cookie Dough", "mixins": "", "mixin_wt_oz": "", "raw_dough_portion_oz": "", "wip_batch_wt_oz": "", "co_mans": ["Kukibell"]}, {"wip_sku": "2008", "name": "Peanut Cookie (Gourmet)", "type": "Mixed", "subtype": "Gourmet", "raw_base": "Gourmet Cookie Dough", "mixins": "", "mixin_wt_oz": "", "raw_dough_portion_oz": "", "wip_batch_wt_oz": "", "co_mans": ["Kukibell"]}], COOKIES=[{"cookie_code": "CC-2OZ-BAK-G", "cookie_desc": "Gourmet Chocolate Chip — 2oz, Baked", "flavor": "Chocolate Chip", "wip_dough": "Chocolate Chip", "dough_oz_per_cookie": 2, "prep": "Baked", "allergens": "", "outer_cookie": "Chocolate Chip", "stuffing": "", "sample_eligible": true, "ingredients": "", "nutrition": ""}, {"cookie_code": "DC-2OZ-BAK-G", "cookie_desc": "Gourmet Double Chocolate — 2oz, Baked", "flavor": "Double Chocolate", "wip_dough": "Double Chocolate", "dough_oz_per_cookie": 2, "prep": "Baked", "allergens": "", "outer_cookie": "Double Chocolate", "stuffing": "", "sample_eligible": true, "ingredients": "", "nutrition": ""}, {"cookie_code": "RV-2OZ-BAK-G", "cookie_desc": "Gourmet Red Velvet — 2oz, Baked", "flavor": "Red Velvet", "wip_dough": "Red Velvet", "dough_oz_per_cookie": 2, "prep": "Baked", "allergens": "", "outer_cookie": "Red Velvet", "stuffing": "", "sample_eligible": true, "ingredients": "", "nutrition": ""}, {"cookie_code": "CH-2OZ-BAK-G", "cookie_desc": "Gourmet Churro — 2oz, Baked", "flavor": "Churro", "wip_dough": "Churro", "dough_oz_per_cookie": 2, "prep": "Baked", "allergens": "", "outer_cookie": "Churro", "stuffing": "", "sample_eligible": true, "ingredients": "", "nutrition": ""}, {"cookie_code": "CCH-2OZ-BAK-C", "cookie_desc": "Classic Chocolate Chip / Choc. Hazelnut — 2oz, Baked", "flavor": "Chocolate Chip / Choc. Hazelnut", "wip_dough": "Chocolate Chip Cookie", "dough_oz_per_cookie": 2, "prep": "Baked", "allergens": "", "outer_cookie": "Chocolate Chip", "stuffing": "Choc. Hazelnut", "sample_eligible": false, "ingredients": "", "nutrition": ""}, {"cookie_code": "CCH-2OZ-RAW-C", "cookie_desc": "Classic Chocolate Chip / Choc. Hazelnut — 2oz, Raw", "flavor": "Chocolate Chip / Choc. Hazelnut", "wip_dough": "Chocolate Chip Cookie", "dough_oz_per_cookie": 2, "prep": "Raw", "allergens": "", "outer_cookie": "Chocolate Chip", "stuffing": "Choc. Hazelnut", "sample_eligible": false, "ingredients": "", "nutrition": ""}, {"cookie_code": "CCH-3OZ-BAK-C", "cookie_desc": "Classic Chocolate Chip / Choc. Hazelnut — 3oz, Baked", "flavor": "Chocolate Chip / Choc. Hazelnut", "wip_dough": "Chocolate Chip Cookie", "dough_oz_per_cookie": 3, "prep": "Baked", "allergens": "", "outer_cookie": "Chocolate Chip", "stuffing": "Choc. Hazelnut", "sample_eligible": true, "ingredients": "", "nutrition": ""}, {"cookie_code": "CCH-3OZ-RAW-C", "cookie_desc": "Classic Chocolate Chip / Choc. Hazelnut — 3oz, Raw", "flavor": "Chocolate Chip / Choc. Hazelnut", "wip_dough": "Chocolate Chip Cookie", "dough_oz_per_cookie": 3, "prep": "Raw", "allergens": "", "outer_cookie": "Chocolate Chip", "stuffing": "Choc. Hazelnut", "sample_eligible": false, "ingredients": "", "nutrition": ""}, {"cookie_code": "CCH-3OZ-BAK-G", "cookie_desc": "Gourmet Chocolate Chip / Choc. Hazelnut — 3oz, Baked", "flavor": "Chocolate Chip / Choc. Hazelnut", "wip_dough": "Chocolate Chip Cookie (Gourmet)", "dough_oz_per_cookie": 3, "prep": "Baked", "allergens": "", "outer_cookie": "Chocolate Chip", "stuffing": "Choc. Hazelnut", "sample_eligible": false, "ingredients": "", "nutrition": ""}, {"cookie_code": "DCSC-2OZ-BAK-C", "cookie_desc": "Classic Double Choc. Salted Caramel — 2oz, Baked", "flavor": "Double Choc. Salted Caramel", "wip_dough": "Double Chocolate Cookie", "dough_oz_per_cookie": 2, "prep": "Baked", "allergens": "", "outer_cookie": "Double Chocolate Chip", "stuffing": "Salted Caramel", "sample_eligible": false, "ingredients": "", "nutrition": ""}, {"cookie_code": "DCSC-2OZ-RAW-C", "cookie_desc": "Classic Double Choc. Salted Caramel — 2oz, Raw", "flavor": "Double Choc. Salted Caramel", "wip_dough": "Double Chocolate Cookie", "dough_oz_per_cookie": 2, "prep": "Raw", "allergens": "", "outer_cookie": "Double Chocolate Chip", "stuffing": "Salted Caramel", "sample_eligible": false, "ingredients": "", "nutrition": ""}, {"cookie_code": "DCSC-3OZ-BAK-C", "cookie_desc": "Classic Double Choc. Salted Caramel — 3oz, Baked", "flavor": "Double Choc. Salted Caramel", "wip_dough": "Double Chocolate Cookie", "dough_oz_per_cookie": 3, "prep": "Baked", "allergens": "", "outer_cookie": "Double Chocolate Chip", "stuffing": "Salted Caramel", "sample_eligible": true, "ingredients": "", "nutrition": ""}, {"cookie_code": "DCSC-3OZ-RAW-C", "cookie_desc": "Classic Double Choc. Salted Caramel — 3oz, Raw", "flavor": "Double Choc. Salted Caramel", "wip_dough": "Double Chocolate Cookie", "dough_oz_per_cookie": 3, "prep": "Raw", "allergens": "", "outer_cookie": "Double Chocolate Chip", "stuffing": "Salted Caramel", "sample_eligible": false, "ingredients": "", "nutrition": ""}, {"cookie_code": "DCSC-3OZ-BAK-G", "cookie_desc": "Gourmet Double Choc. Salted Caramel — 3oz, Baked", "flavor": "Double Choc. Salted Caramel", "wip_dough": "Double Chocolate Chip (Gourmet)", "dough_oz_per_cookie": 3, "prep": "Baked", "allergens": "", "outer_cookie": "Double Chocolate Chip", "stuffing": "Salted Caramel", "sample_eligible": false, "ingredients": "", "nutrition": ""}, {"cookie_code": "WCCB-2OZ-BAK-C", "cookie_desc": "Classic White Choc. Chip / Cookie Butter — 2oz, Baked", "flavor": "White Choc. Chip / Cookie Butter", "wip_dough": "White Chocolate Chip Cookie", "dough_oz_per_cookie": 2, "prep": "Baked", "allergens": "", "outer_cookie": "White Choc. Chip", "stuffing": "Cookie Butter", "sample_eligible": false, "ingredients": "", "nutrition": ""}, {"cookie_code": "WCCB-2OZ-RAW-C", "cookie_desc": "Classic White Choc. Chip / Cookie Butter — 2oz, Raw", "flavor": "White Choc. Chip / Cookie Butter", "wip_dough": "White Chocolate Chip Cookie", "dough_oz_per_cookie": 2, "prep": "Raw", "allergens": "", "outer_cookie": "White Choc. Chip", "stuffing": "Cookie Butter", "sample_eligible": false, "ingredients": "", "nutrition": ""}, {"cookie_code": "WCCB-3OZ-BAK-C", "cookie_desc": "Classic White Choc. Chip / Cookie Butter — 3oz, Baked", "flavor": "White Choc. Chip / Cookie Butter", "wip_dough": "White Chocolate Chip Cookie", "dough_oz_per_cookie": 3, "prep": "Baked", "allergens": "", "outer_cookie": "White Choc. Chip", "stuffing": "Cookie Butter", "sample_eligible": true, "ingredients": "", "nutrition": ""}, {"cookie_code": "WCCB-3OZ-RAW-C", "cookie_desc": "Classic White Choc. Chip / Cookie Butter — 3oz, Raw", "flavor": "White Choc. Chip / Cookie Butter", "wip_dough": "White Chocolate Chip Cookie", "dough_oz_per_cookie": 3, "prep": "Raw", "allergens": "", "outer_cookie": "White Choc. Chip", "stuffing": "Cookie Butter", "sample_eligible": false, "ingredients": "", "nutrition": ""}, {"cookie_code": "WCCB-3OZ-BAK-G", "cookie_desc": "Gourmet White Choc. Chip / Cookie Butter — 3oz, Baked", "flavor": "White Choc. Chip / Cookie Butter", "wip_dough": "White Chocolate Chip (Gourmet)", "dough_oz_per_cookie": 3, "prep": "Baked", "allergens": "", "outer_cookie": "White Choc. Chip", "stuffing": "Cookie Butter", "sample_eligible": false, "ingredients": "", "nutrition": ""}, {"cookie_code": "PBJ-2OZ-BAK-C", "cookie_desc": "Classic Peanut Butter & Jelly — 2oz, Baked", "flavor": "Peanut Butter & Jelly", "wip_dough": "Peanut Cookie", "dough_oz_per_cookie": 2, "prep": "Baked", "allergens": "", "outer_cookie": "Peanut Cookie", "stuffing": "Grape Jelly", "sample_eligible": false, "ingredients": "", "nutrition": ""}, {"cookie_code": "PBJ-2OZ-RAW-C", "cookie_desc": "Classic Peanut Butter & Jelly — 2oz, Raw", "flavor": "Peanut Butter & Jelly", "wip_dough": "Peanut Cookie", "dough_oz_per_cookie": 2, "prep": "Raw", "allergens": "", "outer_cookie": "Peanut Cookie", "stuffing": "Grape Jelly", "sample_eligible": false, "ingredients": "", "nutrition": ""}, {"cookie_code": "PBJ-3OZ-BAK-C", "cookie_desc": "Classic Peanut Butter & Jelly — 3oz, Baked", "flavor": "Peanut Butter & Jelly", "wip_dough": "Peanut Cookie", "dough_oz_per_cookie": 3, "prep": "Baked", "allergens": "", "outer_cookie": "Peanut Cookie", "stuffing": "Grape Jelly", "sample_eligible": true, "ingredients": "", "nutrition": ""}, {"cookie_code": "PBJ-3OZ-RAW-C", "cookie_desc": "Classic Peanut Butter & Jelly — 3oz, Raw", "flavor": "Peanut Butter & Jelly", "wip_dough": "Peanut Cookie", "dough_oz_per_cookie": 3, "prep": "Raw", "allergens": "", "outer_cookie": "Peanut Cookie", "stuffing": "Grape Jelly", "sample_eligible": false, "ingredients": "", "nutrition": ""}, {"cookie_code": "PBJ-3OZ-BAK-G", "cookie_desc": "Gourmet Peanut Butter & Jelly — 3oz, Baked", "flavor": "Peanut Butter & Jelly", "wip_dough": "Peanut Cookie (Gourmet)", "dough_oz_per_cookie": 3, "prep": "Baked", "allergens": "", "outer_cookie": "Peanut Cookie", "stuffing": "Grape Jelly", "sample_eligible": false, "ingredients": "", "nutrition": ""}, {"cookie_code": "CC-1.5OZ-BAK-G", "cookie_desc": "Gourmet Chocolate Chip — 1.5oz, Baked", "flavor": "Chocolate Chip", "wip_dough": "Chocolate Chip", "dough_oz_per_cookie": 1.5, "prep": "Baked", "allergens": "", "outer_cookie": "Chocolate Chip", "stuffing": "", "sample_eligible": false, "ingredients": "", "nutrition": ""}, {"cookie_code": "SR-2OZ-BAK-C", "cookie_desc": "Classic Shortbread Raspberry — 2oz, Baked", "flavor": "Shortbread Raspberry", "wip_dough": "Sugar/Shortbread", "dough_oz_per_cookie": 2, "prep": "Baked", "allergens": "", "outer_cookie": "Shortbread Raspberry", "stuffing": "", "sample_eligible": false, "ingredients": "", "nutrition": ""}, {"cookie_code": "CCF-3OZ-RAW-C", "cookie_desc": "Classic Chocolate Chip Cookie with Fudge — 3oz, Raw", "flavor": "Chocolate Chip Cookie with Fudge", "wip_dough": "Chocolate Chip Cookie", "dough_oz_per_cookie": 3, "prep": "Raw", "allergens": "", "outer_cookie": "Chocolate Chip Cookie", "stuffing": "Fudge", "sample_eligible": false, "ingredients": "", "nutrition": ""}, {"cookie_code": "WCCB-3OZ-RAW-C", "cookie_desc": "Classic White Chocolate Chip / Cookie Butter — 3oz, Raw", "flavor": "White Chocolate Chip / Cookie Butter", "wip_dough": "White Chocolate Chip Cookie", "dough_oz_per_cookie": 3, "prep": "Raw", "allergens": "", "outer_cookie": "White Chocolate Chip", "stuffing": "Cookie Butter", "sample_eligible": false, "ingredients": "", "nutrition": ""}], EACHES=[{"each_sku": "1252", "each_upc": "194346527786", "cookie_code": "WCCB-3OZ-RAW-C", "cookies_per_each": 4, "pack_type": "Tray + Film", "net_wt": "12oz (4 x 3oz)", "brand": "Walmart", "retail_price": "", "length_in": "", "width_in": "", "height_in": "", "gross_wt_oz": "", "sample_eligible": false}, {"each_sku": "1251", "each_upc": "194346527793", "cookie_code": "PBJ-3OZ-RAW-C", "cookies_per_each": 4, "pack_type": "Tray + Film", "net_wt": "12oz (4 x 3oz)", "brand": "Walmart", "retail_price": "", "length_in": "", "width_in": "", "height_in": "", "gross_wt_oz": "", "sample_eligible": false}, {"each_sku": "1287", "each_upc": "194346565597", "cookie_code": "CCF-3OZ-RAW-C", "cookies_per_each": 4, "pack_type": "Tray + Film", "net_wt": "12oz (4 x 3oz)", "brand": "Walmart", "retail_price": "", "length_in": "", "width_in": "", "height_in": "", "gross_wt_oz": "", "sample_eligible": false}], INNER=[{"inner_sku": "3001", "name": "Cookie Shot Inner Case — 12", "each_sku": "", "eaches_per_inner": 12, "sellable": "Yes", "upc": "", "gtin14": "", "sample_eligible": false}, {"inner_sku": "3002", "name": "Cookie Shot Inner Case — 24", "each_sku": "", "eaches_per_inner": 24, "sellable": "Yes", "upc": "", "gtin14": "", "sample_eligible": false}, {"inner_sku": "3003", "name": "Stuffed Cookie Inner Case — 12", "each_sku": "", "eaches_per_inner": 12, "sellable": "Yes", "upc": "", "gtin14": "", "sample_eligible": false}, {"inner_sku": "3004", "name": "Stuffed Cookie Inner Case — 24", "each_sku": "", "eaches_per_inner": 24, "sellable": "No", "upc": "", "gtin14": "", "sample_eligible": false}], MASTERCASES=[{"case_id": "MC-001", "name": "Classic Peanut Butter & Jelly Stuffed Cookie — 4", "status": "Active", "composed_of": "eaches", "unit_ref": "1251", "unit_qty": 1, "length_in": "", "width_in": "", "height_in": "", "gross_wt_lb": "", "net_wt_lb": "", "gtin14": "", "product_sku": "1251", "channel": "Walmart", "net_wt_manual": "", "cube_cuft": "", "pallet_size": "", "ti": "", "country": "", "hi": "", "loading_height_in": "", "pallet_weight_lb": "", "cases_per_pallet": "", "shelf_life": "", "sample_eligible": false}, {"case_id": "MC-002", "name": "Classic Chocolate Chip Cookie with Fudge Stuffed", "status": "Active", "composed_of": "eaches", "unit_ref": "1287", "unit_qty": 1, "length_in": "", "width_in": "", "height_in": "", "gross_wt_lb": "", "net_wt_lb": "", "gtin14": "", "product_sku": "1287", "channel": "Walmart", "net_wt_manual": "", "cube_cuft": "", "pallet_size": "", "ti": "", "country": "", "hi": "", "loading_height_in": "", "pallet_weight_lb": "", "cases_per_pallet": "", "shelf_life": "", "sample_eligible": false}, {"case_id": "MC-003", "name": "Classic White Chocolate Chip / Cookie Butter Stu", "status": "Active", "composed_of": "eaches", "unit_ref": "1252", "unit_qty": 1, "length_in": "", "width_in": "", "height_in": "", "gross_wt_lb": "", "net_wt_lb": "", "gtin14": "", "product_sku": "1252", "channel": "Walmart", "net_wt_manual": "", "cube_cuft": "", "pallet_size": "", "ti": "", "country": "", "hi": "", "loading_height_in": "", "pallet_weight_lb": "", "cases_per_pallet": "", "shelf_life": "", "sample_eligible": false}, {"case_id": "MC-004", "name": "Chocolate Chip Cookie Shots", "status": "Active", "channel": "Wholesale", "composed_of": "cookies", "unit_ref": "CC-2OZ-BAK-G", "unit_qty": 50, "length_in": 15, "width_in": 15, "height_in": 3, "cube_cuft": 0.39, "gross_wt_lb": 7.25, "net_wt_manual": 12.5, "gtin14": "850053030130", "ti": 6, "hi": 17, "cases_per_pallet": 102, "pallet_size": "40 x 48", "pallet_weight_lb": 900, "loading_height_in": 72, "shelf_life": "6 Months", "country": "USA", "product_sku": "", "net_wt_lb": "", "sample_eligible": false}, {"case_id": "MC-005", "name": "Churro Cookie Shots", "status": "Active", "channel": "Wholesale", "composed_of": "cookies", "unit_ref": "CH-2OZ-BAK-G", "unit_qty": 50, "length_in": 15, "width_in": 15, "height_in": 3, "cube_cuft": 0.39, "gross_wt_lb": 7.25, "net_wt_manual": 12.5, "gtin14": "850053030147", "ti": 6, "hi": 17, "cases_per_pallet": 102, "pallet_size": "40 x 48", "pallet_weight_lb": 900, "loading_height_in": 72, "shelf_life": "6 Months", "country": "USA", "product_sku": "", "net_wt_lb": "", "sample_eligible": false}, {"case_id": "MC-006", "name": "Double Chocolate Cookie Shots", "status": "Active", "channel": "Wholesale", "composed_of": "cookies", "unit_ref": "DC-2OZ-BAK-G", "unit_qty": 50, "length_in": 15, "width_in": 15, "height_in": 3, "cube_cuft": 0.39, "gross_wt_lb": 7.25, "net_wt_manual": 12.5, "gtin14": "850053030154", "ti": 6, "hi": 17, "cases_per_pallet": 102, "pallet_size": "40 x 48", "pallet_weight_lb": 900, "loading_height_in": 72, "shelf_life": "6 Months", "country": "USA", "product_sku": "", "net_wt_lb": "", "sample_eligible": false}, {"case_id": "MC-007", "name": "Red Velvet Cookie Shots", "status": "Active", "channel": "Wholesale", "composed_of": "cookies", "unit_ref": "RV-2OZ-BAK-G", "unit_qty": 50, "length_in": 15, "width_in": 15, "height_in": 3, "cube_cuft": 0.39, "gross_wt_lb": 7.25, "net_wt_manual": 12.5, "gtin14": "850053030161", "ti": 6, "hi": 17, "cases_per_pallet": 102, "pallet_size": "40 x 48", "pallet_weight_lb": 900, "loading_height_in": 72, "shelf_life": "6 Months", "country": "USA", "product_sku": "", "net_wt_lb": "", "sample_eligible": false}, {"status": "Active", "channel": "Wholesale", "composed_of": "cookies", "unit_qty": 100, "pallet_size": "40 x 48", "loading_height_in": 72, "shelf_life": "12 Months", "country": "USA", "product_sku": "", "length_in": 18, "width_in": 14, "height_in": 10, "cube_cuft": 1.46, "gross_wt_lb": 20, "net_wt_manual": 18.75, "ti": 6, "hi": 6, "cases_per_pallet": 36, "pallet_weight_lb": 1000, "case_id": "MC-008", "name": "Chocolate Chip Hazelnut Classic Stuffed Cookies-Clear (3oz)", "unit_ref": "CCH-3OZ-BAK-C", "gtin14": "850053030086", "net_wt_lb": "", "storage_override": "", "sample_eligible": false}, {"status": "Active", "channel": "Wholesale", "composed_of": "cookies", "unit_qty": 100, "pallet_size": "40 x 48", "loading_height_in": 72, "shelf_life": "12 Months", "country": "USA", "product_sku": "", "length_in": 18, "width_in": 14, "height_in": 10, "cube_cuft": 1.46, "gross_wt_lb": 20, "net_wt_manual": 18.75, "ti": 6, "hi": 6, "cases_per_pallet": 36, "pallet_weight_lb": 1000, "case_id": "MC-009", "name": "White Chocolate Chip Cookie Butter Classic Stuffed Cookies-Clear (3oz)", "unit_ref": "WCCB-3OZ-BAK-C", "gtin14": "850053030499", "net_wt_lb": "", "storage_override": "", "sample_eligible": false}, {"status": "Active", "channel": "Wholesale", "composed_of": "cookies", "unit_qty": 100, "pallet_size": "40 x 48", "loading_height_in": 72, "shelf_life": "12 Months", "country": "USA", "product_sku": "", "length_in": 18, "width_in": 14, "height_in": 10, "cube_cuft": 1.46, "gross_wt_lb": 20, "net_wt_manual": 18.75, "ti": 6, "hi": 6, "cases_per_pallet": 36, "pallet_weight_lb": 1000, "case_id": "MC-010", "name": "Double Chocolate Salted Caramel Classic Stuffed Cookies-Clear (3oz)", "unit_ref": "DCSC-3OZ-BAK-C", "gtin14": "850053030109", "net_wt_lb": "", "storage_override": "", "sample_eligible": false}, {"status": "Active", "channel": "Wholesale", "composed_of": "cookies", "unit_qty": 100, "pallet_size": "40 x 48", "loading_height_in": 72, "shelf_life": "12 Months", "country": "USA", "product_sku": "", "length_in": 18, "width_in": 14, "height_in": 10, "cube_cuft": 1.46, "gross_wt_lb": 20, "net_wt_manual": 18.75, "ti": 6, "hi": 6, "cases_per_pallet": 36, "pallet_weight_lb": 1000, "case_id": "MC-011", "name": "Peanut Butter & Jelly Classic Stuffed Cookies-Clear (3oz)", "unit_ref": "PBJ-3OZ-BAK-C", "gtin14": "850053030116", "net_wt_lb": "", "storage_override": "", "sample_eligible": false}, {"status": "Active", "channel": "Wholesale", "composed_of": "cookies", "unit_qty": 100, "pallet_size": "40 x 48", "loading_height_in": 72, "shelf_life": "12 Months", "country": "USA", "product_sku": "", "length_in": 14, "width_in": 10, "height_in": 7, "cube_cuft": 0.57, "gross_wt_lb": 14, "net_wt_manual": 12.5, "ti": 11, "hi": 8, "cases_per_pallet": 88, "pallet_weight_lb": 900, "case_id": "MC-012", "name": "Chocolate Chip Hazelnut Classic Stuffed Cookies-Clear (2oz)", "unit_ref": "CCH-2OZ-BAK-C", "gtin14": "850053030253", "net_wt_lb": "", "storage_override": "", "sample_eligible": false}, {"status": "Active", "channel": "Wholesale", "composed_of": "cookies", "unit_qty": 100, "pallet_size": "40 x 48", "loading_height_in": 72, "shelf_life": "12 Months", "country": "USA", "product_sku": "", "length_in": 14, "width_in": 10, "height_in": 7, "cube_cuft": 0.57, "gross_wt_lb": 14, "net_wt_manual": 12.5, "ti": 11, "hi": 8, "cases_per_pallet": 88, "pallet_weight_lb": 900, "case_id": "MC-013", "name": "White Chocolate Chip Cookie Butter Classic Stuffed Cookies-Clear (2oz)", "unit_ref": "WCCB-2OZ-BAK-C", "gtin14": "850053030246", "net_wt_lb": "", "storage_override": "", "sample_eligible": false}, {"status": "Active", "channel": "Wholesale", "composed_of": "cookies", "unit_qty": 100, "pallet_size": "40 x 48", "loading_height_in": 72, "shelf_life": "12 Months", "country": "USA", "product_sku": "", "length_in": 14, "width_in": 10, "height_in": 7, "cube_cuft": 0.57, "gross_wt_lb": 14, "net_wt_manual": 12.5, "ti": 11, "hi": 8, "cases_per_pallet": 88, "pallet_weight_lb": 900, "case_id": "MC-014", "name": "Double Chocolate Salted Caramel Classic Stuffed Cookies-Clear (2oz)", "unit_ref": "DCSC-2OZ-BAK-C", "gtin14": "850053030123", "net_wt_lb": "", "storage_override": "", "sample_eligible": false}, {"status": "Active", "channel": "Wholesale", "composed_of": "cookies", "unit_qty": 100, "pallet_size": "40 x 48", "loading_height_in": 72, "shelf_life": "12 Months", "country": "USA", "product_sku": "", "length_in": 14, "width_in": 10, "height_in": 7, "cube_cuft": 0.57, "gross_wt_lb": 14, "net_wt_manual": 12.5, "ti": 11, "hi": 8, "cases_per_pallet": 88, "pallet_weight_lb": 900, "case_id": "MC-015", "name": "Peanut Butter & Jelly Classic Stuffed Cookies-Clear (2oz)", "unit_ref": "PBJ-2OZ-BAK-C", "gtin14": "850053030093", "net_wt_lb": "", "storage_override": "", "sample_eligible": false}], SHIPPINGBOXES=[{"box_id": "SB-001", "name": "DTC 6-pack Branded Box", "dims_hxlxw": "", "ship_wt_lb": "", "cost_premium": "", "cushioning": "Molded pulp insert", "branding": "Full-color printed", "notes": "DTC transit, 6 cookies"}, {"box_id": "SB-002", "name": "DTC 12-pack Branded Box", "dims_hxlxw": "", "ship_wt_lb": "", "cost_premium": "", "cushioning": "Molded pulp insert", "branding": "Full-color printed", "notes": "DTC transit, 12 cookies"}], STUFFINGS=[{"stuffing_id": "ST-01", "name": "Choc. Hazelnut", "type": "Filling", "notes": ""}, {"stuffing_id": "ST-02", "name": "Cookie Butter", "type": "Filling", "notes": ""}, {"stuffing_id": "ST-03", "name": "Fudge", "type": "Filling", "notes": ""}, {"stuffing_id": "ST-04", "name": "Salted Caramel", "type": "Filling", "notes": ""}, {"stuffing_id": "ST-05", "name": "Grape Jelly", "type": "Filling", "notes": ""}];
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+// ===== APP SWITCHER (waffle menu) =====
+let waffleOpen=false;
+function toggleWaffle(e){if(e)e.stopPropagation();waffleOpen=!waffleOpen;drawWaffle();}
+function closeWaffle(){waffleOpen=false;drawWaffle();}
+function drawWaffle(){
+ const m=document.getElementById('waffleMenu');if(!m)return;
+ if(!waffleOpen){m.innerHTML='';return;}
+ let h='<div class="wm-bg" onclick="closeWaffle()"></div>';
+ h+='<div class="waffle-menu"><div class="wm-head">Cookie Central · Apps</div><div class="wm-grid">';
+ // Cookulator = current
+ h+='<div class="wm-app current"><div class="wm-icon" style="background:#F3ECDD">📊</div><div class="wm-name">Cookulator</div><div class="wm-tag">Current</div></div>';
+ // Sample Central — real link
+ h+='<a class="wm-app" href="sample_central.html"><div class="wm-icon" style="background:#FDF0F6">🍪</div><div class="wm-name">Sample Central</div><div class="wm-tag">Sample orders</div></a>';
+ h+='</div>';
+ h+='<div class="wm-note">🔒 Internal tools. The Dirty Cookie team moves freely between both; Cortina sees only Sample Central once access-gating is on.</div>';
+ h+='</div>';
+ m.innerHTML=h;
+}
+
+
+// ---- INDEXES ----
+let WIP_BY_NAME={}, COOKIE_BY_CODE={}, EACH_BY_SKU={}, MC_BY_ID={}, SB_BY_ID={};
+function reindex(){
+ WIP_BY_NAME={};WIP.forEach(w=>WIP_BY_NAME[w.name]=w);
+ COOKIE_BY_CODE={};COOKIES.forEach(c=>COOKIE_BY_CODE[c.cookie_code]=c);
+ EACH_BY_SKU={};EACHES.forEach(e=>EACH_BY_SKU[e.each_sku]=e);
+ MC_BY_ID={};MASTERCASES.forEach(m=>MC_BY_ID[m.case_id]=m);
+ SB_BY_ID={};SHIPPINGBOXES.forEach(b=>SB_BY_ID[b.box_id]=b);
+}
+reindex();
+
+// ---- CHAIN RESOLVERS (inheritance + roll-up) ----
+function wipOfCookie(c){return c&&c.wip_dough?WIP_BY_NAME[c.wip_dough]:null}
+function cookieOfEach(e){return e&&e.cookie_code?COOKIE_BY_CODE[e.cookie_code]:null}
+function eachOfProduct(p){return p&&p.each_sku_ref?EACH_BY_SKU[p.each_sku_ref]:null}
+function cookieOfProduct(p){const e=eachOfProduct(p);if(e){const c=cookieOfEach(e);if(c)return c;}
+ // fallback by flavor
+ if(p&&p.flavor){for(const c of COOKIES){if((c.flavor||'').toLowerCase()===(p.flavor||'').toLowerCase())return c;}}return null;}
+function dispType(t){t=t||'';return(t==='Mixed'||t==='Stuffed Cookie')?'Stuffed':t}
+function inhType(p){const c=cookieOfProduct(p);const w=wipOfCookie(c);return w?dispType(w.type):''}
+function inhSubtype(p){const c=cookieOfProduct(p);const w=wipOfCookie(c);return w?w.subtype:''}
+function cookieType(c){const w=wipOfCookie(c);return w?dispType(w.type):''}
+function cookieTier(c){const w=wipOfCookie(c);return w?w.subtype:''}
+
+// ---- ROLL-DOWN: dough oz per master case ----
+
+function chip(txt,bg,fg){return '<span class="chip" style="background:'+bg+';color:'+fg+'">'+esc(txt)+'</span>'}
+function pill(txt){return txt?'<span class="pill">'+esc(txt)+'</span>':'<span class="empty">—</span>'}
+function tbd(t){return '<span class="tbd">'+(t||'TBD')+'</span>'}
+
+
+// ============ TAB DEFINITIONS — one per chain level ============
+const TABS={
+ wip:{name:'1 · WIP',color:'var(--wip)',
+   head:'<b>WIP — Work In Progress doughs.</b> Two stages on one page: <b>Raw Dough</b> (base recipes, batch weights) and <b>Production Dough</b> (raw + measured mix-ins). Cookie shots are made straight from production dough; some items skip a separate production step \u2014 keeping all here makes WIP visible in one place. A third table holds the <b>Stuffings / Fillings</b> added to stuffed cookies.',
+   roll:'<span class="down">Raw Dough</span> is the base. <span class="up">Production Dough</span> = raw + mix-ins, and rolls up into Cookies (each cookie pulls a set dough weight).',
+   render:()=>{
+     let h=maint('<div class="maint"><div class="row"><span class="lab">Add here when:</span><span><span class="addhere">a new flavor, recipe, or tier</span> is introduced. Raw Dough = a base recipe; Production Dough = raw + mix-ins; Stuffing = a filling. <b>Form (Shot/Stuffed) and Tier (Classic/Gourmet) are defined here</b> and roll up into every cookie made from this dough.</span></div><div class="row"><span class="lab">Rolls up into:</span><span>Cookies (each cookie pulls a set dough weight), then Eaches → Master Cases.</span></div><div class="row"><span class="lab">Edit here:</span><span>This is the <span class="upstream">source of truth</span> for Form &amp; Tier. Changing them here updates every downstream cookie and product automatically.</span></div></div>');
+     h+=actionsBar([{formKey:'rawdough',label:'+ Add Raw Dough'},{formKey:'proddough',label:'+ Add Production Dough'},{formKey:'stuffing',label:'+ Add Stuffing'}]);
+     h+='<div style="font-size:11px;font-weight:700;color:var(--raw);text-transform:uppercase;letter-spacing:.5px;margin:2px 0 7px">Raw Dough \u2014 base recipes</div>';
+     h+=tableForColor(RAW,[
+       ['raw_sku','Raw SKU','code'],['name','Raw Dough Name',''],['family','Form (Shot/Stuffed)','formpill2'],['subtype','Tier (Classic/Gourmet)','tierpill2'],
+       ['batch_wt_oz','Batch Weight (oz)','factor'],['co_mans','Co-Man(s)','list'],['notes','Notes','']].concat((canEdit&&editMode)?[['_edit','','editraw']]:[]),'RAW DOUGH','var(--raw)');
+     h+='<div style="font-size:11px;font-weight:700;color:var(--wip);text-transform:uppercase;letter-spacing:.5px;margin:20px 0 7px">Production Dough \u2014 raw + mix-ins</div>';
+     h+=tableForColor(WIP,[
+       ['wip_sku','WIP SKU','code'],['name','Production Dough',''],['type','Form (Shot/Stuffed)','formpill2'],['subtype','Tier (Classic/Gourmet)','tierpill2'],
+       ['raw_base','Base (Raw Dough)','linkdown'],['mixins','Mix-ins',''],['mixin_wt_oz','Mix-in Wt (oz)','factor'],
+       ['raw_dough_portion_oz','Raw Portion (oz)','tbdfactor'],['wip_batch_wt_oz','WIP Batch Wt (oz)','tbdfactor']].concat((canEdit&&editMode)?[['_edit','','editprod']]:[]),'PRODUCTION DOUGH','var(--wip)');
+     h+='<div style="font-size:11px;font-weight:700;color:var(--cookie);text-transform:uppercase;letter-spacing:.5px;margin:20px 0 7px">Stuffing / Fillings \u2014 added to stuffed cookies</div>';
+     h+=tableForColor(STUFFINGS,[
+       ['stuffing_id','Stuffing ID','code'],['name','Stuffing Name',''],['type','Type',''],['notes','Notes','']].concat((canEdit&&editMode)?[['_edit','','editstuff']]:[]),'STUFFING / FILLING','var(--cookie)');
+     return h;
+   }},
+ cookie:{name:'2 · Cookies',color:'var(--cookie)',
+   head:'<b>Cookie (Component)</b> — the BOM atom. The key attributes are <b>Flavor, Form, Tier, Dough oz, and Prep</b>. Form & Tier inherit from the dough (shown in pills). Dough oz per cookie is the consumption factor for planning.',
+   roll:'<span class="down">Rolls down to:</span> WIP / Production Dough × dough-oz-per-cookie. <span class="up">Rolls up into:</span> Eaches — the sell units sold at retail to the customer, each carrying its own consumer UPC.',
+   render:()=>{
+     // source metadata: {tab label for band, provtag, color}
+     const SRC_WIP={tab:'WIP',label:'from WIP',color:'#C9943B'};
+     const SRC_HERE={tab:'here',label:'from Cookies',color:'#7A5BA0'};
+     const SRC_ID={tab:'here',label:'from Cookies',color:'#7A5BA0'};
+     // A: Cookie Code · B: Form · C: Cookie Description · then Tier · Outer/Stuffing · Dough oz · Prep
+     let cols=[
+       ['cookie_code','Cookie Code',(v)=>v?'<span class="code">'+esc(v)+'</span>':'<span class="empty">—</span>',false,true,SRC_ID],
+       ['_inhtype','Form',(v)=>formPill2(v),true,true,SRC_WIP],
+       ['cookie_desc','Cookie Description',(v)=>v?esc(v):'<span class="empty">—</span>',false,true,SRC_ID],
+       ['_inhsub','Tier',(v)=>tierPill2(v),true,true,SRC_WIP],
+       ['outer_cookie','Outer Cookie',(v)=>v?esc(v):'<span class="empty">—</span>',true,true,SRC_HERE],
+       ['stuffing','Stuffing',(v)=>v?esc(v):'<span class="empty" style="font-style:normal;color:#C3BCD0">— none</span>',true,true,SRC_HERE],
+       ['dough_oz_per_cookie','Dough oz',(v)=>ozPill(v),true,true,SRC_HERE],
+       ['prep','Prep',(v)=>prepPill(v),true,true,SRC_HERE],
+       ['_storage','Storage',(v,r)=>storagePill(cookieStorage(r)),true,true,{tab:'derived',label:'from prep',color:'#2E7D6B'}]
+     ];
+     if(cookieCols.dough)cols.push(['wip_dough','Made From (Dough)',(v)=>v?'<span class="linkdown">↓ '+esc(v)+'</span>':'<span class="empty">—</span>',true,true,SRC_WIP]);
+     if(cookieCols.allergens)cols.push(['allergens','Allergens',(v)=>v?esc(v):'<span class="empty">—</span>',true,true,SRC_HERE]);
+     if(editMode)cols.push(['_sample','Sample Site',(v,r)=>sampleTogglePill(r,'cookies','cookie_code'),true,false,{tab:'here',label:'sample eligibility',color:'#C2185B'}]);
+     if(canEdit&&editMode)cols.push(['_edit','',(v,row)=>'<button class="btn-edit" style="padding:3px 10px;font-size:10.5px" onclick="openEdit(\'cookie\',\''+esc(row.cookie_code)+'\')">Edit</button>',false,false,null]);
+     let chooser='<div class="colchooser"><button onclick="toggleColPanel()">Columns ▾</button>';
+     if(colPanelOpen){
+       chooser+='<div class="colpanel" onclick="event.stopPropagation()"><div class="grp">This tab (always shown)</div><label class="locked"><input type="checkbox" checked disabled> Code, Form, Description, Tier, Flavor, oz, Prep</label><div class="grp">Optional</div>';
+       [['dough','Made From (Dough)'],['allergens','Allergens']].forEach(o=>{chooser+='<label><input type="checkbox" '+(cookieCols[o[0]]?'checked':'')+' onchange="toggleCookieCol(\''+o[0]+'\')"> '+esc(o[1])+'</label>';});
+       chooser+='<div class="grp">Display</div><label><input type="checkbox" '+(showSource?'checked':'')+' onchange="toggleSource()"> Source row</label>';
+       chooser+='</div>';
+     }
+     chooser+='</div>';
+     let h=actionsBar('cookie');
+     h='<div class="tabactions">'+chooser+'</div>'+h;
+     h+=maint('<div class="maint"><div class="row"><span class="lab">Add here when:</span><span><span class="addhere">a new size or prep of an existing cookie</span> — e.g. the dough exists, you just need a 3oz instead of 2oz, or Raw instead of Baked.</span></div><div class="row"><span class="lab">Rolls down from:</span><span>Form &amp; Tier come from the <span class="upstream">WIP tab</span> (the dough). Need a <b>new flavor, recipe, or tier</b>? Add the dough on <span class="upstream">WIP</span> first, then add the cookie here.</span></div><div class="row"><span class="lab">Set at this stage:</span><span>Outer Cookie, Stuffing, Dough oz, Prep — these are decided when the cookie is made.</span></div></div>');
+     h+='<p style="font-size:10.5px;color:var(--muted);margin:0 0 8px">Click a column header to sort · click ⏷ to filter · use <b>Columns ▾</b> to show/hide.</p>';
+     h+=interactiveTable('cookies',COOKIES,cols,'COOKIE',TABS.cookie.color);
+     return h;
+   }},
+ each:{name:'3 · Eaches',color:'var(--each)',
+   head:'<b>Each (Sell Unit)</b> — <b>retail sell units scanned at the register</b>, each carrying a consumer UPC. Only register-scanned products appear here. Bulk / wholesale units (e.g. loose cookie shots) are not eaches — those master cases compose directly from the Cookie.',
+   roll:'<span class="down">Rolls down to:</span> Cookies × cookies-per-each. <span class="up">Rolls up into:</span> Inner Cases, then Master Cases.',
+   render:()=>{
+     const SRC_HERE={tab:'here',label:'from Eaches',color:'#3A6EA5'};
+     const SRC_CK={tab:'Cookies',label:'from Cookies',color:'#7A5BA0'};
+     // identity (locked on) + optional rolled-up columns (chooser-controlled)
+     let cols=[
+       ['each_sku','Each SKU',(v)=>v?'<span class="code">'+esc(v)+'</span>':'<span class="empty">—</span>',false,true,SRC_HERE],
+       ['each_upc','UPC (12-digit)',(v)=>v?'<span class="code">'+esc(v)+'</span>':'<span class="empty">no UPC</span>',false,true,SRC_HERE],
+       ['brand','Brand / Owner',(v)=>brandPill(v),true,true,SRC_HERE],
+     ];
+     if(eachCols.cookie_desc)cols.push(['_ckdesc','Cookie Description',(v,r)=>{const d=cookieDescOfEach(r);const code=r.cookie_code||'';return d?esc(d)+'<br><span class="code" style="font-size:9.5px;opacity:.6">'+esc(code)+'</span>':'<span class="empty">—</span>';},true,true,SRC_CK]);
+     if(eachCols.outer)cols.push(['_outer','Outer Cookie',(v,r)=>{const x=cookieOuterOfEach(r);return x?esc(x):'<span class="empty">—</span>';},true,true,SRC_CK]);
+     if(eachCols.stuffing)cols.push(['_stuff','Stuffing',(v,r)=>{const x=cookieStuffOfEach(r);return x?esc(x):'<span class="empty">— none</span>';},true,true,SRC_CK]);
+     if(eachCols.form)cols.push(['_form','Form',(v,r)=>formPill2(cookieFormOfEach(r)),true,true,SRC_CK]);
+     if(eachCols.tier)cols.push(['_tier','Tier',(v,r)=>tierPill2(cookieTierOfEach(r)),true,true,SRC_CK]);
+     if(eachCols.oz)cols.push(['_oz','Dough oz',(v,r)=>ozPill(cookieOzOfEach(r)),true,true,SRC_CK]);
+     cols.push(['net_wt','Net Wt',(v)=>v?esc(v):'<span class="empty">—</span>',false,true,SRC_HERE]);
+     cols.push(['_lwh','L × W × H',(v,r)=>{const L=r.length_in,W=r.width_in,H=r.height_in;return (L||W||H)?'<span class="code">'+esc(L||'?')+' × '+esc(W||'?')+' × '+esc(H||'?')+'</span>':tbd('set');},false,true,SRC_HERE]);
+     cols.push(['gross_wt_oz','Gross Wt (oz)',(v)=>(v===''||v==null)?tbd('enter'):'<span class="num" style="font-weight:700">'+esc(v)+'</span>',false,true,SRC_HERE]);
+     cols.push(['pack_type','Pack Type',(v)=>v?esc(v):'<span class="empty">—</span>',true,true,SRC_HERE]);
+     cols.push(['_prepstate','Prep',(v,r)=>prepPill(cookiePrepOfEach(r)),true,true,SRC_CK]);
+     cols.push(['retail_price','Retail Price',(v)=>(v===''||v==null)?'<span class="tbd">TBD</span>':'<span class="num" style="font-weight:700;color:#1E6E45">$'+esc(v)+'</span>',true,true,SRC_HERE]);
+     if(editMode)cols.push(['_sample','Sample Site',(v,r)=>sampleTogglePill(r,'eaches','each_sku'),true,false,{tab:'here',label:'sample eligibility',color:'#C2185B'}]);
+     if(canEdit&&editMode)cols.push(['_edit','',(v,row)=>'<button class="btn-edit" style="padding:3px 10px;font-size:10.5px" onclick="openEdit(\'each\',\''+esc(row.each_sku)+'\')">Edit</button>',false,false,null]);
+     // column chooser panel
+     let chooser='<div class="colchooser"><button onclick="toggleColPanel()">Columns ▾</button>';
+     if(colPanelOpen){
+       chooser+='<div class="colpanel" onclick="event.stopPropagation()">';
+       chooser+='<div class="grp">This tab (always shown)</div>';
+       chooser+='<label class="locked"><input type="checkbox" checked disabled> Each SKU, UPC, Brand, factors</label>';
+       chooser+='<div class="grp">From Cookies</div>';
+       [['cookie_desc','Cookie Description'],['outer','Outer Cookie'],['stuffing','Stuffing'],['form','Form'],['tier','Tier'],['oz','Dough oz']].forEach(o=>{
+         chooser+='<label><input type="checkbox" '+(eachCols[o[0]]?'checked':'')+' onchange="toggleEachCol(\''+o[0]+'\')"> '+esc(o[1])+'</label>';
+       });
+       chooser+='</div>';
+     }
+     chooser+='</div>';
+     let h=actionsBar('each');
+     h='<div class="tabactions">'+chooser+'</div>'+h;
+     h+='<p style="font-size:10.5px;color:var(--muted);margin:0 0 8px">Use <b>Columns ▾</b> to show/hide rolled-up detail from the Cookies tab · click a header to sort · ⏷ to filter.</p>';
+     const retailEaches=EACHES.filter(e=>(e.each_upc||'').trim()!=='');
+     h+=interactiveTable('eaches',retailEaches,cols,'EACH',TABS.each.color);
+     return h;
+   }},
+ inner:{name:'4 · Inner Case',color:'var(--inner)',
+   head:'<b>Inner Case</b> — a grouping of eaches inside the master case. <b>Eaches per inner</b> is the factor.',
+   roll:'<span class="down">Rolls down to:</span> Eaches × eaches-per-inner. <span class="up">Rolls up into:</span> Master Case.',
+   render:()=>{
+     const SRC_HERE={tab:'here',label:'from Inner Case',color:'#2E7D6B'};
+     const SRC_EA={tab:'Eaches',label:'from Eaches',color:'#3A6EA5'};
+     let cols=[
+       ['inner_sku','Inner SKU',(v)=>v?'<span class="code">'+esc(v)+'</span>':'<span class="empty">—</span>',false,true,SRC_HERE],
+       ['name','Inner Case Name',(v)=>v?esc(v):'<span class="empty">—</span>',false,true,SRC_HERE],
+       ['each_sku','Holds Each',(v)=>v?'<span class="linkdown">↓ '+esc(v)+'</span>':'<span class="empty">—</span>',true,true,SRC_EA],
+       ['eaches_per_inner','Eaches / Inner',(v)=>(v===''||v==null)?'<span class="empty">—</span>':'<span class="num" style="font-weight:700;color:#9A6B1E">'+esc(v)+'</span>',true,true,SRC_HERE],
+     ];
+     if(innerCols.sellable)cols.push(['sellable','Sellable?',(v)=>v?esc(v):'<span class="empty">—</span>',true,true,SRC_HERE]);
+     if(innerCols.gtin)cols.push(['gtin14','GTIN-14',(v)=>v?'<span class="code">'+esc(v)+'</span>':tbd('assign'),true,true,SRC_HERE]);
+     if(editMode)cols.push(['_sample','Sample Site',(v,r)=>sampleTogglePill(r,'inner','inner_sku'),true,false,{tab:'here',label:'sample eligibility',color:'#C2185B'}]);
+     if(canEdit&&editMode)cols.push(['_edit','',(v,row)=>'<button class="btn-edit" style="padding:3px 10px;font-size:10.5px" onclick="openEdit(\'inner\',\''+esc(row.inner_sku)+'\')">Edit</button>',false,false,null]);
+     let chooser='<div class="colchooser"><button onclick="toggleColPanel()">Columns ▾</button>';
+     if(colPanelOpen){
+       chooser+='<div class="colpanel" onclick="event.stopPropagation()"><div class="grp">This tab (always shown)</div><label class="locked"><input type="checkbox" checked disabled> Inner SKU, Name, Holds Each, factor</label><div class="grp">Optional</div>';
+       [['sellable','Sellable?'],['gtin','GTIN-14']].forEach(o=>{chooser+='<label><input type="checkbox" '+(innerCols[o[0]]?'checked':'')+' onchange="toggleInnerCol(\''+o[0]+'\')"> '+esc(o[1])+'</label>';});
+       chooser+='</div>';
+     }
+     chooser+='</div>';
+     let h=actionsBar([{formKey:'inner',label:'+ Add Inner Case'}]);
+     h='<div class="tabactions">'+chooser+'</div>'+h;
+     h+=interactiveTable('innercases',INNER,cols,'INNER CASE','#2E7D6B');
+     return h;
+   }},
+ mastercase:{name:'5 · Master Case',color:'var(--master)',
+   head:'<b>Master Case — the outer pack, organized by channel.</b> The outermost packaging is channel-dependent: <b>Retail</b> ships in Master Cases of eaches; <b>Wholesale</b> can also pack cookies in bulk (cookies → case); <b>DTC / E-Commerce</b> ships in a Shipping Box <i>instead</i> (its own dims, ship weight, and branding/cushioning cost). These are alternatives at the same level, not a sequence.',
+   roll:'<span class="down">Made up of:</span> eaches or inner packs (Master Case) — or holds a consumer pack (Shipping Box). <span class="up">Rolls up into:</span> Pallet. <span style="color:var(--master)">Master-case net wt rolls down to cookie dough oz.</span>',
+   render:()=>{
+     const SRC_HERE={tab:'here',label:'from Master Case',color:'#1E5F8A'};
+     const SRC_DV={tab:'derived',label:'derived from parts',color:'#2E7D6B'};
+     const SRC_EA={tab:'Eaches',label:'from Eaches',color:'#3A6EA5'};
+     const SRC_MAN={tab:'manual',label:'✎ manual entry',color:'#9A5B1E'};
+     function mcColsFor(){
+       let cols=[
+         ['_brand','Brand / Owner',(v,r)=>brandPill(caseBrand(r)),true,true,SRC_EA],
+         ['name','Case Name',(v)=>v?esc(v):'<span class="empty">—</span>',false,true,SRC_HERE],
+       ];
+       if(mcCols.storage)cols.push(['_mcstorage','Storage',(v,r)=>{const s=caseStorage(r);const ov=r.storage_override?' <span style="font-size:8px;color:#9A5B1E">(set)</span>':'';return storagePill(s)+ov;},true,true,{tab:'derived',label:'from prep',color:'#2E7D6B'}]);
+       cols.push(['_units','Units in Case',(v,r)=>{const q=r.unit_qty;if(q===''||q==null)return tbd();const label=r.composed_of==='inners'?'inners':r.composed_of==='cookies'?'cookies':'eaches';return '<span class="num" style="font-weight:800;color:#5B3A86">'+esc(q)+'</span> <span style="font-size:10px;color:var(--muted)">'+label+'</span>';},true,true,SRC_HERE]);
+       if(mcCols.madeof)cols.push(['composed_of','Made Up Of',(v)=>'<span class="chip" style="background:#E3EEF5;color:#1E5F8A">'+esc(v||'eaches')+'</span>',true,true,SRC_HERE]);
+       if(mcCols.dims)cols.push(['_dims','L × W × H',(v,r)=>{const L=r.length_in,W=r.width_in,H=r.height_in;return (L||W||H)?'<span class="code">'+esc(L||'?')+' × '+esc(W||'?')+' × '+esc(H||'?')+'</span>':tbd('set dims');},false,true,SRC_MAN]);
+       if(mcCols.gross)cols.push(['gross_wt_lb','Gross Wt (lb)',(v)=>(v===''||v==null)?tbd('enter'):'<span class="num" style="font-weight:700">'+esc(v)+'</span>',false,true,SRC_MAN]);
+       if(mcCols.net)cols.push(['_netderived','Net Wt (derived)',(v,r)=>{const oz=caseNetOz(r);const lb=ozToLb(oz);return lb==null?'<span class="tbd">needs parts</span>':'<span class="num" style="font-weight:700;color:#2E7D6B">'+lb.toFixed(2)+' lb</span> <span style="font-size:9px;color:var(--muted)">('+oz.toFixed(0)+' oz)</span>';},false,true,SRC_DV]);
+       cols.push(['gtin14','GTIN',(v)=>v?'<span class="code">'+esc(v)+'</span>':tbd('assign'),true,true,SRC_MAN]);
+       if(mcCols.netsheet)cols.push(['net_wt_manual','Net Wt (sheet)',(v)=>(v===''||v==null)?'<span class="empty">—</span>':'<span class="num">'+esc(v)+' lb</span>',false,true,SRC_MAN]);
+       if(mcCols.cube)cols.push(['cube_cuft','Cube (ft³)',(v)=>(v===''||v==null)?'<span class="empty">—</span>':'<span class="num">'+esc(v)+'</span>',false,true,SRC_MAN]);
+       if(mcCols.ti)cols.push(['ti','Ti',(v)=>(v===''||v==null)?tbd():'<span class="num">'+esc(v)+'</span>',false,true,SRC_MAN]);
+       if(mcCols.hi)cols.push(['hi','Hi',(v)=>(v===''||v==null)?tbd():'<span class="num">'+esc(v)+'</span>',false,true,SRC_MAN]);
+       if(mcCols.cpp)cols.push(['cases_per_pallet','Cases / Pallet',(v)=>(v===''||v==null)?tbd():'<span class="num" style="font-weight:700;color:#5B7A3A">'+esc(v)+'</span>',false,true,SRC_DV]);
+       if(mcCols.palletsize)cols.push(['pallet_size','Pallet Size',(v)=>v?'<span class="code">'+esc(v)+'</span>':'<span class="empty">—</span>',false,true,SRC_MAN]);
+       if(mcCols.palletwt)cols.push(['pallet_weight_lb','Pallet Wt (lb)',(v)=>(v===''||v==null)?'<span class="empty">—</span>':'<span class="num">'+esc(v)+'</span>',false,true,SRC_MAN]);
+       if(mcCols.loadht)cols.push(['loading_height_in','Loading Ht (in)',(v)=>(v===''||v==null)?'<span class="empty">—</span>':'<span class="num">'+esc(v)+'</span>',false,true,SRC_MAN]);
+       if(mcCols.shelf)cols.push(['shelf_life','Shelf Life',(v)=>v?esc(v):'<span class="empty">—</span>',true,true,SRC_MAN]);
+       if(mcCols.country)cols.push(['country','Country',(v)=>v?esc(v):'<span class="empty">—</span>',true,true,SRC_MAN]);
+       if(mcCols.status)cols.push(['status','Status',(v)=>v?'<span class="chip" style="background:#E6F4EC;color:#1E6E45">'+esc(v)+'</span>':'<span class="empty">—</span>',true,true,SRC_HERE]);
+       if(editMode)cols.push(['_sample','Sample Site',(v,r)=>sampleTogglePill(r,'mastercases','case_id'),true,false,{tab:'here',label:'sample eligibility',color:'#C2185B'}]);
+       if(canEdit&&editMode)cols.push(['_edit','',(v,row)=>'<button class="btn-edit" style="padding:3px 10px;font-size:10.5px" onclick="openEdit(\'mastercase\',\''+esc(row.case_id)+'\')">Edit</button>',false,false,null]);
+       return cols;
+     }
+     // DTC shipping box columns (distinct object)
+     let sbCols=[
+       ['name','Box Name',(v)=>v?esc(v):'<span class="empty">—</span>',false,true,SRC_HERE],
+       ['dims_hxlxw','L × W × H',(v)=>v?'<span class="code">'+esc(v)+'</span>':tbd('set dims'),false,true,SRC_MAN],
+       ['ship_wt_lb','Ship Wt (lb)',(v)=>(v===''||v==null)?tbd('enter'):'<span class="num" style="font-weight:700">'+esc(v)+'</span>',false,true,SRC_MAN],
+       ['cost_premium','Cost Premium $',(v)=>(v===''||v==null)?tbd():'<span class="num" style="font-weight:700;color:#1E6E45">$'+esc(v)+'</span>',false,true,SRC_MAN],
+       ['cushioning','Cushioning',(v)=>v?esc(v):'<span class="empty">—</span>',true,true,SRC_HERE],
+       ['branding','Branding',(v)=>v?esc(v):'<span class="empty">—</span>',true,true,SRC_HERE],
+     ];
+     if(canEdit&&editMode)sbCols.push(['_edit','',(v,row)=>'<button class="btn-edit" style="padding:3px 10px;font-size:10.5px" onclick="openEdit(\'shipbox\',\''+esc(row.box_id)+'\')">Edit</button>',false,false,null]);
+     // column chooser (applies to master case tables)
+     let chooser='<div class="colchooser"><button onclick="toggleColPanel()">Columns ▾</button>';
+     if(colPanelOpen){
+       chooser+='<div class="colpanel" onclick="event.stopPropagation()">';
+       chooser+='<div class="grp">Master Case tables (always shown)</div>';
+       chooser+='<label class="locked"><input type="checkbox" checked disabled> Brand, Name, Made Up Of, GTIN</label>';
+       chooser+='<div class="grp">Optional</div>';
+       [['storage','Storage'],['madeof','Made Up Of'],['dims','L × W × H'],['gross','Gross Wt'],['net','Net Wt (derived)'],['status','Status']].forEach(o=>{
+         chooser+='<label><input type="checkbox" '+(mcCols[o[0]]?'checked':'')+' onchange="toggleMcCol(\''+o[0]+'\')"> '+esc(o[1])+'</label>';
+       });
+       chooser+='<div class="grp">Pallet</div>';
+       [['ti','Ti'],['hi','Hi'],['cpp','Cases / Pallet'],['palletsize','Pallet Size'],['palletwt','Pallet Wt'],['loadht','Loading Ht']].forEach(o=>{
+         chooser+='<label><input type="checkbox" '+(mcCols[o[0]]?'checked':'')+' onchange="toggleMcCol(\''+o[0]+'\')"> '+esc(o[1])+'</label>';
+       });
+       chooser+='<div class="grp">Case detail</div>';
+       [['cube','Cube (ft³)'],['netsheet','Net Wt (sheet)'],['shelf','Shelf Life'],['country','Country']].forEach(o=>{
+         chooser+='<label><input type="checkbox" '+(mcCols[o[0]]?'checked':'')+' onchange="toggleMcCol(\''+o[0]+'\')"> '+esc(o[1])+'</label>';
+       });
+       chooser+='</div>';
+     }
+     chooser+='</div>';
+     let h=actionsBar([{formKey:'mastercase',label:'+ Add Master Case'},{formKey:'shipbox',label:'+ Add Shipping Box'}]);
+     h='<div class="tabactions">'+chooser+'</div>'+h;
+     h+='<p style="font-size:10.5px;color:var(--muted);margin:0 0 14px">Outer packaging by channel. <b>Net weight is derived</b> for master cases (green); dims, gross/ship weight, cost, and GTIN are manual. <b>Columns ▾</b> controls the master-case tables.</p>';
+     // 3 channel tables
+     const retail=MASTERCASES.filter(m=>m.channel==='Retail'||m.channel==='Walmart');
+     const wholesale=MASTERCASES.filter(m=>m.channel==='Wholesale');
+     function section(title,sub,color){return '<div style="font-size:12px;font-weight:800;color:'+color+';text-transform:uppercase;letter-spacing:.5px;margin:18px 0 3px">'+title+'</div><div style="font-size:10.5px;color:var(--muted);margin-bottom:7px">'+sub+'</div>';}
+     h+=section('Retail — Master Cases','Retail-channel cases, including Walmart private-label. The Brand column shows Walmart vs other owners.','#1E5F8A');
+     h+=interactiveTable('mc_retail',retail,mcColsFor(),'RETAIL MASTER CASES','#1E5F8A');
+     h+=section('Wholesale — Master Cases','Wholesale-channel cases (eaches or inners → case).','#5B3A86');
+     h+=interactiveTable('mc_wholesale',wholesale,mcColsFor(),'WHOLESALE MASTER CASES','#5B3A86');
+     h+=section('DTC / E-Commerce — Shipping Boxes','Ships in a branded box <i>instead</i> of a master case. Own dims, ship weight, and cost premium for branding/cushioning.','#2E7D6B');
+     h+=interactiveTable('sb_dtc',SHIPPINGBOXES,sbCols,'DTC SHIPPING BOXES','#2E7D6B');
+     return h;
+   }},
+ pricelists:{name:'6 · Price Lists',color:'var(--grape)',
+   head:'<b>Price Lists — composition views.</b> Each list references a product\'s packaging spec (Master Case for wholesale/retail, Shipping Box for DTC) and adds channel pricing. Packaging is pulled, not stored — change a case spec once, every list updates.',
+   roll:'<span class="down">Pulls from:</span> Master Case + Shipping Box packaging specs. <span class="up">Produces:</span> channel-ready price lists.',
+   render:()=>priceListView()},
+};
+
+function cellVal(row,key,kind){
+ if(key==='_inhtype')return inhType(row)?'<span class="pill">'+esc(inhType(row))+'</span>':'<span class="empty">—</span>';
+ if(key==='_inhsub')return inhSubtype(row)?'<span class="pill">'+esc(inhSubtype(row))+'</span>':'<span class="empty">—</span>';
+ let v=row[key];
+ switch(kind){
+  case 'code':return v?'<span class="code">'+esc(v)+'</span>':'<span class="empty">—</span>';
+  case 'factor':return (v===''||v==null)?'<span class="empty">—</span>':'<span class="num" style="font-weight:700;color:#9A6B1E">'+esc(v)+'</span>';
+  case 'tbdfactor':return (v===''||v==null)?tbd():'<span class="num" style="font-weight:700;color:#9A6B1E">'+esc(v)+'</span>';
+  case 'formchip':{const t=dispType(v);return t?chip(t,'#E7DEF3','#5B3A86'):'<span class="empty">—</span>';}
+  case 'formpill2':return formPill2(v);
+  case 'tierpill2':return tierPill2(v);
+  case 'tierchip':return v?chip(v,v==='Gourmet'?'#F3E3D0':'#D9EAF5',v==='Gourmet'?'#9A5B1E':'#1E5F8A'):'<span class="empty">—</span>';
+  case 'formpill':case 'tierpill':case 'pill':return pill(v);
+  case 'linkdown':return v?'<span class="linkdown">↓ '+esc(v)+'</span>':'<span class="empty">—</span>';
+  case 'linkup':return v?'<span class="linkup">↑ '+esc(v)+'</span>':'<span class="empty">—</span>';
+  case 'list':return (v&&v.length)?esc(v.join(', ')):'<span class="empty">—</span>';
+  case 'upc':return v?'<span class="code">'+esc(v)+'</span>':'<span class="empty">no UPC</span>';
+  case 'gtin':return v?'<span class="code">'+esc(v)+'</span>':'<span class="empty">—</span>';
+  case 'dims':return v?'<span class="code">'+esc(v)+'</span>':tbd('set dims');
+  case 'compose':return '<span class="chip" style="background:#E3EEF5;color:#1E5F8A">'+esc(v||'eaches')+'</span>';
+  case 'tbdcost':return (v===''||v==null)?tbd():'<span class="num" style="font-weight:700;color:#1E6E45">$'+esc(v)+'</span>';
+  case 'usedby':return '<span class="empty">—</span>';
+  case 'editraw':return '<button class="btn-edit" style="padding:3px 10px;font-size:10.5px" onclick="openEdit(\'rawdough\',\''+esc(row.raw_sku)+'\')">Edit</button>';
+  case 'editprod':return '<button class="btn-edit" style="padding:3px 10px;font-size:10.5px" onclick="openEdit(\'proddough\',\''+esc(row.wip_sku)+'\')">Edit</button>';
+  case 'editstuff':return '<button class="btn-edit" style="padding:3px 10px;font-size:10.5px" onclick="openEdit(\'stuffing\',\''+esc(row.stuffing_id)+'\')">Edit</button>';
+  default:return v?esc(v):'<span class="empty">—</span>';
+ }
+}
+
+// ===== INTERACTIVE TABLE ENGINE (sort + multi-select filter; reusable) =====
+let tableState={};  // per-table: {sortCol, sortDir, filters:{col:Set}}
+function getTS(id){if(!tableState[id])tableState[id]={sortCol:null,sortDir:1,filters:{},openFilter:null};return tableState[id];}
+function cookieVal(r,key){ // resolve value incl inherited
+ if(key==='_inhtype')return cookieType(r);
+ if(key==='_inhsub')return cookieTier(r);
+ if(key==='_edit')return '';
+ if(key==='_sample')return r.sample_eligible?'On sample site':'Not on sample site';
+ if(key==='_units')return parseFloat(r.unit_qty)||0;
+ if(key==='_cdesc'){const c=cookieOfCase(r);return c?c.cookie_desc:'';}
+ if(key==='_cflavor'){const c=cookieOfCase(r);return c?(c.flavor||''):'';}
+ if(key==='_ctier'){const c=cookieOfCase(r);return c?cookieTier(c):'';}
+ if(key==='_cform'){const c=cookieOfCase(r);return c?cookieType(c):'';}
+ if(key==='_coz'){const c=cookieOfCase(r);return c?parseFloat(c.dough_oz_per_cookie)||0:0;}
+ if(key==='_cprep'){const c=cookieOfCase(r);return c?c.prep:'';}
+ if(key==='_callerg'){const c=cookieOfCase(r);return c?(c.allergens||''):'';}
+ if(key==='_epack'){const e=eachOfCase(r);return e?(e.pack_type||''):'';}
+ if(key==='_ebrand'){const e=eachOfCase(r);return e?(e.brand||''):'';}
+ if(key==='_plstorage')return caseStorage(r);
+ if(key==='_price')return 0;
+ if(key==='_storage')return cookieStorage(r);
+ if(key==='_mcstorage')return caseStorage(r);
+ if(key==='_ckdesc')return cookieDescOfEach(r);
+ if(key==='_outer')return cookieOuterOfEach(r);
+ if(key==='_stuff')return cookieStuffOfEach(r);
+ if(key==='_form')return cookieFormOfEach(r);
+ if(key==='_tier')return cookieTierOfEach(r);
+ if(key==='_oz')return cookieOzOfEach(r);
+ if(key==='_prep')return cookiePrepOfEach(r);
+ if(key==='_prepstate')return cookiePrepOfEach(r);
+ if(key==='_netderived'){const oz=caseNetOz(r);return oz==null?'':ozToLb(oz);}
+ if(key==='_dims')return [r.length_in,r.width_in,r.height_in].filter(Boolean).join('x');
+ if(key==='_contents')return r.unit_ref||'';
+ if(key==='_brand')return caseBrand(r);
+ if(key==='_lwh')return [r.length_in,r.width_in,r.height_in].filter(Boolean).join('x');
+ return r[key];
+}
+// pill renderers
+function ozPill(v){if(v===''||v==null)return '<span class="empty">—</span>';const n=parseFloat(v);const cls=n<=1?'oz1':n<=2?'oz2':'oz3';return '<span class="chip '+cls+'">'+esc(v)+'oz</span>';}
+function prepPill(v){if(!v)return '<span class="empty">—</span>';const cls=v.toLowerCase()==='raw'?'prep-raw':'prep-baked';return '<span class="chip '+cls+'">'+esc(v)+'</span>';}
+function formPill2(v){const t=dispType(v);if(!t)return '<span class="empty">—</span>';return '<span class="chip" style="background:'+(t==='Stuffed'?'#E3DEF3':'#DDEAF0')+';color:'+(t==='Stuffed'?'#5B3A86':'#1E5F8A')+'">'+esc(t)+'</span>';}
+function tierPill2(v){if(!v)return '<span class="empty">—</span>';return '<span class="chip" style="background:'+(v==='Gourmet'?'#F3E3D0':'#D9EAF5')+';color:'+(v==='Gourmet'?'#9A5B1E':'#1E5F8A')+'">'+esc(v)+'</span>';}
+
+// cols: [key,label,render(v,row), filterable(bool), sortable(bool)]
+function interactiveTable(id,rows,cols,bandLabel,bandColor){
+ const ts=getTS(id);
+ // apply filters
+ let view=rows.filter(r=>{
+  for(const k in ts.filters){const set=ts.filters[k];if(set&&set.size){const v=String(cookieVal(r,k)==null?'':cookieVal(r,k));if(!set.has(v))return false;}}
+  return true;
+ });
+ // sort
+ if(ts.sortCol!=null){const k=ts.sortCol;view=view.slice().sort((a,b)=>{
+   let av=cookieVal(a,k),bv=cookieVal(b,k);
+   const an=parseFloat(av),bn=parseFloat(bv);
+   if(!isNaN(an)&&!isNaN(bn))return (an-bn)*ts.sortDir;
+   return String(av==null?'':av).localeCompare(String(bv==null?'':bv))*ts.sortDir;
+ });}
+ let h='<table><thead>';
+ if(bandLabel)h+='<tr class="modband"><th colspan="'+cols.length+'" style="background:'+bandColor+'">'+bandLabel+'</th></tr>';
+ const hasSrc=cols.some(c=>c[5]);
+ h+='<tr>';
+ cols.forEach(c=>{
+  const key=c[0],label=c[1],filterable=c[3],sortable=c[4]!==false;const src=c[5];
+  const isSorted=ts.sortCol===key;
+  const fActive=ts.filters[key]&&ts.filters[key].size;
+  h+='<th class="'+(sortable?'sortable':'')+'"'+(sortable?' onclick="tblSort(\''+id+'\',\''+key+'\')"':'')+'>'+esc(label);
+  if(sortable&&isSorted)h+='<span class="sortarrow">'+(ts.sortDir>0?'▲':'▼')+'</span>';
+  if(filterable){h+='<button class="filterbtn'+(fActive?' active':'')+'" onclick="event.stopPropagation();tblToggleFilter(\''+id+'\',\''+key+'\')">⏷</button>';
+   if(ts.openFilter===key){
+    const vals=[...new Set(rows.map(r=>String(cookieVal(r,key)==null?'':cookieVal(r,key))))].sort();
+    const sel=ts.filters[key]||new Set();
+    h+='<div class="filterpop" onclick="event.stopPropagation()">';
+    const valsJson=encodeURIComponent(JSON.stringify(vals));
+    vals.forEach(v=>{h+='<label><input type="checkbox" '+(sel.size===0||sel.has(v)?'checked':'')+' onchange="tblFilterToggle2(\''+id+'\',\''+key+'\',\''+encodeURIComponent(v)+'\',\''+valsJson+'\')"> '+(v||'(blank)')+'</label>';});
+    h+='<div class="fpactions"><button onclick="tblFilterClear(\''+id+'\',\''+key+'\')">All</button><button onclick="tblFilterClose(\''+id+'\')">Done</button></div></div>';
+   }
+  }
+  h+='</th>';
+ });
+ h+='</tr>';
+ // provenance row UNDER the titles (toggleable)
+ if(hasSrc&&showSource){
+  h+='<tr class="provrow">';
+  cols.forEach(c=>{
+   const src=c[5];
+   if(src){
+    const isHere=src.tab==='here';
+    const lbl=isHere?'':esc(src.label); // current-tab: color only, no label
+    h+='<th style="background:'+(src.color||'#9A8BAC')+'22;color:'+(src.color||'#9A8BAC')+';border-top:2px solid '+(src.color||'#9A8BAC')+'">'+lbl+'</th>';
+   } else h+='<th></th>';
+  });
+  h+='</tr>';
+ }
+ h+='</thead><tbody>';
+ view.forEach(r=>{h+='<tr>'+cols.map(c=>'<td>'+c[2](cookieVal(r,c[0]),r)+'</td>').join('')+'</tr>';});
+ h+='</tbody></table>';
+ if(!view.length)h+='<p style="color:var(--muted);font-style:italic;margin-top:8px">No rows match the current filters.</p>';
+ return h;
+}
+function tblSort(id,key){const ts=getTS(id);if(ts.sortCol===key)ts.sortDir*=-1;else{ts.sortCol=key;ts.sortDir=1;}render();}
+function tblToggleFilter(id,key){const ts=getTS(id);ts.openFilter=ts.openFilter===key?null:key;render();}
+function tblFilterClose(id){getTS(id).openFilter=null;render();}
+function tblFilterToggle(id,key,val,allVals){const ts=getTS(id);if(!ts.filters[key]){ts.filters[key]=new Set(allVals);}const s=ts.filters[key];
+ if(s.has(val))s.delete(val);else s.add(val);
+ if(s.size===allVals.length){delete ts.filters[key];} // all checked = no filter
+ render();}
+function tblFilterToggle2(id,key,encVal,encVals){tblFilterToggle(id,key,decodeURIComponent(encVal),JSON.parse(decodeURIComponent(encVals)));}
+function tblFilterClear(id,key){const ts=getTS(id);delete ts.filters[key];render();}
+
+function tableForColor(rows,cols,bandLabel,color){
+ let h='<table><thead>';
+ if(bandLabel)h+='<tr class="modband"><th colspan="'+cols.length+'" style="background:'+color+'">'+bandLabel+'</th></tr>';
+ h+='<tr>'+cols.map(c=>'<th>'+esc(c[1])+'</th>').join('')+'</tr></thead><tbody>';
+ rows.forEach(r=>{h+='<tr>'+cols.map(c=>'<td>'+cellVal(r,c[0],c[2])+'</td>').join('')+'</tr>';});
+ h+='</tbody></table>';return h;
+}
+// ---- PRICE LISTS (placeholder — module to be built) ----
+// The price-list module (Wholesale / Retail / E-Commerce / Corp Gifting) will compose
+// live from Master Cases + Shipping Boxes + channel pricing. Clean foundation below.
+// ===== PRICE LISTS — standard CPG price list =====
+// Each row = a Master Case (the sellable CPG unit). Columns are boolean-selectable,
+// grouped by the level they come from: Cookie / Each / Inner / Master. Price shows TBD.
+let plCols={
+ // Master (the row's own level) — sensible defaults on
+ m_name:true, m_gtin:true, m_units:true, m_pack:false, m_netderived:true, m_grosswt:false, m_dims:false, m_cube:false, m_pallet:false, m_shelf:false, m_country:false, m_channel:true, m_storage:true,
+ // Cookie level
+ c_desc:true, c_flavor:false, c_tier:false, c_form:false, c_oz:false, c_prep:false, c_allergens:false, c_ingredients:false, c_nutrition:false,
+ // Each level
+ e_upc:false, e_pack:false, e_brand:false, e_retail:false,
+ // Inner level
+ i_gtin:false, i_per:false,
+};
+function togglePl(k){plCols[k]=!plCols[k];render();}
+// resolve the cookie behind a master case (via its composition)
+function cookieOfCase(mc){
+ if(mc.composed_of==='cookies')return COOKIE_BY_CODE[mc.unit_ref]||null;
+ if(mc.composed_of==='eaches'){const e=EACH_BY_SKU[mc.unit_ref];return e?cookieOfEach(e):null;}
+ return null;
+}
+function eachOfCase(mc){return mc.composed_of==='eaches'?(EACH_BY_SKU[mc.unit_ref]||null):null;}
+function priceListView(){
+ // column chooser, grouped by level
+ let chooser='<div class="colchooser" style="margin-bottom:12px"><button onclick="toggleColPanel()">Columns ▾ — choose fields by level</button>';
+ if(colPanelOpen){
+   chooser+='<div class="colpanel" style="width:auto;min-width:520px" onclick="event.stopPropagation()"><div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px">';
+   const groups=[
+     ['Master Case',[['m_name','Case Name'],['m_gtin','GTIN'],['m_units','Units in Case'],['m_pack','Composed Of'],['m_netderived','Net Wt (derived)'],['m_grosswt','Gross Wt'],['m_dims','L×W×H'],['m_cube','Cube'],['m_pallet','Pallet (Ti/Hi/cases)'],['m_shelf','Shelf Life'],['m_country','Country'],['m_channel','Channel'],['m_storage','Storage']]],
+     ['Cookie',[['c_desc','Description'],['c_flavor','Flavor'],['c_tier','Tier'],['c_form','Form'],['c_oz','Dough oz'],['c_prep','Prep'],['c_allergens','Allergens'],['c_ingredients','Ingredients'],['c_nutrition','Nutrition']]],
+     ['Each',[['e_upc','UPC'],['e_pack','Pack Type'],['e_brand','Brand'],['e_retail','Retail Price']]],
+     ['Inner',[['i_gtin','Inner GTIN'],['i_per','Eaches/Inner']]],
+   ];
+   groups.forEach(g=>{
+     chooser+='<div><div class="grp" style="color:var(--grape)">'+g[0]+'</div>';
+     g[1].forEach(o=>{chooser+='<label style="display:block"><input type="checkbox" '+(plCols[o[0]]?'checked':'')+' onchange="togglePl(\''+o[0]+'\')"> '+esc(o[1])+'</label>';});
+     chooser+='</div>';
+   });
+   chooser+='</div></div>';
+ }
+ chooser+='</div>';
+
+ // build columns from selection
+ const SRC_M={tab:'here',label:'from Master Case',color:'#1E5F8A'};
+ const SRC_C={tab:'Cookies',label:'from Cookies',color:'#7A5BA0'};
+ const SRC_E={tab:'Eaches',label:'from Eaches',color:'#3A6EA5'};
+ const SRC_I={tab:'Inner',label:'from Inner',color:'#2E7D6B'};
+ let cols=[];
+ // Master fields
+ if(plCols.m_name)cols.push(['name','Case Name',(v)=>v?esc(v):'<span class="empty">—</span>',false,true,SRC_M]);
+ if(plCols.m_channel)cols.push(['channel','Channel',(v)=>v?'<span class="chip" style="background:#F3EEF8;color:#5B3A86">'+esc(v)+'</span>':'<span class="empty">—</span>',true,true,SRC_M]);
+ if(plCols.m_units)cols.push(['_units','Units',(v,r)=>{const q=r.unit_qty;if(q==null||q==='')return tbd();const l=r.composed_of==='inners'?'inners':r.composed_of==='cookies'?'cookies':'eaches';return '<span class="num" style="font-weight:800;color:#5B3A86">'+esc(q)+'</span> <span style="font-size:9px;color:var(--muted)">'+l+'</span>';},true,true,SRC_M]);
+ if(plCols.m_pack)cols.push(['composed_of','Composed Of',(v)=>'<span class="chip" style="background:#E3EEF5;color:#1E5F8A">'+esc(v||'eaches')+'</span>',true,true,SRC_M]);
+ if(plCols.m_storage)cols.push(['_plstorage','Storage',(v,r)=>storagePill(caseStorage(r)),true,true,{tab:'derived',label:'from prep',color:'#2E7D6B'}]);
+ // Cookie fields
+ if(plCols.c_desc)cols.push(['_cdesc','Cookie',(v,r)=>{const c=cookieOfCase(r);return c?esc(c.cookie_desc):'<span class="empty">—</span>';},true,true,SRC_C]);
+ if(plCols.c_flavor)cols.push(['_cflavor','Flavor',(v,r)=>{const c=cookieOfCase(r);return c&&c.flavor?esc(c.flavor):'<span class="empty">—</span>';},true,true,SRC_C]);
+ if(plCols.c_tier)cols.push(['_ctier','Tier',(v,r)=>{const c=cookieOfCase(r);return c?tierPill2(cookieTier(c)):'<span class="empty">—</span>';},true,true,SRC_C]);
+ if(plCols.c_form)cols.push(['_cform','Form',(v,r)=>{const c=cookieOfCase(r);return c?formPill2(cookieType(c)):'<span class="empty">—</span>';},true,true,SRC_C]);
+ if(plCols.c_oz)cols.push(['_coz','Dough oz',(v,r)=>{const c=cookieOfCase(r);return c?ozPill(c.dough_oz_per_cookie):'<span class="empty">—</span>';},true,true,SRC_C]);
+ if(plCols.c_prep)cols.push(['_cprep','Prep',(v,r)=>{const c=cookieOfCase(r);return c?prepPill(c.prep):'<span class="empty">—</span>';},true,true,SRC_C]);
+ if(plCols.c_allergens)cols.push(['_callerg','Allergens',(v,r)=>{const c=cookieOfCase(r);return c&&c.allergens?esc(c.allergens):tbd();},true,true,SRC_C]);
+ if(plCols.c_ingredients)cols.push(['_cingr','Ingredients',(v,r)=>{const c=cookieOfCase(r);return c&&c.ingredients?esc(c.ingredients):tbd();},false,true,SRC_C]);
+ if(plCols.c_nutrition)cols.push(['_cnutri','Nutrition',(v,r)=>{const c=cookieOfCase(r);return c&&c.nutrition?esc(c.nutrition):tbd();},false,true,SRC_C]);
+ // Each fields
+ if(plCols.e_upc)cols.push(['_eupc','UPC',(v,r)=>{const e=eachOfCase(r);return e&&e.each_upc?'<span class="code">'+esc(e.each_upc)+'</span>':'<span class="empty">—</span>';},false,true,SRC_E]);
+ if(plCols.e_pack)cols.push(['_epack','Pack Type',(v,r)=>{const e=eachOfCase(r);return e&&e.pack_type?esc(e.pack_type):'<span class="empty">—</span>';},true,true,SRC_E]);
+ if(plCols.e_brand)cols.push(['_ebrand','Brand',(v,r)=>{const e=eachOfCase(r);return e?brandPill(e.brand):'<span class="empty">—</span>';},true,true,SRC_E]);
+ if(plCols.e_retail)cols.push(['_eretail','Retail Price',(v,r)=>{const e=eachOfCase(r);return (e&&e.retail_price)?'<span class="num" style="color:#1E6E45;font-weight:700">$'+esc(e.retail_price)+'</span>':'<span class="tbd">TBD</span>';},true,true,SRC_E]);
+ // Inner fields
+ if(plCols.i_per)cols.push(['_iper','Eaches/Inner',(v,r)=>{const inn=INNER.find(x=>x.each_sku===r.unit_ref);return inn?'<span class="num">'+esc(inn.eaches_per_inner)+'</span>':'<span class="empty">—</span>';},true,true,SRC_I]);
+ if(plCols.i_gtin)cols.push(['_igtin','Inner GTIN',(v,r)=>{const inn=INNER.find(x=>x.each_sku===r.unit_ref);return inn&&inn.gtin14?'<span class="code">'+esc(inn.gtin14)+'</span>':'<span class="empty">—</span>';},false,true,SRC_I]);
+ // Master GTIN
+ if(plCols.m_gtin)cols.push(['gtin14','GTIN',(v)=>v?'<span class="code">'+esc(v)+'</span>':tbd('assign'),true,true,SRC_M]);
+ // Master extras
+ if(plCols.m_netderived)cols.push(['_plnet','Net Wt',(v,r)=>{const oz=caseNetOz(r);const lb=ozToLb(oz);return lb==null?tbd():'<span class="num" style="color:#2E7D6B;font-weight:700">'+lb.toFixed(2)+' lb</span>';},false,true,{tab:'derived',label:'derived',color:'#2E7D6B'}]);
+ if(plCols.m_grosswt)cols.push(['gross_wt_lb','Gross Wt (lb)',(v)=>(v===''||v==null)?tbd():'<span class="num">'+esc(v)+'</span>',false,true,SRC_M]);
+ if(plCols.m_dims)cols.push(['_pldims','L×W×H',(v,r)=>{const L=r.length_in,W=r.width_in,H=r.height_in;return (L||W||H)?'<span class="code">'+esc(L||'?')+'×'+esc(W||'?')+'×'+esc(H||'?')+'</span>':tbd();},false,true,SRC_M]);
+ if(plCols.m_cube)cols.push(['cube_cuft','Cube (ft³)',(v)=>(v===''||v==null)?tbd():'<span class="num">'+esc(v)+'</span>',false,true,SRC_M]);
+ if(plCols.m_pallet)cols.push(['_plpallet','Pallet (Ti/Hi/Cases)',(v,r)=>{if(r.ti||r.hi)return '<span class="code">'+esc(r.ti||'?')+'×'+esc(r.hi||'?')+' = '+esc(r.cases_per_pallet||'?')+'</span>';return tbd();},false,true,SRC_M]);
+ if(plCols.m_shelf)cols.push(['shelf_life','Shelf Life',(v)=>v?esc(v):tbd(),true,true,SRC_M]);
+ if(plCols.m_country)cols.push(['country','Country',(v)=>v?esc(v):tbd(),true,true,SRC_M]);
+ // PRICE — always last, always TBD (standard CPG price list, prices to be set)
+ cols.push(['_price','List Price',(v)=>'<span class="tbd" style="font-weight:800">TBD</span>',false,false,{tab:'manual',label:'✎ to be set',color:'#9A5B1E'}]);
+
+ let h='<div class="head" style="margin-bottom:6px"><b>Standard CPG Price List.</b> One row per Master Case (the sellable unit), composed live from Cookie · Each · Inner · Master data. Prices show <b>TBD</b> until set. Use <b>Columns ▾</b> to select fields, grouped by level.</div>';
+ h+=chooser;
+ h+='<p style="font-size:10.5px;color:var(--muted);margin:0 0 8px">Everything is pulled, not duplicated — a change to a case, cookie, or each flows through automatically. Sort by any header · filter with ⏷.</p>';
+ h+=interactiveTable('pricelist',MASTERCASES,cols,'STANDARD CPG PRICE LIST','var(--grape)');
+ return h;
+}
+
+// ---- CHAIN BAR (visual of the whole chain w/ factors) ----
+const CHAIN=[
+ ['wip','WIP (Raw + Prod)','var(--wip)','oz/cookie'],
+ ['cookie','Cookie','var(--cookie)','oz/cookie'],
+ ['each','Each','var(--each)','cookies/each'],
+ ['inner','Inner','var(--inner)','eaches/inner'],
+ ['mastercase','Master Case','var(--master)','pulled by'],
+ ['pricelists','Price Lists','var(--grape)','']
+];
+function buildChainbar(){
+ const el=document.getElementById('chainbar');let h='';
+ CHAIN.forEach((c,i)=>{
+  h+='<div class="step">';
+  h+='<button class="node" style="background:'+c[2]+'" onclick="'+(c[0][0]!=='_'?"go('"+c[0]+"')":'')+'">'+esc(c[1])+'</button>';
+  if(i<CHAIN.length-1){h+='<span class="arrow">→</span>';if(c[3])h+='<span class="factor">'+esc(c[3])+'</span><span class="arrow">→</span>';}
+  h+='</div>';
+ });
+ el.innerHTML=h;
+}
+
+
+// ===== ADD / EDIT MODAL SYSTEM (referential-integrity dropdowns) =====
+let modalState=null; // {tab, mode:'add'|'edit', data:{}, rowIndex}
+// FORM SCHEMAS: per tab. field = {key,label,req,type:'text'|'num'|'select', opts:fn->[{v,label}], srcTab, emptyNote}
+const FORMS={
+ cookie:{
+   title:'Cookie',
+   arr:()=>COOKIES,
+   idKey:'cookie_code',
+   fields:[
+     {key:'cookie_code',label:'Cookie Code',req:true,type:'text',hint:'e.g. CCH-3OZ-BAK-C'},
+     {key:'cookie_desc',label:'Cookie Description',req:true,type:'text'},
+     {key:'wip_dough',label:'Made From (Production Dough)',req:true,type:'select',srcTab:'WIP',
+       opts:()=>WIP.map(w=>({v:w.name,label:w.name+' ('+w.subtype+' '+dispType(w.type)+')'})),
+       emptyNote:'No production doughs exist. Create one on the WIP tab first.',
+       pulledNote:'Form &amp; Tier will be inherited from this dough.'},
+     {key:'outer_cookie',label:'Outer Cookie',req:false,type:'text'},
+     {key:'stuffing',label:'Stuffing',req:false,type:'select',srcTab:'WIP',
+       opts:()=>[{v:'',label:'— none (not stuffed) —'}].concat(STUFFINGS.map(x=>({v:x.name,label:x.name}))),
+       emptyNote:'No stuffings exist yet. Add one on the WIP tab (Stuffing table).'},
+     {key:'dough_oz_per_cookie',label:'Dough oz / Cookie',req:true,type:'num',hint:'consumption factor'},
+     {key:'prep',label:'Prep',req:true,type:'select',opts:()=>[{v:'Baked',label:'Baked'},{v:'Raw',label:'Raw'}]},
+     {key:'allergens',label:'Allergens',req:false,type:'text'},
+     {key:'ingredients',label:'Ingredients',req:false,type:'text',hint:'full ingredient statement'},
+     {key:'nutrition',label:'Nutritional panel',req:false,type:'text',hint:'panel summary or link'},
+   ]
+ },
+ rawdough:{
+   title:'Raw Dough',
+   arr:()=>RAW,
+   idKey:'raw_sku',
+   fields:[
+     {key:'raw_sku',label:'Raw SKU',req:true,type:'text'},
+     {key:'name',label:'Raw Dough Name',req:true,type:'text'},
+     {key:'family',label:'Form (Shot/Stuffed)',req:true,type:'select',opts:()=>[{v:'Shot',label:'Shot'},{v:'Stuffed',label:'Stuffed'}]},
+     {key:'subtype',label:'Tier (Classic/Gourmet)',req:true,type:'select',opts:()=>[{v:'Classic',label:'Classic'},{v:'Gourmet',label:'Gourmet'}]},
+     {key:'batch_wt_oz',label:'Batch Weight (oz)',req:false,type:'num'},
+     {key:'notes',label:'Notes',req:false,type:'text'},
+   ]
+ },
+ proddough:{
+   title:'Production Dough',
+   arr:()=>WIP,
+   idKey:'wip_sku',
+   fields:[
+     {key:'wip_sku',label:'WIP SKU',req:true,type:'text'},
+     {key:'name',label:'Production Dough Name',req:true,type:'text'},
+     {key:'type',label:'Form (Shot/Stuffed)',req:true,type:'select',opts:()=>[{v:'Shot',label:'Shot'},{v:'Mixed',label:'Stuffed'}]},
+     {key:'subtype',label:'Tier (Classic/Gourmet)',req:true,type:'select',opts:()=>[{v:'Classic',label:'Classic'},{v:'Gourmet',label:'Gourmet'}]},
+     {key:'raw_base',label:'Base (Raw Dough)',req:false,type:'select',srcTab:'WIP',
+       opts:()=>[{v:'',label:'— none —'}].concat(RAW.map(r=>({v:r.name,label:r.name+' ('+r.subtype+')'}))),
+       emptyNote:'No raw doughs exist. Add one in the Raw Dough table first.'},
+     {key:'mixins',label:'Mix-ins',req:false,type:'text'},
+     {key:'mixin_wt_oz',label:'Mix-in Wt (oz)',req:false,type:'num'},
+   ]
+ },
+ mastercase:{
+   title:'Master Case',
+   arr:()=>MASTERCASES,
+   idKey:'case_id',
+   fields:[
+     {key:'case_id',label:'Case ID',req:true,type:'text',hint:'e.g. MC-010'},
+     {key:'name',label:'Case Name',req:true,type:'text'},
+     {key:'composed_of',label:'1 · What is in it?',req:true,type:'select',
+       opts:()=>[{v:'eaches',label:'Eaches (retail sell units)'},{v:'inners',label:'Inner packs'},{v:'cookies',label:'Cookies (bulk / wholesale)'}],
+       pulledNote:'This defines the case. Eaches = retail; Cookies = bulk/wholesale.'},
+     {key:'unit_ref',label:'2 · Which one?',req:true,type:'select',srcTab:'contents',
+       opts:()=>{var c=(modalState&&modalState.data.composed_of)||'eaches';
+         if(c==='inners')return INNER.map(x=>({v:x.inner_sku,label:(x.name||x.inner_sku)+' ['+x.inner_sku+']'}));
+         if(c==='cookies')return COOKIES.map(x=>({v:x.cookie_code,label:x.cookie_desc+' ['+x.cookie_code+']'}));
+         return EACHES.filter(e=>(e.each_upc||'').trim()!=='').map(e=>({v:e.each_sku,label:cookieDescOfEach(e)+' ['+e.each_sku+']'}));},
+       emptyNote:'None exist yet. Create the part first.',
+       pulledNote:'Net weight will be derived from this unit.'},
+     {key:'unit_qty',label:'3 · How many?',req:true,type:'num',hint:'quantity of eaches/inners in the case'},
+     {key:'length_in',label:'4 · Box Length (in)',req:false,type:'num'},
+     {key:'width_in',label:'Box Width (in)',req:false,type:'num'},
+     {key:'height_in',label:'Box Height (in)',req:false,type:'num'},
+     {key:'gross_wt_lb',label:'5 · Gross Weight (lb) — manual',req:false,type:'num',hint:'net weight is auto-derived from contents'},
+     {key:'gtin14',label:'6 · Unique GTIN-14',req:false,type:'text',hint:'unique to this case configuration'},
+     {key:'net_wt_manual',label:'Net Wt — sheet (lb)',req:false,type:'num',hint:'manual net weight from spec sheet'},
+     {key:'cube_cuft',label:'Cube (ft³)',req:false,type:'num'},
+     {key:'ti',label:'Ti (cases per layer)',req:false,type:'num'},
+     {key:'hi',label:'Hi (layers)',req:false,type:'num'},
+     {key:'cases_per_pallet',label:'Cases per Pallet',req:false,type:'num'},
+     {key:'pallet_size',label:'Pallet Size',req:false,type:'text',hint:'e.g. 40 x 48'},
+     {key:'pallet_weight_lb',label:'Pallet Weight (lb)',req:false,type:'num'},
+     {key:'loading_height_in',label:'Loading Height (in)',req:false,type:'num'},
+     {key:'storage_override',label:'Storage (override)',req:false,type:'select',
+       opts:()=>[{v:'',label:'— auto from prep (Baked=Ambient, Raw=Frozen) —'},{v:'Ambient',label:'Ambient (shelf-stable)'},{v:'Frozen',label:'Frozen'}],
+       hint:'leave blank to derive from the cookie prep'},
+     {key:'shelf_life',label:'Shelf Life',req:false,type:'text',hint:'e.g. 6 Months'},
+     {key:'country',label:'Country of Origin',req:false,type:'text'},
+     {key:'status',label:'Status',req:false,type:'select',opts:()=>[{v:'Active',label:'Active'},{v:'Archive',label:'Archive'}]},
+   ]
+ },
+ inner:{
+   title:'Inner Case',
+   arr:()=>INNER,
+   idKey:'inner_sku',
+   fields:[
+     {key:'inner_sku',label:'Inner SKU',req:true,type:'text'},
+     {key:'name',label:'Inner Case Name',req:true,type:'text'},
+     {key:'each_sku',label:'Holds Each',req:true,type:'select',srcTab:'Eaches',
+       opts:()=>EACHES.map(e=>({v:e.each_sku,label:cookieDescOfEach(e)+' ['+e.each_sku+']'})),
+       emptyNote:'No eaches exist. Create the each first.'},
+     {key:'eaches_per_inner',label:'Eaches / Inner',req:true,type:'num'},
+     {key:'sellable',label:'Sellable?',req:false,type:'text'},
+     {key:'gtin14',label:'GTIN-14',req:false,type:'text'},
+   ]
+ },
+ shipbox:{
+   title:'Shipping Box (DTC)',
+   arr:()=>SHIPPINGBOXES,
+   idKey:'box_id',
+   fields:[
+     {key:'box_id',label:'Box ID',req:true,type:'text',hint:'e.g. SB-003'},
+     {key:'name',label:'Box Name',req:true,type:'text'},
+     {key:'dims_hxlxw',label:'L × W × H',req:false,type:'text',hint:'box dimensions'},
+     {key:'ship_wt_lb',label:'Ship Weight (lb)',req:false,type:'num'},
+     {key:'cost_premium',label:'Cost Premium $',req:false,type:'num',hint:'branding + cushioning upcharge'},
+     {key:'cushioning',label:'Cushioning',req:false,type:'text'},
+     {key:'branding',label:'Branding',req:false,type:'text'},
+     {key:'notes',label:'Notes',req:false,type:'text'},
+   ]
+ },
+ each:{
+   title:'Each (Sell Unit)',
+   arr:()=>EACHES,
+   idKey:'each_sku',
+   fields:[
+     {key:'each_sku',label:'Each SKU',req:true,type:'text'},
+     {key:'each_upc',label:'UPC (12-digit)',req:false,type:'text',hint:'consumer UPC-A'},
+     {key:'brand',label:'Brand / Owner',req:true,type:'select',opts:()=>[{v:'Walmart',label:'Walmart · bettergoods'},{v:'Dirty Cookie',label:'Dirty Cookie (own brand)'}]},
+     {key:'cookie_code',label:'Cookie (Component)',req:true,type:'select',srcTab:'Cookies',
+       opts:()=>COOKIES.map(c=>({v:c.cookie_code,label:c.cookie_desc+' ['+c.cookie_code+']'})),
+       emptyNote:'No cookies exist. Create the cookie on the Cookies tab first.',
+       pulledNote:'Cookie Description, Form, Tier, etc. are pulled from this cookie.'},
+     {key:'cookies_per_each',label:'Cookies / Each',req:true,type:'num',hint:'e.g. 4 for a 4-pack'},
+     {key:'pack_type',label:'Pack Type',req:false,type:'text'},
+     {key:'net_wt',label:'Net Wt',req:false,type:'text'},
+     {key:'length_in',label:'Length (in)',req:false,type:'num'},
+     {key:'width_in',label:'Width (in)',req:false,type:'num'},
+     {key:'height_in',label:'Height (in)',req:false,type:'num'},
+     {key:'gross_wt_oz',label:'Gross Wt (oz)',req:false,type:'num'},
+     {key:'retail_price',label:'Retail Price $',req:false,type:'num',hint:'consumer price per sell unit'},
+   ]
+ },
+ stuffing:{
+   title:'Stuffing / Filling',
+   arr:()=>STUFFINGS,
+   idKey:'stuffing_id',
+   fields:[
+     {key:'stuffing_id',label:'Stuffing ID',req:true,type:'text'},
+     {key:'name',label:'Stuffing Name',req:true,type:'text'},
+     {key:'type',label:'Type',req:false,type:'text'},
+     {key:'notes',label:'Notes',req:false,type:'text'},
+   ]
+ },
+};
+// Unified edit-mode actions bar. Read-only by default.
+// Permission gate -> mode toggle -> actions. When editMode OFF: read-only (toggle only, if permitted).
+// When ON: Add button(s) appear + active indicator. addSpecs: [{formKey,label}]
+function maint(html){return (canEdit&&editMode)?html:'';}
+function actionsBar(addSpecs){
+ if(!canEdit)return '';
+ if(!editMode)return '';   // view-only: no actions (controlled by top-right lock)
+ if(typeof addSpecs==='string')addSpecs=[{formKey:addSpecs,label:'+ Add '+FORMS[addSpecs].title}];
+ let h='<div class="tabactions">';
+ addSpecs.forEach(a=>{h+='<button class="btn-add" onclick="openAdd(\''+a.formKey+'\')">'+esc(a.label)+'</button>';});
+ h+='<span class="editmode-indicator">Editing enabled — changes are live</span>';
+ h+='</div>';
+ return h;
+}
+function openAdd(formKey){modalState={formKey,mode:'add',data:{},err:''};renderModal();}
+function openEdit(formKey,idVal){const F=FORMS[formKey];const row=F.arr().find(r=>r[F.idKey]===idVal);if(!row)return;modalState={formKey,mode:'edit',data:Object.assign({},row),origId:idVal,err:''};renderModal();}
+function closeModal(){modalState=null;const m=document.getElementById('modalmount');if(m)m.innerHTML='';}
+function modalField(f,val){
+ let h='<div class="fld"><label>'+esc(f.label)+(f.req?' <span class="req">*</span>':'')+'</label>';
+ if(f.type==='select'){
+   const opts=f.opts();
+   if(opts.filter(o=>o.v!=='').length===0&&f.emptyNote){
+     h+='<select disabled><option>— unavailable —</option></select>';
+     h+='<div class="pulled-note" style="color:#C0392B">⚠ '+f.emptyNote+'</div>';
+   }else{
+     h+='<select onchange="modalSet(\''+f.key+'\',this.value)">';
+     opts.forEach(o=>{h+='<option value="'+esc(o.v)+'"'+(String(val||'')===String(o.v)?' selected':'')+'>'+esc(o.label)+'</option>';});
+     h+='</select>';
+     if(f.pulledNote)h+='<div class="pulled-note">↑ '+f.pulledNote+'</div>';
+   }
+ }else{
+   h+='<input type="'+(f.type==='num'?'number':'text')+'" value="'+esc(val==null?'':val)+'" oninput="modalSet(\''+f.key+'\',this.value)">';
+   if(f.hint)h+='<div class="hint">'+esc(f.hint)+'</div>';
+ }
+ h+='</div>';return h;
+}
+function modalSet(key,val){if(modalState)modalState.data[key]=val;}
+function renderModal(){
+ const mount=document.getElementById('modalmount');if(!mount)return;
+ if(!modalState){mount.innerHTML='';return;}
+ const F=FORMS[modalState.formKey];
+ let h='<div class="modalbg" onclick="if(event.target===this)closeModal()"><div class="modal"><h3>'+(modalState.mode==='add'?'Add ':'Edit ')+esc(F.title)+'</h3><div class="body">';
+ F.fields.forEach(f=>{h+=modalField(f,modalState.data[f.key]);});
+ if(modalState.err)h+='<div class="err">'+esc(modalState.err)+'</div>';
+ h+='</div><div class="foot"><button class="cancel" onclick="closeModal()">Cancel</button><button class="save" onclick="modalSave()">'+(modalState.mode==='add'?'Add':'Save')+'</button></div></div></div>';
+ mount.innerHTML=h;
+}
+function modalSave(){
+ const F=FORMS[modalState.formKey];const d=modalState.data;
+ for(const f of F.fields){if(f.req&&(d[f.key]==null||String(d[f.key]).trim()===''))
+   {modalState.err='“'+f.label+'” is required.';renderModal();return;}}
+ const arr=F.arr();
+ if(modalState.mode==='add'){
+   if(arr.some(r=>r[F.idKey]===d[F.idKey])){modalState.err=F.title+' “'+d[F.idKey]+'” already exists.';renderModal();return;}
+   const row={};F.fields.forEach(f=>row[f.key]=d[f.key]!=null?d[f.key]:'');arr.push(row);
+ }else{
+   const row=arr.find(r=>r[F.idKey]===modalState.origId);if(row)F.fields.forEach(f=>row[f.key]=d[f.key]!=null?d[f.key]:'');
+ }
+ reindex();closeModal();render();
+}
+
+
+// ===== EACHES: resolvers, brand pill, column chooser =====
+function cookieDescOfEach(e){const c=cookieOfEach(e);return c?c.cookie_desc:'';}
+// STORAGE derives from prep: Baked -> Ambient, Raw -> Frozen
+function prepToStorage(prep){if(!prep)return '';return prep.toLowerCase()==='raw'?'Frozen':'Ambient';}
+function cookieStorage(c){return c?prepToStorage(c.prep):'';}
+function caseStorage(mc){
+ if(mc.storage_override)return mc.storage_override; // manual override
+ if(mc.composed_of==='cookies'){const c=COOKIE_BY_CODE[mc.unit_ref];return c?prepToStorage(c.prep):'';}
+ if(mc.composed_of==='eaches'){const e=EACH_BY_SKU[mc.unit_ref];const c=e?cookieOfEach(e):null;return c?prepToStorage(c.prep):'';}
+ return '';
+}
+function sampleTogglePill(item,arrName,idKey){
+ const on=!!item.sample_eligible;
+ if(editMode){
+   return '<button class="samptoggle'+(on?' on':'')+'" onclick="toggleSample(\''+arrName+'\',\''+esc(item[idKey])+'\')">'+(on?'✓ On sample site':'Add to samples')+'</button>';
+ }
+ return on?'<span class="chip" style="background:#FDF0F6;color:#C2185B">✓ Sample</span>':'<span class="empty">—</span>';
+}
+function toggleSample(arrName,id){
+ const map={cookies:[COOKIES,'cookie_code'],eaches:[EACHES,'each_sku'],inner:[INNER,'inner_sku'],mastercases:[MASTERCASES,'case_id']};
+ const [arr,key]=map[arrName]||[];if(!arr)return;
+ const it=arr.find(x=>String(x[key])===String(id));if(it){it.sample_eligible=!it.sample_eligible;render();}
+}
+function storagePill(v){if(!v)return '<span class="empty">—</span>';const frozen=v==='Frozen';return '<span class="chip" style="background:'+(frozen?'#DCEBF5':'#F3ECDD')+';color:'+(frozen?'#1A6091':'#8A6410')+'">'+(frozen?'❄ ':'🌡 ')+esc(v)+'</span>';}
+// NET WEIGHT derivation (rolls down to cookie dough oz)
+function eachNetOz(e){const c=cookieOfEach(e);if(!c)return null;const oz=parseFloat(c.dough_oz_per_cookie),n=parseFloat(e.cookies_per_each);if(isNaN(oz)||isNaN(n))return null;return oz*n;}
+function caseBrand(mc){if(mc.composed_of==='eaches'){const e=EACH_BY_SKU[mc.unit_ref];return e?e.brand:'';}if(mc.composed_of==='cookies')return 'Dirty Cookie';return '';}
+function caseNetOz(mc){
+ const q=parseFloat(mc.unit_qty);if(isNaN(q))return null;
+ if(mc.composed_of==='eaches'){const e=EACH_BY_SKU[mc.unit_ref];const en=e?eachNetOz(e):null;return en==null?null:en*q;}
+ if(mc.composed_of==='cookies'){const c=COOKIE_BY_CODE[mc.unit_ref];const oz=c?parseFloat(c.dough_oz_per_cookie):NaN;return isNaN(oz)?null:oz*q;}
+ return null;
+}
+function ozToLb(oz){return oz==null?null:(oz/16);}
+function cookieFormOfEach(e){const c=cookieOfEach(e);return c?cookieType(c):'';}
+function cookieTierOfEach(e){const c=cookieOfEach(e);return c?cookieTier(c):'';}
+function cookieOuterOfEach(e){const c=cookieOfEach(e);return c?c.outer_cookie:'';}
+function cookieStuffOfEach(e){const c=cookieOfEach(e);return c?c.stuffing:'';}
+function cookieOzOfEach(e){const c=cookieOfEach(e);return c?c.dough_oz_per_cookie:'';}
+function cookiePrepOfEach(e){const c=cookieOfEach(e);return c?c.prep:'';}
+function brandPill(v){if(!v)return '<span class="empty">—</span>';const cls=v==='Walmart'?'brand-walmart':'brand-dirty';const lbl=v==='Walmart'?'Walmart · bettergoods':v;return '<span class="chip '+cls+'">'+esc(lbl)+'</span>';}
+// optional rolled-up columns the chooser can toggle (key -> default shown)
+let eachCols={cookie_desc:true,brand:true,outer:false,stuffing:false,form:false,tier:false,oz:false,prep:false,component:true};
+let mcCols={brand:true,storage:true,madeof:false,dims:true,gross:true,net:true,status:false,ti:true,hi:true,cpp:true,cube:false,netsheet:false,palletsize:false,palletwt:false,loadht:false,shelf:false,country:false};
+function toggleMcCol(k){mcCols[k]=!mcCols[k];render();}
+let innerCols={sellable:true,gtin:true};
+function toggleInnerCol(k){innerCols[k]=!innerCols[k];render();}
+let colPanelOpen=false;
+function toggleColPanel(){colPanelOpen=!colPanelOpen;render();}
+function toggleEachCol(k){eachCols[k]=!eachCols[k];render();}
+
+let cur='wip';
+let showSource=true;
+let cookieCols={dough:false,allergens:false};
+function toggleCookieCol(k){cookieCols[k]=!cookieCols[k];render();}
+function toggleSource(){showSource=!showSource;render();}
+let canEdit=true;       // PERMISSION FLAG — wire to real user role later
+let editMode=false;     // Edit-mode toggle (reveals per-row Edit buttons)
+function toggleEditMode(){editMode=!editMode;updateLock();render();}
+function updateLock(){const b=document.getElementById('lockbtn');if(!b)return;if(editMode){b.textContent='🔓';b.classList.add('unlocked');b.title='Editing enabled — click to lock (view-only)';}else{b.textContent='🔒';b.classList.remove('unlocked');b.title='View-only — click to enable editing';}}
+function buildTiers(){
+ const el=document.getElementById('tiers');el.innerHTML='';
+ Object.entries(TABS).forEach(([k,t])=>{
+  const b=document.createElement('button');b.textContent=t.name;b.className=k===cur?'active':'';
+  b.onclick=()=>go(k);el.appendChild(b);
+ });
+}
+function go(k){cur=k;render();}
+function render(){
+ buildTiers();
+ document.getElementById('head').innerHTML=TABS[cur].head;
+ document.getElementById('rollnote').innerHTML=TABS[cur].roll;
+ document.getElementById('grid').innerHTML=TABS[cur].render();
+}
+buildChainbar();updateLock();render();
+</script></body></html>
