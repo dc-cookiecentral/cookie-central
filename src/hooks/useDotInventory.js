@@ -14,8 +14,14 @@ export function useDotInventory() {
     supabase
       .from('dot_inventory')
       .select(
-        `sku, on_hand, incoming, in_transit_to_retailer, allocated, weekly_velocity, snapshot_date,
-         products ( short_name, full_name )`
+        `sku, on_hand, incoming, in_transit_to_retailer, allocated, weekly_velocity, snapshot_date`
+        // NOTE: the products(short_name, full_name) embed was dropped when the
+        // legacy finished-goods `products` table was replaced by the Cookulator
+        // spine (ADR-024). dot_inventory.product_id was never populated, so the
+        // join always returned null and views already fall back to `sku`. A
+        // retail display name can be re-sourced from the new product catalog once
+        // dot_inventory carries a catalog key (part of the /orders+/payments
+        // catalog wiring).
       )
       .order('snapshot_date', { ascending: false })
       .then(({ data, error }) => {
