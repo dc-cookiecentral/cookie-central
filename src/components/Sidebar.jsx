@@ -16,6 +16,7 @@ const NAV = [
   { kind: 'divider' },
   { kind: 'spacer' },
   { kind: 'divider' },
+  { to: '/spec-sheet', label: 'Spec Sheet' },
   { to: '/reference',  label: 'Reference' },
   { to: '/audit',      label: 'Audit Log' },
   { to: '/uploads',    label: 'Uploads' },
