@@ -163,3 +163,26 @@ Secrets live in **Vault**; Edge Functions read/write them via two `SECURITY DEFI
 **Open items carried forward:** (a) add a `Cortina` role for Task 2.7's role gate; (b) create `addresses` in Phase 2; (c) decide the fate of `itemMaster.js` + `ProductsView` (repoint to `master_cases` view or retire); (d) confirm `bill_of_materials` seed rows before dropping old `products`.
 
 **Rationale:** The data is demo, so a clean schema replacement + reseed is simpler and lower-risk than an in-place FK migration — and the FKs are unpopulated anyway. Modeling the cookie atom as `products` (per the plan) with `master_cases` as the sellable unit matches the Cookulator's real composition hierarchy; the old flat `products`-as-retail-SKU conflated two levels. Caroline owning the `/orders`+`/payments` re-point keeps the finance-critical surfaces under her control while this workstream focuses on the product spine and Sample Central.
+
+## ADR-025: Phase 1 built — Cookulator product spine + Spec Sheet UI (as-built)
+**Date:** July 15, 2026
+**Status:** Accepted. Implements ADR-024. Branch `feat/spec-sheet-and-sample-central`; migrations applied manually by Caroline in filename order before the UI renders live.
+
+**What shipped (Phase 1, Tasks 1.1–1.6):**
+- **Product spine** (`20260714120000_create_product_spine.sql`): `products` (cookie atom), `eaches`, `inners`, `master_cases`, `stuffings`. RLS mirrors the existing pattern — all authenticated read; **admin/ops** write.
+- **WIP/dough layer** (`20260715140000_wip_dough_layer.sql`): `raw_doughs` + `wip_doughs`. ADR-024 flagged this layer as optional; it was **added** so the Spec Sheet's WIP tab is table-backed at the "full parity" bar Caroline set. `products.tier`/`form` are also stored, but the Cookies tab **inherits** Form/Tier from the dough (matching the prototype), falling back to the stored columns.
+- **Pricing** (`20260715120000_price_list_view.sql`): thin `product_prices` table (only stored pricing, `list_price` NULL = TBD, **finance/admin** write) + a `price_list` **VIEW** (`security_invoker`) resolving the polymorphic composition chain via guarded LEFT JOINs.
+- **Seed** (`supabase/seeds/product_spine_cookulator.sql`, per ADR-019): 5 raw doughs, 13 WIP doughs, 27 cookies (1 duplicate code deduped), 5 stuffings, 3 eaches, 4 inners, 15 master cases; **8 cookies** flagged `sample_eligible`. tier/form derived from `wip_dough` at seed time.
+- **Legacy drop** (`20260715130000_drop_finished_goods.sql`): dropped `products_legacy` + the three dead, unpopulated FK columns (`po_line_items`/`dot_inventory`/`bill_of_materials`.`product_id`).
+- **UI** (`/spec-sheet`): all 6 Cookulator tabs, read-only default + edit-mode lock (role-gated), reusable `SpecTable` (sort/filter/level-grouped column chooser), config-driven add/edit/delete modal, sample-eligibility chip/toggle, Price Lists over the `price_list` view.
+
+**Key implementation decisions (deviations from / refinements to ADR-024 + `DATA_MODEL_ADDITIONS.md`):**
+1. **`cases_per_pallet` is stored**, not derived. `DATA_MODEL_ADDITIONS` lists it as a `master_cases` column and flags **only** net weight as derived for master cases. The view/app fall back to `ti × hi` when it's unset.
+2. **Only master-case net weight + storage are derived** (never stored): net weight rolls down to cookie `dough_oz` (÷16 for lb), storage from `prep` (Raw→Frozen, else Ambient, `storage_override` wins). Computed both in `price_list` and in `utils/cookulator.js`.
+3. **WIP/dough layer promoted to real tables** (see above) — a scope addition beyond the ADR-024 "5-table spine," justified by the full-parity requirement.
+4. **Re-point = removal, not FK rewrite.** The only live code refs to the old table were two null-returning embeds (`useDotInventory`, `useRawMaterialDetail`), removed in Task 1.4. The DB FK columns were dead/unpopulated and dropped with the table. There was nothing meaningful to "re-point" at the FK level.
+5. **DTC shipping boxes deferred** to the e-commerce phase (out of scope per `EXTENSION_BUILD_PLAN` "what NOT to do").
+
+**Carried forward:** (a) migrations are **not yet applied** — Caroline applies them manually in filename order, then the seed, then verifies; (b) `/orders`+`/payments` catalog linkage to the new spine is Caroline's (dead `product_id` columns dropped — she adds correct `master_cases`/`eaches` linkage when wiring); (c) Caroline authorized purging **all non-Cookulator data** (Cookulator = master data) — to be executed as a separate, discrete cleanup step; (d) Phase 2 (Sample Central) still needs a `Cortina` role + `addresses` table (ADR-024 open items).
+
+**Rationale:** Keeping every level table-backed (including WIP) makes the whole Cookulator data-driven and consistent with the rest of the app, and lets Sample Central read `products.sample_eligible` directly. Deriving net weight/storage in a view keeps the "no stored derived values" rule intact while the UI still renders them live. Storing `cases_per_pallet` follows the authoring doc rather than over-applying the derived rule to a figure real pallets can deviate on.
