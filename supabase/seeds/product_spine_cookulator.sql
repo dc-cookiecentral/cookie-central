@@ -15,8 +15,39 @@
 --     exactly as the prototype's cookieTier()/cookieType() resolve them.
 -- Nothing storage/net-weight-derived is seeded (those are computed in the view).
 --
--- Counts: 27 cookies (1 dup code deduped), 5 stuffings, 3 eaches, 4 inners,
--- 15 master cases. 8 cookies flagged sample_eligible.
+-- Counts: 5 raw doughs, 13 WIP doughs, 27 cookies (1 dup code deduped),
+-- 5 stuffings, 3 eaches, 4 inners, 15 master cases. 8 cookies sample_eligible.
+
+-- ── WIP / dough layer (raw_doughs, wip_doughs) — tab 1 ──────────────────────
+INSERT INTO raw_doughs (raw_sku, name, family, subtype, batch_wt_oz, co_mans, notes) VALUES
+  ('1001', 'Cookie Dough', 'Stuffed', 'Classic', 1280, ARRAY['Kukibell']::text[], 'Base classic dough'),
+  ('1002', 'Double Chocolate Dough', 'Stuffed', 'Classic', 1280, ARRAY['Kukibell']::text[], 'Base double chocolate'),
+  ('1003', 'Gourmet Base Dough', 'Shot', 'Gourmet', 1280, ARRAY['Kukibell']::text[], 'Gourmet shot base'),
+  ('1004', 'Gourmet Cookie Dough', 'Stuffed', 'Gourmet', 1280, ARRAY['Kukibell']::text[], 'Gourmet stuffed base'),
+  ('1005', 'Gourmet Double Chocolate Dough', 'Stuffed', 'Gourmet', 1280, ARRAY['Kukibell']::text[], 'Gourmet stuffed double chocolate base')
+ON CONFLICT (raw_sku) DO UPDATE SET
+  name=EXCLUDED.name, family=EXCLUDED.family, subtype=EXCLUDED.subtype,
+  batch_wt_oz=EXCLUDED.batch_wt_oz, co_mans=EXCLUDED.co_mans, notes=EXCLUDED.notes, updated_at=now();
+
+INSERT INTO wip_doughs (wip_sku, name, type, subtype, raw_base, mixins, mixin_wt_oz, raw_dough_portion_oz, wip_batch_wt_oz, co_mans) VALUES
+  ('1501', 'Chocolate Chip', 'Shot', 'Gourmet', NULL, NULL, NULL, NULL, NULL, '{}'),
+  ('1502', 'Double Chocolate', 'Shot', 'Gourmet', NULL, NULL, NULL, NULL, NULL, '{}'),
+  ('1503', 'Red Velvet', 'Shot', 'Gourmet', NULL, NULL, NULL, NULL, NULL, '{}'),
+  ('1504', 'Churro', 'Shot', 'Gourmet', NULL, NULL, NULL, NULL, NULL, '{}'),
+  ('1505', 'Sugar/Shortbread', 'Shot', 'Gourmet', NULL, NULL, NULL, NULL, NULL, '{}'),
+  ('2001', 'Chocolate Chip Cookie', 'Mixed', 'Classic', 'Cookie Dough', 'Chocolate chips', NULL, NULL, NULL, '{}'),
+  ('2002', 'Double Chocolate Cookie', 'Mixed', 'Classic', 'Double Chocolate Dough', 'Chocolate chips', NULL, NULL, NULL, '{}'),
+  ('2003', 'White Chocolate Chip Cookie', 'Mixed', 'Classic', 'Cookie Dough', 'White chocolate chips', NULL, NULL, NULL, '{}'),
+  ('2004', 'Peanut Cookie', 'Mixed', 'Classic', 'Cookie Dough', 'Peanut', NULL, NULL, NULL, '{}'),
+  ('2005', 'Chocolate Chip Cookie (Gourmet)', 'Mixed', 'Gourmet', 'Gourmet Cookie Dough', NULL, NULL, NULL, NULL, ARRAY['Kukibell']::text[]),
+  ('2006', 'Double Chocolate Chip (Gourmet)', 'Mixed', 'Gourmet', 'Gourmet Double Chocolate Dough', NULL, NULL, NULL, NULL, ARRAY['Kukibell']::text[]),
+  ('2007', 'White Chocolate Chip (Gourmet)', 'Mixed', 'Gourmet', 'Gourmet Cookie Dough', NULL, NULL, NULL, NULL, ARRAY['Kukibell']::text[]),
+  ('2008', 'Peanut Cookie (Gourmet)', 'Mixed', 'Gourmet', 'Gourmet Cookie Dough', NULL, NULL, NULL, NULL, ARRAY['Kukibell']::text[])
+ON CONFLICT (wip_sku) DO UPDATE SET
+  name=EXCLUDED.name, type=EXCLUDED.type, subtype=EXCLUDED.subtype, raw_base=EXCLUDED.raw_base,
+  mixins=EXCLUDED.mixins, mixin_wt_oz=EXCLUDED.mixin_wt_oz,
+  raw_dough_portion_oz=EXCLUDED.raw_dough_portion_oz, wip_batch_wt_oz=EXCLUDED.wip_batch_wt_oz,
+  co_mans=EXCLUDED.co_mans, updated_at=now();
 
 INSERT INTO products (code, description, flavor, outer_cookie, stuffing, tier, form, prep, dough_oz, wip_dough, allergens, ingredients, nutrition, sample_eligible) VALUES
   ('CC-2OZ-BAK-G', 'Gourmet Chocolate Chip — 2oz, Baked', 'Chocolate Chip', 'Chocolate Chip', NULL, 'Gourmet', 'Shot', 'Baked', 2, 'Chocolate Chip', NULL, NULL, NULL, true),
@@ -111,6 +142,8 @@ ON CONFLICT (case_id) DO UPDATE SET
   sample_eligible=EXCLUDED.sample_eligible, updated_at=now();
 
 -- Verify:
+--   select count(*) from raw_doughs;                    -- expect 5
+--   select count(*) from wip_doughs;                    -- expect 13
 --   select count(*) from products;                      -- expect 27
 --   select count(*) from products where sample_eligible;-- expect 8
 --   select count(*) from stuffings;                     -- expect 5
