@@ -1,100 +1,169 @@
-# ShipStation Integration Spec
+# ShipStation Integration Spec — Custom Store pattern
 
-**Boundary principle:** the app pushes *intent* (a clean order + tags); ShipStation resolves *fulfillment* (box, service, labels, emails). Do not duplicate ShipStation logic app-side.
+**Supersedes the V1 order-push design.** See ADR-028 (mechanism) + ADR-027 (retained tag vocabulary). Do **not** build the V1 `/orders/createorder` push or the V2 Sales Orders API (beta, not sandbox-testable).
 
-**All ShipStation calls run server-side** — a Supabase Edge Function. API keys never touch the client.
+**Boundary principle:** the app pushes *intent* (a clean order + a few fields); ShipStation resolves *fulfilment* (box, service, labels, emails). No fulfilment logic is duplicated app-side.
 
----
-
-## The tag contract (lock with the co-man BEFORE writing integration code)
-
-This vocabulary *is* the integration. Both sides must agree.
-
-| Tag | Meaning | Set by | Drives (ShipStation rule) |
-|---|---|---|---|
-| `cold-chain` | shipment needs refrigerated handling | **product tag** on raw SKUs (auto-applied on import) | → refrigerated service + insulated box |
-| `rush` | expedite | **order tag** pushed by app | → next-day service + priority alert |
-| `custom-box` | branded/custom packaging | **order tag** pushed by app | → branded mailer package |
-| `dc-box` | standard Dirty Cookie box | **order tag** pushed by app | → standard package |
-| `custom-request` | contains a bespoke item (no SKU) | **order tag** pushed by app | → route to manual review (no auto-fulfill) |
-
-**Split rule:** product-inherent attributes (cold chain) = **ShipStation product tags**; order-level choices (rush, box) = **order tags the app pushes**.
+**All ShipStation traffic is server-side** — one Supabase Edge Function (`shipstation-customstore`). Basic-Auth creds live in Vault, never in the client.
 
 ---
 
-## The critical pitfall — do NOT rule on raw SKU
+## The flow (3 steps)
 
-ShipStation's **Item SKU** automation criteria **silently ignore any order with more than one product**. Sample manifests are almost always multi-item, so a rule like `if SKU = CCH-2OZ-RAW-C → cold chain` **does nothing** on a real order.
+```
+1. Cortina places a sample order          →  sample_shipments (+ sample_shipment_items) row
+   in the Sample Site
+2. ShipStation Custom Store import (GET)   →  order appears in Dirty Cookie's ShipStation
+   pulls our Orders XML                        dashboard; the co-man (a user in DC's one
+                                                account) views it, prints the pack list,
+                                                picks dims, buys the label, ships
+3. ShipStation POSTs shipnotify (tracking) →  we update sample_shipments (tracking #,
+   back to our endpoint                        carrier, status → shipped) and advance the pipeline
+```
 
-**Correct pattern (two-step indirection):**
-1. Tag the **product record** in ShipStation once — raw SKUs get the `cold-chain` product tag. ShipStation auto-applies the tag to any order containing that product on import (works on multi-item orders).
-2. Write automation rules against the **order tag**: `if order includes cold-chain → refrigerated service`.
-
----
-
-## Order push (Edge Function)
-
-- Endpoint: `POST /orders/createorder` (V1 — order-create maturity lives in V1; V1/V2 keys are not interchangeable).
-- Payload: ship-to (from `addresses`), line items by **SKU** (must match co-man's stock exactly), order tags per the contract, notes field carrying collateral + warming instructions.
-- Custom items (no SKU): ride as an order note + `project_no`; add `custom-request` tag → manual review. Do not attempt a SKU line.
-- Store returned `shipstation_order_id` on the `shipments` row.
-- Rate limit ≈ 40 req/min per credential set → queue + back off on batch entry.
+ShipStation's **Custom Store** is purpose-built for an order source with no pre-built integration: it **GET**s orders from an endpoint we expose and **POST**s a `shipnotify` back when the co-man ships. One ShipStation account (Dirty Cookie's); the co-man logs in as a user.
 
 ---
 
-## Status back (webhook receiver Edge Function)
+## The endpoint contract
 
-- Subscribe to `ORDER_NOTIFY` (new/updated) and `SHIP_NOTIFY` (shipped) events.
-- On event → update `shipments.status` (submitted→processing→shipped→delivered).
-- Verify webhook signatures (RSA-SHA256).
-- **Gotcha — no "order update" webhook:** ShipStation notifies on new orders and on ship, not on arbitrary edits. If a leader edits a shipment after push, re-push/patch deliberately; the systems can otherwise silently diverge.
-- **Gotcha — rules run once, on import.** Edits to an order already in Awaiting Shipment don't re-trigger rules. Same re-push discipline.
-- **Gotcha — immutable once shipped.** Orders in shipped/cancelled can't be updated via API. Edits must land before fulfillment.
+One Edge Function, two actions dispatched by an `action` query param, both Basic-Auth protected:
 
----
+### `GET  …/shipstation-customstore?action=export&start_date=…&end_date=…&page=N`
+- ShipStation calls this on its import schedule (and on a manual "import orders" click).
+- `start_date` / `end_date` are UTC in `MM/dd/yyyy HH:mm`. Return orders whose `created_at`/`updated_at` fall in the window.
+- Emit Custom Store **Orders XML** (schema below). Support paging: honour `page` and return the `pages` attribute on `<Orders>`.
+- CDATA-wrap all free-text (names, notes, item names).
 
-## Collateral & warming instructions → packing slip
+### `POST …/shipstation-customstore?action=shipnotify`
+- ShipStation calls this when an order ships. Body is a `ShipNotice` XML (ShipStation may also pass `order_number` / `tracking_number` / `carrier` as query params).
+- Match `OrderNumber` → `sample_shipments.shipment_no`; write `tracking_number`, `carrier`, `service`, `shipped_at`, set `status = 'shipped'`; return 200.
+- **If no shipment matches, log it and return 200-with-warning — never silently drop the tracking update.**
 
-Confirmed against the API. Packing slips support **Field Replacements** — bracketed tokens (`[Notes to Buyer]`, `[Gift Message]`, `[Custom Field 1-3]`) that print order data onto the slip.
-
-- Push the collateral checklist (incl. **Warming instructions**) into an order **Notes** field.
-- Add the matching token to a **custom packing-slip template** so the co-man packs the right inserts.
-- **Watch the 100-char limit** on Custom Fields 1–3 — a long collateral list truncates silently. Use a larger **Notes** field, not a custom field.
-
----
-
-## Email / CC config (ShipStation-side — document for Caroline to set up)
-
-Requirement: always copy `samplesmngmt@cortinafoods.com` on all orders, shipments, deliveries.
-
-- **Shipment + delivery emails:** the store's **"Blind Copy on Shipment and Delivery Email"** field (Emails/Notifications tab). Enter the address once → BCC on every shipment + delivery notification.
-  - Nuance: it's a **BCC** (not CC), and it covers shipment **and** delivery **together** — can't split them.
-- **Order confirmation to the salesperson:** separate recipient field. To also copy the sample-mgmt inbox on order creation, add it to the order's recipient emails (comma-separated) at push time, or a dedicated notification.
-- **Decision required:** "all orders, shipments, deliveries" = configure in **both** places (Blind Copy for ship/deliver + recipient list for order confirmation).
+### Auth
+Basic HTTP Auth on both actions. Expected creds read from Vault via `get_secret`: `SHIPSTATION_CUSTOMSTORE_USER`, `SHIPSTATION_CUSTOMSTORE_PASS`. Non-matching → **401**. (Server-side only; never `VITE_*`.)
 
 ---
 
-## Box selection (ShipStation-side — document for Caroline to set up)
+## XML schemas
 
-Don't build a box picker in the app. Define box inventory as ShipStation **packages**, map via automation rules:
-- `if order includes cold-chain → insulated box`
-- `if custom-box tag → branded mailer`
-- `if dc-box tag → standard package`
+### Orders export (GET response)
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<Orders pages="1">
+  <Order>
+    <OrderID>{sample_shipments.id}</OrderID>
+    <OrderNumber>{shipment_no}</OrderNumber>
+    <OrderDate>{created_at, MM/dd/yyyy HH:mm}</OrderDate>
+    <OrderStatus>{mapped status}</OrderStatus>          <!-- Paid | Shipped -->
+    <LastModified>{updated_at}</LastModified>
+    <ShippingMethod>{rush ? 'Next-Day' : 'Ground'}</ShippingMethod>
+    <CustomField1>{box_spec → 'dc-box' | 'custom-box'}</CustomField1>
+    <CustomField2>{any custom line ? 'custom-request' : ''}</CustomField2>
+    <CustomField3></CustomField3>                        <!-- reserved / unused -->
+    <InternalNotes><![CDATA[ collateral · Warming instructions · notes ·
+        required-by · handling(temp) · custom lines (spec + project #) ]]></InternalNotes>
+    <Customer>
+      <CustomerCode>{salesperson email}</CustomerCode>
+      <BillTo><Name><![CDATA[{account}]]></Name></BillTo>
+      <ShipTo>
+        <Name><![CDATA[{addresses.contact_name}]]></Name>
+        <Company><![CDATA[{addresses.company}]]></Company>
+        <Address1><![CDATA[{addresses.street}]]></Address1>
+        <City><![CDATA[{addresses.city}]]></City>
+        <State>{addresses.state — must be 2-char}</State>
+        <PostalCode>{addresses.zip — validated}</PostalCode>
+      </ShipTo>
+    </Customer>
+    <Items>
+      <Item>                                             <!-- real lines only (product_code not null) -->
+        <SKU>{product_code}</SKU>
+        <Name><![CDATA[{description}]]></Name>
+        <Quantity>{qty}</Quantity>
+        <UnitPrice>0.00</UnitPrice>
+      </Item>
+    </Items>
+  </Order>
+</Orders>
+```
+- **No `<Country>`** — US-only; ShipStation defaults to the store country.
+- **Custom lines** (`custom = true`, no `product_code`) are **not** emitted as `<Item>` (no SKU). They ride `InternalNotes` (spec + `project_no`) **and** flag `CustomField2 = custom-request`.
 
-The app only expresses intent (`box_spec` → tag). The co-man owns the physical box mapping.
+### ShipNotify (POST body)
+```xml
+<ShipNotice>
+  <OrderNumber>{shipment_no}</OrderNumber>
+  <TrackingNumber>…</TrackingNumber>
+  <Carrier>…</Carrier>
+  <Service>…</Service>
+  <ShipDate>…</ShipDate>
+</ShipNotice>
+```
+
+---
+
+## Field mapping (Sample Site → Custom Store XML)
+
+Columns are the **real** ADR-026 names.
+
+| Custom Store XML | Source column | Rule / note |
+|---|---|---|
+| `OrderNumber` | `sample_shipments.shipment_no` | match key for shipnotify |
+| `OrderID` | `sample_shipments.id` | |
+| `OrderDate` | `created_at` | not `required_by` |
+| `OrderStatus` | `status` | submitted/processing → **Paid**; shipped/delivered → **Shipped** |
+| `ShippingMethod` | `rush` | `true` → **Next-Day**, else **Ground** (→ ShipStation method-mapping → rush automation rule) |
+| `CustomField1` | `box_spec` | `dc-box` / `custom-box` |
+| `CustomField2` | any `sample_shipment_items.custom` | `custom-request` (grid-visible + rule-matchable) |
+| `CustomField3` | — | reserved |
+| `InternalNotes` | `collateral[]` + `notes` + `required_by` + `temp` + custom `custom_spec`/`project_no` | 1000-char field; lists go here, not CustomFields |
+| `CustomerCode` | `salesperson_user_id` → `user_profiles.email` | |
+| `BillTo/Name` | `account` | |
+| `ShipTo/*` | `addresses` `contact_name`/`company`/`street`/`city`/`state`/`zip` | **State 2-char + PostalCode validated** or skip+log |
+| `Items/Item` | `sample_shipment_items` `product_code`/`description`/`qty`, `UnitPrice`=0.00 | real lines only |
+| **cold-chain** | — (**not exported**) | ShipStation **product tag** on Raw SKUs (co-man); auto-applied on import |
+
+---
+
+## Tags, collateral & the multi-item pitfall (retained from ADR-027)
+
+- **Never rule on raw SKU.** ShipStation *Item SKU* automation criteria silently ignore any multi-item order, and sample manifests are usually multi-item. **cold-chain** is therefore a **product tag** the co-man applies to each Raw product record once; ShipStation auto-applies it to any order containing that product, and automation rules run against the resulting **order** tag. (Today all 8 `sample_eligible` cookies are Baked, so no Raw SKUs carry it yet — the map still must exist for when raw samples ship.)
+- **rush** → `ShippingMethod = Next-Day` → ShipStation's requested-service **method-mapping** → automation rule applies the rush/priority handling. One signal, no redundant CustomField.
+- **box** → `CustomField1` (`dc-box`/`custom-box`) → automation rule → package.
+- **custom-request** → `CustomField2` → automation rule → **manual review** (no auto-fulfil). Kept on a CustomField so it shows in the Orders grid and matches rules — **not** buried in notes.
+- **collateral incl. Warming instructions** → `InternalNotes`, printed via a packing-slip **Field-Replacement** token (bind the token to the Notes field). Watch the 100-char CustomField limit — lists go in the 1000-char `InternalNotes`.
+
+## Status mapping
+
+| `sample_shipments.status` | ShipStation |
+|---|---|
+| `submitted` | Paid (ready to ship — what the co-man works) |
+| `processing` | Paid |
+| `shipped` | Shipped |
+| `delivered` | Shipped *(no ShipStation "delivered"; see limitation below)* |
+
+---
+
+## Known limitations (see ADR-028)
+
+1. **No import acknowledgment** — the pull model gives no per-order confirmation the order reached ShipStation. The only signal is ShipStation hitting our GET export.
+2. **`delivered` not wired** — the pipeline ends at **shipped**; no carrier delivery-event polling yet.
+3. **Silent import rejection** — a malformed `State` (non-2-char) or `PostalCode` can be dropped by ShipStation with no error; the export validates and skips+logs bad rows.
+4. **Automation rules + method-mapping are launch-blocking** — the rush/cold-chain/box behaviours don't exist until configured in ShipStation (see the setup checklist).
+5. **Unmatched shipnotify** is logged, not dropped.
 
 ---
 
 ## Auth / keys
-- Keys expire (3/6/12-mo) — rotate before the first lapses; no downtime.
-- All keys in Supabase Vault / server env (the repo already has `get_secret`/`set_secret` Vault helpers — reuse them). Never in `VITE_*` client vars.
+- Basic-Auth creds (`SHIPSTATION_CUSTOMSTORE_USER` / `_PASS`) in Supabase Vault via `set_secret`; reuse the `get_secret`/`set_secret` RPCs (ADR-021). Never in `VITE_*`.
 
----
+## Account-side setup
+See **`docs/SHIPSTATION_SETUP_CHECKLIST.md`** — connect the Custom Store, set the endpoint URL + Basic-Auth creds, map statuses + shipping methods, have the co-man tag Raw SKUs `cold-chain`, set the automation rules (launch-blocking), the email BCC, and the packing-slip token.
 
 ## Build order (Phase 3)
-1. Sandbox/duplicate ShipStation store first (their own recommendation).
-2. Lock tag vocabulary + SKU-to-tag map with co-man.
-3. Edge Function: order push (tags, notes, keys via Vault).
-4. Edge Function: webhook receiver (status back, signature verify).
-5. Document the ShipStation-side config (email CC, box packages+rules, packing-slip template) for Caroline to apply in the ShipStation UI.
-6. Flip from sandbox to production store.
+1. Sandbox/duplicate ShipStation store first.
+2. Lock the tag/field contract with the co-man (ADR-028).
+3. Edge Function `shipstation-customstore` (export + shipnotify; Basic Auth via Vault) + the writeback migration.
+4. Account-side config (setup checklist), incl. the launch-blocking automation rules + method-mapping.
+5. Verify via a **manual store import** in sandbox — confirm a sample order lands with fields mapped (no label purchase needed for the mapping test).
+6. Flip Vault creds + webhook to the production store.

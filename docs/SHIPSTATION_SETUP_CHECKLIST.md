@@ -1,49 +1,67 @@
-# ShipStation Setup Checklist (Caroline — apply in the ShipStation UI)
+# ShipStation Setup Checklist — Custom Store (Caroline + co-man)
 
-Phase 3, Task 3.4. These are the **ShipStation-side** settings the app can't set
-via API — you (with the co-man) apply them in the ShipStation dashboard. Do them
+Phase 3, account-side config for the **Custom Store** integration (ADR-028). These
+are the ShipStation-dashboard settings the app can't set via the API. Do them
 against the **sandbox store first**, verify an end-to-end sample order, then
-repeat on production (Task 3.5). Pairs with ADR-027 (the tag contract) and
-`docs/SHIPSTATION_INTEGRATION.md`.
+repeat on production (go-live). Pairs with `docs/SHIPSTATION_INTEGRATION.md`.
 
-## 0. Sandbox store
-- [ ] Duplicate the production store into a **sandbox** store (ShipStation's own recommended path for integration work).
-- [ ] Generate **V1 API keys** for the sandbox (API key + secret). V1, not V2 — order-create maturity lives in V1 and the keys are not interchangeable.
-- [ ] Hand the keys to the app via Vault, not the UI: they go in `SHIPSTATION_API_KEY` / `SHIPSTATION_API_SECRET` via `set_secret(...)` (server-side only).
+> Convention: items marked **🚦 LAUNCH-BLOCKING** must exist before the first
+> real order — the rush / cold-chain / box behaviours don't happen without them,
+> and the pull model surfaces no error if they're missing.
 
-## 1. Product tags (co-man owns this — the two-step indirection)
+## 0. Store + credentials
+- [ ] Duplicate the production store into a **sandbox** store (ShipStation's recommended path for integration work).
+- [ ] Settings → **Selling Channels → Store Setup → Connect a Store → Custom Store**.
+- [ ] Set the **URL to Custom XML Page** = the `shipstation-customstore` Edge Function URL.
+- [ ] Set the **Username / Password** (Basic Auth). These same values go into Vault as `SHIPSTATION_CUSTOMSTORE_USER` / `SHIPSTATION_CUSTOMSTORE_PASS` via `set_secret(...)` — the app validates incoming Basic Auth against them. Server-side only.
+
+## 1. Status mapping (Custom Store connection UI)
+Map our `OrderStatus` values so **Paid = ready-to-ship** (what the co-man works):
+- [ ] `Paid` → Awaiting Shipment
+- [ ] `Shipped` → Shipped
+- (We emit only Paid/Shipped; `submitted`+`processing`→Paid, `shipped`+`delivered`→Shipped.)
+
+## 2. Shipping-method mapping 🚦 LAUNCH-BLOCKING
+Our export sends `ShippingMethod` = **`Next-Day`** (rush on) or **`Ground`** (default). These are just strings — map them to **real carrier services**:
+- [ ] Map requested method **`Next-Day`** → your expedited/next-day carrier service.
+- [ ] Map requested method **`Ground`** → your ground carrier service.
+- [ ] (This mapping is how `rush` becomes real priority handling — without it, rush does nothing.)
+
+## 3. Automation rules 🚦 LAUNCH-BLOCKING
+Rule on **order tags / CustomFields / requested method — never on Item SKU** (SKU rules silently ignore multi-item orders):
+- [ ] `if requested service = Next-Day` → priority/rush handling (+ apply a `rush` tag if you use tag-based views).
+- [ ] `if order includes the cold-chain product tag` → refrigerated service + insulated box.
+- [ ] `if CustomField1 = custom-box` → branded mailer package.
+- [ ] `if CustomField1 = dc-box` → standard package.
+- [ ] `if CustomField2 = custom-request` → route to **manual review** (no auto-fulfil).
+
+## 4. Product tags — cold-chain (co-man owns this) 🚦 LAUNCH-BLOCKING for raw samples
 - [ ] Create the product tag **`cold-chain`**.
-- [ ] Apply `cold-chain` to every **Raw** product record (the SKU-to-tag map in ADR-027). Do NOT write SKU-based automation rules — they silently ignore multi-item orders.
-- [ ] Confirm ShipStation auto-applies the product's tag to any imported order containing it.
+- [ ] Apply `cold-chain` to every **Raw** product record (the SKU→tag map). ShipStation auto-applies it to any imported order containing that product — the two-step indirection. Do **not** write SKU-based rules.
+- [ ] (Not blocking today: the current 8 sample-eligible cookies are all Baked. Becomes blocking the day a raw sample is enabled.)
 
-## 2. Automation rules (rule on the ORDER tag, never the SKU)
-- [ ] `if order includes cold-chain` → refrigerated service + insulated box package
-- [ ] `if order tag rush` → next-day service + priority alert
-- [ ] `if order tag custom-box` → branded mailer package
-- [ ] `if order tag dc-box` → standard package
-- [ ] `if order tag custom-request` → route to **manual review** (no auto-fulfill)
+## 5. Box inventory (packages)
+- [ ] Define each physical box as a ShipStation **package**: insulated box, branded mailer, standard package (at minimum the three the rules above reference).
+- [ ] The app only pushes intent (`dc-box`/`custom-box` in CustomField1, cold-chain via product tag); the co-man owns the physical box mapping.
 
-## 3. Box inventory (packages)
-- [ ] Define each physical box as a ShipStation **package**: insulated box, branded mailer, standard package (at minimum the three referenced above).
-- [ ] The app never picks a box — it only pushes `dc-box` / `custom-box` / `cold-chain` tags; the co-man owns the package mapping.
-
-## 4. Email / CC — copy `samplesmngmt@cortinafoods.com` on everything
-Requirement: copy the sample-mgmt inbox on **all orders, shipments, deliveries**. That's **two** places:
-- [ ] **Shipment + delivery emails:** Store → Emails/Notifications → **"Blind Copy on Shipment and Delivery Email"** = `samplesmngmt@cortinafoods.com`. Note: it's a **BCC**, and it covers shipment **and** delivery together (can't split).
-- [ ] **Order confirmation:** the salesperson (the shipment's `salesperson_user_id` → their `email`) is the confirmation recipient. To also copy the sample-mgmt inbox on order creation, add it to the order's recipient emails at push time (the app can append it) **or** as a dedicated notification.
-
-## 5. Packing slip — collateral + warming instructions
+## 6. Packing slip — collateral + warming instructions
 - [ ] Create a **custom packing-slip template**.
-- [ ] Add a **Field Replacement** token that prints the order **Notes** field (where the app writes the collateral checklist incl. **Warming instructions**) — e.g. `[Notes to Buyer]` / `[Notes from Buyer]` bound to the Notes field.
-- [ ] Do **not** use Custom Fields 1–3 for the collateral list — they truncate silently at 100 chars. Use the larger Notes field.
+- [ ] Add a **Field-Replacement** token bound to the order **Notes / InternalNotes** field (where the app writes the collateral checklist incl. **Warming instructions**, plus custom-item specs + project #s).
+- [ ] Do **not** use CustomFields for the collateral list — 100-char silent truncation. The app already puts lists in the 1000-char InternalNotes.
 
-## 6. Webhooks (status back to the app)
-- [ ] Subscribe the **shipstation-webhook** Edge Function URL to `ORDER_NOTIFY` and `SHIP_NOTIFY` events.
-- [ ] Note the webhook signing setup so the function can verify RSA-SHA256 signatures.
-- [ ] Remember the edit discipline: no "order update" webhook fires on arbitrary edits; rules run once on import; orders are immutable once shipped/cancelled. Edits must land **before** fulfillment (the app re-pushes deliberately).
+## 7. Email / CC — copy `samplesmngmt@cortinafoods.com`
+Copy the sample-mgmt inbox on **all orders, shipments, deliveries** — two places:
+- [ ] **Shipment + delivery emails:** Store → Emails/Notifications → **"Blind Copy on Shipment and Delivery Email"** = `samplesmngmt@cortinafoods.com` (BCC; covers shipment + delivery together).
+- [ ] **Order confirmation:** the salesperson (`salesperson_user_id` → their `email`, exported as `CustomerCode`) is the recipient; add the sample-mgmt inbox as an additional recipient/notification if order-creation copies are also required.
 
-## 7. Go-live (Task 3.5)
-- [ ] Verify a full sample order end-to-end in sandbox (push → tags/rules → packing slip → BCC emails → ship webhook → `sample_shipments.status` updates).
-- [ ] Swap the Vault keys to the **production** store's V1 keys.
-- [ ] Re-point the webhook subscription to production.
-- [ ] Rotate keys before the first expiry (3/6/12-mo options) — no downtime if rotated ahead.
+## 8. Verify (sandbox) — mapping test, no label needed
+- [ ] Trigger a **manual store import** in ShipStation.
+- [ ] Confirm a sample order lands in the dashboard with fields mapped: ship-to, items (SKU=product_code), ShippingMethod, CustomField1 (box), CustomField2 (custom-request when present), InternalNotes (collateral/warming/custom specs).
+- [ ] Confirm an invalid address (bad State/zip) does **not** silently vanish — the export skips+logs it (check the function logs).
+- [ ] (Optional) Test a full ship: mark shipped in ShipStation → confirm `shipnotify` updates `sample_shipments` (tracking #, status → shipped).
+
+## 9. Go-live
+- [ ] Everything verified in sandbox (import mapping + shipnotify writeback).
+- [ ] Swap Vault creds + the Custom Store URL to the **production** store.
+- [ ] Re-confirm the automation rules + method-mapping + product tags exist on production (they're per-store).
+- [ ] Note: **delivered** is not wired yet — the pipeline ends at *shipped* (no delivery polling).

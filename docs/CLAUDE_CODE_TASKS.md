@@ -70,22 +70,23 @@ App switcher between Spec Sheet and Sample Central. Role-aware per existing auth
 
 ---
 
-## Phase 3 — ShipStation (see SHIPSTATION_INTEGRATION.md)
-Branch: `feat/shipstation`.
+## Phase 3 — ShipStation via Custom Store (see SHIPSTATION_INTEGRATION.md + ADR-028)
+Branch: `feat/shipstation`. **Custom Store pattern** — NOT the V1 order-push (superseded, ADR-027) and NOT the V2 Sales Orders API (beta, not sandbox-testable).
 
-### Task 3.1 — Sandbox store + tag contract
-Set up sandbox store. Lock tag vocabulary + SKU-to-tag map with co-man (Caroline coordinates). Document in an ADR.
+### Task 3.1 — Custom Store contract + ADR ✅ (done in planning)
+ADR-028 records the Custom Store decision (GET export + POST shipnotify, Basic Auth, XML schema, field mapping, status/method mapping, known limitations). Retains ADR-027's tag vocabulary re-expressed: cold-chain = product tag on Raw SKUs; rush = ShippingMethod (Next-Day); box = CustomField1; custom-request = CustomField2. Caroline coordinates the sandbox store + co-man tag/rule ratification.
 
-### Task 3.2 — Order push Edge Function
-`POST /orders/createorder`. Tags per contract. Collateral→Notes. Custom→note+`custom-request` tag. Keys via existing Vault helpers. Store `shipstation_order_id`.
+### Task 3.2 — Writeback migration
+`*_sample_shipment_tracking.sql`: add nullable `tracking_number`, `carrier`, `service`, `shipped_at` to `sample_shipments` (the shipnotify landing columns). Forward-only, manual apply.
 
-### Task 3.3 — Webhook receiver Edge Function
-ORDER_NOTIFY / SHIP_NOTIFY → update `shipments.status`. Verify signatures. Handle the no-order-update-webhook + immutable-once-shipped gotchas.
+### Task 3.3 — `shipstation-customstore` Edge Function
+One module, two actions by `action` query param. `action=export` (GET): query `sample_shipments` + items + address for the `start_date`/`end_date` window, emit Custom Store **Orders XML** per the mapping (paging via `page`/`pages`; CDATA free-text; validate State 2-char + PostalCode or skip+log). `action=shipnotify` (POST): parse `ShipNotice`, update the matching `sample_shipments` (tracking/carrier/service/shipped_at, status→shipped); unmatched OrderNumber → log, don't drop. Basic Auth via Vault (`SHIPSTATION_CUSTOMSTORE_USER`/`_PASS`, `get_secret`); reject non-match 401. Mirror `gmail-*` conventions (Deno, injected client).
 
-### Task 3.4 — ShipStation-side config doc
-Produce a checklist for Caroline to apply in ShipStation UI: box packages+rules, email BCC + order-confirmation recipient, packing-slip template token for collateral/warming.
+### Task 3.4 — Account-side config doc ✅ (done in planning)
+`docs/SHIPSTATION_SETUP_CHECKLIST.md`: connect Custom Store (endpoint URL + Basic Auth → Vault), status mapping, **launch-blocking** shipping-method mapping + automation rules, cold-chain product tags (co-man), box packages, packing-slip token, email BCC, sandbox mapping test (manual import, no label needed).
 
-### Task 3.5 — Flip to production store after sandbox verified. ADR + PR.
+### Task 3.5 — Verify in sandbox, then flip to production. ADR + PR.
+Manual store import confirms field mapping; optional ship test confirms shipnotify writeback. Then swap Vault creds + Custom Store URL to production, re-confirm rules/tags exist per-store. Note: `delivered` not wired (pipeline ends at shipped).
 
 ---
 
