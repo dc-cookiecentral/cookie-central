@@ -186,3 +186,23 @@ Secrets live in **Vault**; Edge Functions read/write them via two `SECURITY DEFI
 **Carried forward:** (a) migrations are **not yet applied** — Caroline applies them manually in filename order, then the seed, then verifies; (b) `/orders`+`/payments` catalog linkage to the new spine is Caroline's (dead `product_id` columns dropped — she adds correct `master_cases`/`eaches` linkage when wiring); (c) Caroline authorized purging **all non-Cookulator data** (Cookulator = master data) — to be executed as a separate, discrete cleanup step; (d) Phase 2 (Sample Central) still needs a `Cortina` role + `addresses` table (ADR-024 open items).
 
 **Rationale:** Keeping every level table-backed (including WIP) makes the whole Cookulator data-driven and consistent with the rest of the app, and lets Sample Central read `products.sample_eligible` directly. Deriving net weight/storage in a view keeps the "no stored derived values" rule intact while the UI still renders them live. Storing `cases_per_pallet` follows the authoring doc rather than over-applying the derived rule to a figure real pallets can deviate on.
+
+## ADR-026: Phase 2 built — Sample Central (as-built)
+**Date:** July 16, 2026
+**Status:** Accepted. Branch `feat/sample-central` (stacked on `feat/spec-sheet-and-sample-central` since Phase 1 isn't merged yet; its PR will show only the Phase 2 diff once Phase 1 lands). Migrations applied manually.
+
+**What shipped (Phase 2, Tasks 2.1–2.7):**
+- **Tables** (`20260715160000_sample_central_tables.sql`): `addresses`, `sample_shipments`, `sample_shipment_items`, `sample_templates`. Salesperson stored by user id; items reference `products` by **code** (custom lines carry null `product_code` + `custom_spec` + `project_no`). `sample_shipments.shipstation_order_id` is present for the Phase 3 push.
+- **Dropdown flag** (`20260715170000_user_active_in_dropdown.sql`): `user_profiles.active_in_dropdown` (default true).
+- **Cortina role** (`20260715180000_cortina_role.sql`): added to the `user_profiles` + `user_role_seeds` role CHECK.
+- **UI** (`/sample-central`): catalog (Prep→Tier→Size over `sample_eligible`), shipment builder (derived-temp badge + override, collateral incl. Warming instructions, custom lines w/ project #, inline address add), mission control (stat tiles, salesperson filter, status pipeline), quick start (templates + duplicate-past-shipment). Waffle **AppSwitcher** + **role gate**.
+
+**Key decisions / deviations:**
+1. **`sample_shipments` / `sample_shipment_items`**, not `shipments` / `shipment_items` (`DATA_MODEL_ADDITIONS` names): a PO-level `shipments` table already exists (the `/orders` domain). Same collision-avoidance pattern as products→master_cases (ADR-024).
+2. **Role gate is app-side + DB-side.** App: `InternalOnly` route wrapper redirects Cortina to `/sample-central`, and the Sidebar/AppSwitcher hide internal apps for that role. DB: sample-table RLS names `admin/finance/ops/cortina`; the `cortina` role value is added by `20260715180000`. Sample-table policies **forward-declared** `cortina` (harmless before the role exists) to avoid re-editing them.
+3. **Derived `temp` is stored as a snapshot.** Cold if any Raw/frozen line, else Ambient; `temp_override` wins. This is a historical fact of the shipment (not a live product attribute), so storing the decision is correct — consistent with the "no stored *derived-from-live-data*" rule.
+4. **ShipStation / DTC deferred to Phase 3** (`shipstation_order_id` column stubbed now; the push/webhook Edge Functions are Phase 3).
+
+**Carried forward:** (a) migrations applied manually — apply `20260715160000` → `170000` → `180000` (order-independent among these three) after Phase 1; (b) to onboard a Cortina user, seed them in `user_role_seeds` with `role='cortina'` before first sign-in; (c) Phase 3 wires ShipStation (order push + status webhook) per `SHIPSTATION_INTEGRATION.md`.
+
+**Rationale:** Sample Central sits directly on the Phase 1 spine (`products.sample_eligible`), so no duplicate catalog. Storing salesperson by id keeps history stable across dropdown changes; referencing products by code keeps line items durable. The role gate is enforced in both the router and RLS so a Cortina user can neither navigate to nor write outside Sample Central.
