@@ -14,17 +14,22 @@ const NAV = [
   { to: '/snapshot',   label: 'EOM Snapshot' },
   { to: '/trace',      label: 'Lot Trace' },
   { kind: 'divider' },
+  { to: '/spec-sheet',    label: 'Spec Sheet' },
+  { to: '/sample-central', label: 'Sample Central' },
   { kind: 'spacer' },
   { kind: 'divider' },
-  { to: '/spec-sheet', label: 'Spec Sheet' },
   { to: '/reference',  label: 'Reference' },
   { to: '/audit',      label: 'Audit Log' },
   { to: '/uploads',    label: 'Uploads' },
 ];
 
+// The Cortina sales role sees only Sample Central (role gate, Task 2.7).
+const CORTINA_NAV = [{ to: '/sample-central', label: 'Sample Central' }];
+
 export default function Sidebar() {
   const { uom, setUom, options } = useUOM();
   const { profile, signOut } = useAuth();
+  const nav = profile?.role === 'cortina' ? CORTINA_NAV : NAV;
 
   return (
     <aside className="w-[190px] bg-dk min-h-screen flex flex-col flex-shrink-0">
@@ -36,7 +41,7 @@ export default function Sidebar() {
       </div>
 
       <nav className="px-[6px] py-[8px] flex-1 flex flex-col">
-        {NAV.map((n, i) => {
+        {nav.map((n, i) => {
           if (n.kind === 'divider') {
             return <div key={`d${i}`} className="h-px bg-[#3D2D4D] mx-[8px] my-[5px]" />;
           }
