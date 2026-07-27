@@ -112,6 +112,10 @@ Deno.serve(async (req) => {
       }
 
       const pages = Math.max(1, Math.ceil((count ?? orders.length) / PAGE_SIZE));
+      console.log(
+        `shipstation export: start='${url.searchParams.get('start_date') ?? ''}' end='${url.searchParams.get('end_date') ?? ''}' ` +
+          `page=${page} window=[${startISO ?? '*'}..${endISO ?? '*'}] matched=${data?.length ?? 0} exported=${orders.length}`,
+      );
       return xml(ordersDocument(orders, pages));
     }
 
