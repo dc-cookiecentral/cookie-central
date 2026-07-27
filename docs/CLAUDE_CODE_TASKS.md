@@ -88,8 +88,8 @@ One module, two actions by `action` query param. `action=export` (GET): query `s
 ### Task 3.4 — Account-side config doc ✅ (done in planning)
 `docs/SHIPSTATION_SETUP_CHECKLIST.md`: connect Custom Store (endpoint URL + Basic Auth → Vault), status mapping, **launch-blocking** shipping-service mapping (serviceCode 1:1) + automation rules (incl. cold-chain → next-day), cold-chain product tags (co-man), box packages, packing-slip token, email BCC, sandbox mapping test (manual import, no label needed).
 
-### Task 3.5 — Verify in sandbox, then flip to production. ADR + PR.
-Manual store import confirms field mapping; optional ship test confirms shipnotify writeback. Then swap Vault creds + Custom Store URL to production, re-confirm rules/tags exist per-store. Note: `delivered` not wired (pipeline ends at shipped).
+### Task 3.5 — Verify, then flip to production. ADR + PR. ✅ (as-built ADR-029)
+Verified end-to-end against the live account: a test order imported into ShipStation's **Awaiting Shipment** queue with fields mapped, and a `shipnotify` POST wrote tracking back + advanced `status → shipped`. As-built recorded in **ADR-029** (incl. the XSD corrections: `<Country>US</Country>` + `<OrderTotal>` are required, status exported verbatim, PostgREST `table!fk` embeds). **Remaining (Caroline):** launch-blocking §2–§4 config (serviceCode 1:1 mapping, automation rules, cold-chain tags) + deploy this branch's frontend (migration already dropped `rush`). Note: `delivered` not wired (pipeline ends at shipped).
 
 ---
 

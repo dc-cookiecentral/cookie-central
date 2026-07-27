@@ -268,3 +268,23 @@ Secrets live in **Vault**; Edge Functions read/write them via two `SECURITY DEFI
 5. **Unmatched shipnotify is logged, not dropped.** If a `shipnotify` `OrderNumber` doesn't match a `shipment_no`, the function logs it and returns 200-with-warning rather than silently discarding the tracking update.
 
 **Superseded:** ADR-027's `/orders/createorder` V1 push, its V1 key requirement, and any V1/V2 key or Sales Orders API path.
+
+## ADR-029: Phase 3 built — ShipStation Custom Store (as-built)
+**Date:** July 27, 2026
+**Status:** Built & **verified end-to-end** against the live ShipStation account (`support@dirtycookie.com`). Branch `feat/shipstation`. Realizes ADR-028.
+
+**What shipped.** (3.2) migration `20260726120000` — `sample_shipments` gains `tracking_number`/`carrier`/`service`/`shipped_at` + `requested_service` (CHECK on the 6 serviceCodes, default `ups_ground`), drops `rush`. (3.2b) `SampleCentral.jsx` — Rush checkbox/badge → curated service dropdown. (3.3) Edge Function `shipstation-customstore` — GET `action=export` (Orders XML) + POST `action=shipnotify` (tracking writeback), Basic-Auth against Vault, pure helpers in `_shared/shipstation.ts` (54 unit tests). (3.4) `SHIPSTATION_SETUP_CHECKLIST.md`.
+
+**Verified.** A test order exported → imported into ShipStation's **Awaiting Shipment** queue with all fields mapped; a `shipnotify` POST wrote tracking back and advanced `status → shipped`. Both directions confirmed through ShipStation's real UI, not just curl.
+
+**Changed from ADR-028 during build (the corrections that matter):**
+1. **`<Country>US</Country>` is REQUIRED** — ADR-028 said omit it ("store default"); ShipStation's Custom Store **XSD makes it mandatory** (`StringExactly2`) and rejects the whole batch without it. Emit `US` (US-only).
+2. **`<OrderTotal>` is REQUIRED** (`xs:decimal`) — emit `0.00` (samples are free). Not in the original mapping.
+3. **Status is exported VERBATIM, not mapped to Paid/Shipped** — samples are free, so there is no "paid". The export sends `sample_shipments.status` as-is; ShipStation's **Marketplace status mapping** routes it (Awaiting Shipment Statuses = `submitted, processing`; Shipment Statuses = `shipped, delivered`).
+4. **PostgREST embeds need the explicit `table!fk` form** (`address:addresses!address_id`, `salesperson:user_profiles!salesperson_user_id`) — the FK-column short form returned null, so ship-to came back empty and every order was silently dropped by the State/zip validation.
+
+**Schema facts locked in (from the account's XSD).** `<Order>`/`ShipTo` are `<xs:all>` → element order is free, but required fields must all be present. Required: Order = OrderNumber/OrderDate/OrderStatus/LastModified/OrderTotal/Customer/Items; ShipTo = Name/Address1/City/PostalCode/Country (State is optional). `DateTime` = `MM/dd/yyyy HH:mm` (our output matches the XSD pattern); the export **also parses AM/PM** in the `start_date`/`end_date` window ShipStation sends. Custom lines still ride `InternalNotes` + `CustomField2`, never a null-SKU `<Item>`.
+
+**Operational as-built.** The function is deployed with **`verify_jwt = false`** (ShipStation authenticates with **Basic Auth**, not a Supabase JWT). The Custom Store URL is the **Edge Function URL** (`…supabase.co/functions/v1/shipstation-customstore`), not the app subdomain, and needs **no ShipStation V1/V2 API key** — the Basic-Auth user/pass are self-defined, stored in Vault (`SHIPSTATION_CUSTOMSTORE_USER`/`_PASS`) and entered identically in the Custom Store connection. `getSecret` retries on a transient **"JWT issued at future"** clock-skew that PostgREST occasionally throws validating the service-role token. Each export logs its requested window + match/export counts (the pull model surfaces nothing otherwise).
+
+**Carried forward.** (a) **Launch-blocking** ShipStation config remains Caroline's to set (`SHIPSTATION_SETUP_CHECKLIST.md` §2 serviceCode 1:1 mapping, §3 automation rules incl. cold-chain→next-day, §4 cold-chain product tags) — orders import without them, but the automations don't fire. (b) The **frontend deploy** to the subdomain must ship this branch's UI, since the migration already dropped `rush`. (c) `delivered` is not wired — the pipeline ends at **shipped** (no carrier delivery polling).
