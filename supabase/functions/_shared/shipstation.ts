@@ -58,11 +58,13 @@ export function parseSSDate(s: string | null | undefined): string | null {
 }
 
 // ── Field mapping ───────────────────────────────────────────────────────────
-// submitted/processing → Paid (ready to ship); shipped/delivered → Shipped.
-// ShipStation has no "delivered" export status. These tokens are mapped to real
-// ShipStation statuses in the Custom Store connection UI (checklist §1).
-export function ssStatus(status: string | null | undefined): 'Paid' | 'Shipped' {
-  return status === 'shipped' || status === 'delivered' ? 'Shipped' : 'Paid';
+// Export the app's own status verbatim; ShipStation's Marketplace status mapping
+// (checklist §1) routes it: submitted/processing -> Awaiting Shipment (the
+// co-man's work queue), shipped/delivered -> Shipped. Samples are free, so there
+// is no "paid" concept -- the app status IS the routing token. Defaults to
+// 'submitted' if unset.
+export function ssStatus(status: string | null | undefined): string {
+  return status ?? 'submitted';
 }
 
 // box_spec intent → order tag. 'Custom / Branded' → custom-box, else dc-box.

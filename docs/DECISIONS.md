@@ -258,7 +258,7 @@ Secrets live in **Vault**; Edge Functions read/write them via two `SECURITY DEFI
 
 **Schema addition (one migration).** The `shipnotify` writeback needs landing columns that don't exist yet: `sample_shipments` gains nullable `tracking_number`, `carrier`, `service`, `shipped_at`. The requested-service dropdown adds `requested_service text` (a ShipStation `serviceCode`; default `ups_ground`), **replacing** the `rush` boolean (dropped — superseded by service selection + the cold-chain automation). Forward-only migration, manual apply. `shipstation_order_id` (added for the superseded V1 push) is **unused** under Custom Store — orders key on `OrderNumber` = `shipment_no`.
 
-**Status mapping.** `submitted` → **Paid** (ready to ship), `processing` → **Paid**, `shipped` → **Shipped**, `delivered` → **Shipped**. ShipStation has no "delivered" export status.
+**Status mapping.** The export emits the app's **own status verbatim** (samples are free — no "paid" token). ShipStation's Marketplace status mapping routes it: `submitted`/`processing` → **Awaiting Shipment** (the co-man's work queue), `shipped`/`delivered` → **Shipped**. So ShipStation "Awaiting Shipment Statuses" = `submitted, processing`; "Shipment Statuses" = `shipped, delivered`. ShipStation has no "delivered" bucket.
 
 **Known limitations (recorded deliberately):**
 1. **No import acknowledgment.** The Custom Store is a **pull** model — the app cannot confirm an order actually reached ShipStation. The only signal is ShipStation hitting our GET export; there is no per-order ack. (A future enhancement could reconcile via ShipStation's order list.)

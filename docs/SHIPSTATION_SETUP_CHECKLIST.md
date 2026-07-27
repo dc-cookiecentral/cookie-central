@@ -16,11 +16,12 @@ repeat on production (go-live). Pairs with `docs/SHIPSTATION_INTEGRATION.md`.
 - [ ] Set the **URL to Custom XML Page** = the `shipstation-customstore` Edge Function URL.
 - [ ] Set the **Username / Password** (Basic Auth). These same values go into Vault as `SHIPSTATION_CUSTOMSTORE_USER` / `SHIPSTATION_CUSTOMSTORE_PASS` via `set_secret(...)` — the app validates incoming Basic Auth against them. Server-side only.
 
-## 1. Status mapping (Custom Store connection UI)
-Map our `OrderStatus` values so **Paid = ready-to-ship** (what the co-man works):
-- [ ] `Paid` → Awaiting Shipment
-- [ ] `Shipped` → Shipped
-- (We emit only Paid/Shipped; `submitted`+`processing`→Paid, `shipped`+`delivered`→Shipped.)
+## 1. Status mapping (Modify Marketplace Settings)
+The export sends the app's own status **verbatim** (samples are free — no "paid").
+Set the status fields so our statuses route correctly:
+- [ ] **Awaiting Shipment Statuses** = `submitted, processing`  (the co-man's work queue)
+- [ ] **Shipment Statuses** = `shipped, delivered`
+- [ ] Awaiting Payment / Cancelled / On Hold — leave defaults; the app never emits those.
 
 ## 2. Shipping-service mapping 🚦 LAUNCH-BLOCKING
 Our export sends `ShippingMethod` = a real ShipStation **`serviceCode`** the salesperson picked from the app's curated dropdown. Map each **1:1** to the matching ShipStation service (source: `docs/Shipstation Shipping Doc/API Service Codes- CarrierCode_08-22.xlsx`, US domestic):

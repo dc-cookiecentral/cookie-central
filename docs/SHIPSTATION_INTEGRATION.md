@@ -55,7 +55,7 @@ Basic HTTP Auth on both actions. Expected creds read from Vault via `get_secret`
     <OrderID>{sample_shipments.id}</OrderID>
     <OrderNumber>{shipment_no}</OrderNumber>
     <OrderDate>{created_at, MM/dd/yyyy HH:mm}</OrderDate>
-    <OrderStatus>{mapped status}</OrderStatus>          <!-- Paid | Shipped -->
+    <OrderStatus>{status}</OrderStatus>                 <!-- app status verbatim: submitted|processing|shipped|delivered -->
     <LastModified>{updated_at}</LastModified>
     <ShippingMethod>{requested_service}</ShippingMethod>          <!-- ShipStation serviceCode, e.g. ups_ground; mapped 1:1 -->
     <CustomField1>{box_spec → 'dc-box' | 'custom-box'}</CustomField1>
@@ -111,7 +111,7 @@ Columns are the **real** ADR-026 names.
 | `OrderNumber` | `sample_shipments.shipment_no` | match key for shipnotify |
 | `OrderID` | `sample_shipments.id` | |
 | `OrderDate` | `created_at` | not `required_by` |
-| `OrderStatus` | `status` | submitted/processing → **Paid**; shipped/delivered → **Shipped** |
+| `OrderStatus` | `status` | app status **verbatim**; ShipStation Marketplace mapping routes submitted/processing → **Awaiting Shipment**, shipped/delivered → **Shipped** |
 | `ShippingMethod` | `requested_service` | ShipStation **serviceCode** from the curated dropdown (default `ups_ground`); Custom Store service-mapping resolves it **1:1** — no free-text |
 | `CustomField1` | `box_spec` | `dc-box` / `custom-box` |
 | `CustomField2` | any `sample_shipment_items.custom` | `custom-request` (grid-visible + rule-matchable) |
@@ -135,10 +135,14 @@ Columns are the **real** ADR-026 names.
 
 ## Status mapping
 
-| `sample_shipments.status` | ShipStation |
+The export sends `sample_shipments.status` **verbatim**; ShipStation's Marketplace
+status fields route each value (samples are free — no "paid"). Configure:
+**Awaiting Shipment Statuses** = `submitted, processing`; **Shipment Statuses** = `shipped, delivered`.
+
+| `sample_shipments.status` (exported verbatim) | ShipStation bucket |
 |---|---|
-| `submitted` | Paid (ready to ship — what the co-man works) |
-| `processing` | Paid |
+| `submitted` | Awaiting Shipment (what the co-man works) |
+| `processing` | Awaiting Shipment |
 | `shipped` | Shipped |
 | `delivered` | Shipped *(no ShipStation "delivered"; see limitation below)* |
 
