@@ -1,4 +1,4 @@
--- Cookie Central — Sample shipment tracking + requested service
+-- Cookie Central - Sample shipment tracking + requested service
 --
 -- Phase 3, Task 3.2 (ADR-028, Custom Store pattern). Two changes to
 -- sample_shipments:
@@ -13,7 +13,7 @@
 --    the chosen code as <ShippingMethod>, mapped 1:1 in the Custom Store service
 --    mapping. Speed is the picked service (or the cold-chain automation), so the
 --    old rush flag is dropped. Existing rows fall to the 'ups_ground' default.
---    The CHECK guards the curated set — a bad code would silently break the
+--    The CHECK guards the curated set - a bad code would silently break the
 --    ShipStation mapping (the pull model surfaces no error), so we reject it at
 --    write time (same discipline as the status CHECK). Extend both this CHECK
 --    and the app dropdown together when a new service is offered.
