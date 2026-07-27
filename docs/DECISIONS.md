@@ -254,7 +254,7 @@ Secrets live in **Vault**; Edge Functions read/write them via two `SECURITY DEFI
 - **`CustomField3`** — free/unused (reserved).
 - **collateral** (incl. Warming instructions) + `notes` + `required_by` + handling snapshot → **`InternalNotes`** (1000-char limit; use it, not the 100-char CustomFields, for lists).
 
-**Field mapping** is in `docs/SHIPSTATION_INTEGRATION.md` (reconciled against the real `sample_shipments` / `sample_shipment_items` / `addresses` columns — ADR-026 names). `Country` is **not** exported (US-only; ShipStation defaults to the store country). `UnitPrice` = `0.00` (samples unpriced). `OrderDate` = `created_at`.
+**Field mapping** is in `docs/SHIPSTATION_INTEGRATION.md` (reconciled against the real `sample_shipments` / `sample_shipment_items` / `addresses` columns — ADR-026 names). `Country` is exported as **`US`** — ShipStation's `ShipTo` schema **requires** it and rejects the whole batch if it's missing (samples are US-only). `UnitPrice` = `0.00` (samples unpriced). `OrderDate` = `created_at`.
 
 **Schema addition (one migration).** The `shipnotify` writeback needs landing columns that don't exist yet: `sample_shipments` gains nullable `tracking_number`, `carrier`, `service`, `shipped_at`. The requested-service dropdown adds `requested_service text` (a ShipStation `serviceCode`; default `ups_ground`), **replacing** the `rush` boolean (dropped — superseded by service selection + the cold-chain automation). Forward-only migration, manual apply. `shipstation_order_id` (added for the superseded V1 push) is **unused** under Custom Store — orders key on `OrderNumber` = `shipment_no`.
 

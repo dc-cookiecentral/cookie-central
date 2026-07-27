@@ -137,6 +137,7 @@ export function buildOrderXml(s: Shipment): string {
     `        <City>${cdata(addr.city ?? '')}</City>\n` +
     `        <State>${xmlEscape((addr.state ?? '').trim().toUpperCase())}</State>\n` +
     `        <PostalCode>${xmlEscape((addr.zip ?? '').trim())}</PostalCode>\n` +
+    `        <Country>US</Country>\n` +   // required by ShipStation's ShipTo schema (US-only)
     `      </ShipTo>\n` +
     `    </Customer>\n` +
     `    <Items>\n${itemsXml}\n    </Items>\n` +

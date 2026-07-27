@@ -73,6 +73,7 @@ Basic HTTP Auth on both actions. Expected creds read from Vault via `get_secret`
         <City><![CDATA[{addresses.city}]]></City>
         <State>{addresses.state — must be 2-char}</State>
         <PostalCode>{addresses.zip — validated}</PostalCode>
+        <Country>US</Country>                        <!-- required by ShipStation's ShipTo schema -->
       </ShipTo>
     </Customer>
     <Items>
@@ -86,7 +87,7 @@ Basic HTTP Auth on both actions. Expected creds read from Vault via `get_secret`
   </Order>
 </Orders>
 ```
-- **No `<Country>`** — US-only; ShipStation defaults to the store country.
+- **`<Country>` = `US`** — required by ShipStation's `ShipTo` schema; a missing Country makes ShipStation reject the whole import batch. Samples are US-only.
 - **Custom lines** (`custom = true`, no `product_code`) are **not** emitted as `<Item>` (no SKU). They ride `InternalNotes` (spec + `project_no`) **and** flag `CustomField2 = custom-request`.
 
 ### ShipNotify (POST body)
