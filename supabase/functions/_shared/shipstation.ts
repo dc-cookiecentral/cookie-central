@@ -51,9 +51,13 @@ export function fmtDate(iso: string | null | undefined): string {
 // Parse a ShipStation `MM/dd/yyyy[ HH:mm[:ss]]` bound (UTC) → ISO, or null.
 export function parseSSDate(s: string | null | undefined): string | null {
   if (!s) return null;
-  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp][Mm])?)?/);
   if (!m) return null;
-  const d = new Date(Date.UTC(+m[3], +m[1] - 1, +m[2], +(m[4] ?? 0), +(m[5] ?? 0), +(m[6] ?? 0)));
+  let hh = +(m[4] ?? 0);
+  const mer = m[7]?.toUpperCase();
+  if (mer === 'PM' && hh < 12) hh += 12;
+  if (mer === 'AM' && hh === 12) hh = 0;
+  const d = new Date(Date.UTC(+m[3], +m[1] - 1, +m[2], hh, +(m[5] ?? 0), +(m[6] ?? 0)));
   return isNaN(d.getTime()) ? null : d.toISOString();
 }
 
@@ -121,10 +125,11 @@ export function buildOrderXml(s: Shipment): string {
     `    <OrderStatus>${ssStatus(s.status)}</OrderStatus>\n` +
     `    <LastModified>${fmtDate(s.updated_at)}</LastModified>\n` +
     `    <ShippingMethod>${xmlEscape(s.requested_service)}</ShippingMethod>\n` +
+    `    <OrderTotal>0.00</OrderTotal>\n` +   // required by ShipStation; samples are free
+    `    <InternalNotes>${cdata(internalNotes(s))}</InternalNotes>\n` +
     `    <CustomField1>${xmlEscape(boxTag(s.box_spec))}</CustomField1>\n` +
     `    <CustomField2>${hasCustom ? 'custom-request' : ''}</CustomField2>\n` +
     `    <CustomField3></CustomField3>\n` +
-    `    <InternalNotes>${cdata(internalNotes(s))}</InternalNotes>\n` +
     `    <Customer>\n` +
     `      <CustomerCode>${xmlEscape(s.salesperson?.email ?? '')}</CustomerCode>\n` +
     `      <BillTo>\n` +

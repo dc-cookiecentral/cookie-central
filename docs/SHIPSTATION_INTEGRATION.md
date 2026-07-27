@@ -58,6 +58,7 @@ Basic HTTP Auth on both actions. Expected creds read from Vault via `get_secret`
     <OrderStatus>{status}</OrderStatus>                 <!-- app status verbatim: submitted|processing|shipped|delivered -->
     <LastModified>{updated_at}</LastModified>
     <ShippingMethod>{requested_service}</ShippingMethod>          <!-- ShipStation serviceCode, e.g. ups_ground; mapped 1:1 -->
+    <OrderTotal>0.00</OrderTotal>                        <!-- REQUIRED by ShipStation's XSD; samples are free -->
     <CustomField1>{box_spec → 'dc-box' | 'custom-box'}</CustomField1>
     <CustomField2>{any custom line ? 'custom-request' : ''}</CustomField2>
     <CustomField3></CustomField3>                        <!-- reserved / unused -->
