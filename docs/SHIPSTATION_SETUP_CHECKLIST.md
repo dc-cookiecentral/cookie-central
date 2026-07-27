@@ -21,19 +21,23 @@ Map our `OrderStatus` values so **Paid = ready-to-ship** (what the co-man works)
 - [ ] `Shipped` → Shipped
 - (We emit only Paid/Shipped; `submitted`+`processing`→Paid, `shipped`+`delivered`→Shipped.)
 
-## 2. Shipping-method mapping 🚦 LAUNCH-BLOCKING
-Our export sends `ShippingMethod` = **`Next-Day`** (rush on) or **`Ground`** (default). These are just strings — map them to **real carrier services**:
-- [ ] Map requested method **`Next-Day`** → your expedited/next-day carrier service.
-- [ ] Map requested method **`Ground`** → your ground carrier service.
-- [ ] (This mapping is how `rush` becomes real priority handling — without it, rush does nothing.)
+## 2. Shipping-service mapping 🚦 LAUNCH-BLOCKING
+Our export sends `ShippingMethod` = a real ShipStation **`serviceCode`** the salesperson picked from the app's curated dropdown. Map each **1:1** to the matching ShipStation service (source: `docs/Shipstation Shipping Doc/API Service Codes- CarrierCode_08-22.xlsx`, US domestic):
+- [ ] `ups_ground` → UPS Ground *(app default)*
+- [ ] `ups_next_day_air` → UPS Next Day Air
+- [ ] `fedex_ground` → FedEx Ground
+- [ ] `fedex_priority_overnight` → FedEx Priority Overnight
+- [ ] `usps_priority_mail` → USPS Priority Mail
+- [ ] `usps_priority_mail_express` → USPS Priority Mail Express
+- [ ] (These are real serviceCodes, so the mapping is 1:1 — no free-text reverse-mapping. Add a row here whenever the dropdown gains a service.)
 
 ## 3. Automation rules 🚦 LAUNCH-BLOCKING
 Rule on **order tags / CustomFields / requested method — never on Item SKU** (SKU rules silently ignore multi-item orders):
-- [ ] `if requested service = Next-Day` → priority/rush handling (+ apply a `rush` tag if you use tag-based views).
-- [ ] `if order includes the cold-chain product tag` → refrigerated service + insulated box.
+- [ ] `if order includes the cold-chain product tag` → refrigerated service + insulated box **+ upgrade to a next-day service** (this is how frozen products get expedited — the app never sends rush).
 - [ ] `if CustomField1 = custom-box` → branded mailer package.
 - [ ] `if CustomField1 = dc-box` → standard package.
 - [ ] `if CustomField2 = custom-request` → route to **manual review** (no auto-fulfil).
+- [ ] (No rush rule needed — the salesperson's chosen service maps 1:1 (§2), so speed *is* the requested service. Only the cold-chain automation overrides it.)
 
 ## 4. Product tags — cold-chain (co-man owns this) 🚦 LAUNCH-BLOCKING for raw samples
 - [ ] Create the product tag **`cold-chain`**.

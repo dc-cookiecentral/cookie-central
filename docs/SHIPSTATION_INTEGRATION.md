@@ -57,7 +57,7 @@ Basic HTTP Auth on both actions. Expected creds read from Vault via `get_secret`
     <OrderDate>{created_at, MM/dd/yyyy HH:mm}</OrderDate>
     <OrderStatus>{mapped status}</OrderStatus>          <!-- Paid | Shipped -->
     <LastModified>{updated_at}</LastModified>
-    <ShippingMethod>{rush ? 'Next-Day' : 'Ground'}</ShippingMethod>
+    <ShippingMethod>{requested_service}</ShippingMethod>          <!-- ShipStation serviceCode, e.g. ups_ground; mapped 1:1 -->
     <CustomField1>{box_spec → 'dc-box' | 'custom-box'}</CustomField1>
     <CustomField2>{any custom line ? 'custom-request' : ''}</CustomField2>
     <CustomField3></CustomField3>                        <!-- reserved / unused -->
@@ -112,7 +112,7 @@ Columns are the **real** ADR-026 names.
 | `OrderID` | `sample_shipments.id` | |
 | `OrderDate` | `created_at` | not `required_by` |
 | `OrderStatus` | `status` | submitted/processing → **Paid**; shipped/delivered → **Shipped** |
-| `ShippingMethod` | `rush` | `true` → **Next-Day**, else **Ground** (→ ShipStation method-mapping → rush automation rule) |
+| `ShippingMethod` | `requested_service` | ShipStation **serviceCode** from the curated dropdown (default `ups_ground`); Custom Store service-mapping resolves it **1:1** — no free-text |
 | `CustomField1` | `box_spec` | `dc-box` / `custom-box` |
 | `CustomField2` | any `sample_shipment_items.custom` | `custom-request` (grid-visible + rule-matchable) |
 | `CustomField3` | — | reserved |
@@ -127,8 +127,8 @@ Columns are the **real** ADR-026 names.
 
 ## Tags, collateral & the multi-item pitfall (retained from ADR-027)
 
-- **Never rule on raw SKU.** ShipStation *Item SKU* automation criteria silently ignore any multi-item order, and sample manifests are usually multi-item. **cold-chain** is therefore a **product tag** the co-man applies to each Raw product record once; ShipStation auto-applies it to any order containing that product, and automation rules run against the resulting **order** tag. (Today all 8 `sample_eligible` cookies are Baked, so no Raw SKUs carry it yet — the map still must exist for when raw samples ship.)
-- **rush** → `ShippingMethod = Next-Day` → ShipStation's requested-service **method-mapping** → automation rule applies the rush/priority handling. One signal, no redundant CustomField.
+- **Never rule on raw SKU.** ShipStation *Item SKU* automation criteria silently ignore any multi-item order, and sample manifests are usually multi-item. **cold-chain** is therefore a **product tag** the co-man applies to each Raw product record once; ShipStation auto-applies it to any order containing that product, and automation rules run against the resulting **order** tag. A ShipStation automation keyed on that cold-chain tag applies **refrigerated handling + insulated box + a next-day service recommendation** — cold orders are expedited in ShipStation, not by the app. (Today all 8 `sample_eligible` cookies are Baked, so no Raw SKUs carry it yet — the map still must exist for when raw samples ship.)
+- **requested service** (replaces `rush`) → `ShippingMethod = {serviceCode}` from the curated dropdown → Custom Store service-mapping resolves it **1:1** to the real ShipStation service. Curated launch set: UPS Ground (default) · UPS Next Day Air · FedEx Ground · FedEx Priority Overnight · USPS Priority Mail · USPS Priority Mail Express. No free-text, no reverse-mapping — and no rush automation rule needed, since the picked service *is* the requested service.
 - **box** → `CustomField1` (`dc-box`/`custom-box`) → automation rule → package.
 - **custom-request** → `CustomField2` → automation rule → **manual review** (no auto-fulfil). Kept on a CustomField so it shows in the Orders grid and matches rules — **not** buried in notes.
 - **collateral incl. Warming instructions** → `InternalNotes`, printed via a packing-slip **Field-Replacement** token (bind the token to the Notes field). Watch the 100-char CustomField limit — lists go in the 1000-char `InternalNotes`.

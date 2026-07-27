@@ -74,16 +74,19 @@ App switcher between Spec Sheet and Sample Central. Role-aware per existing auth
 Branch: `feat/shipstation`. **Custom Store pattern** — NOT the V1 order-push (superseded, ADR-027) and NOT the V2 Sales Orders API (beta, not sandbox-testable).
 
 ### Task 3.1 — Custom Store contract + ADR ✅ (done in planning)
-ADR-028 records the Custom Store decision (GET export + POST shipnotify, Basic Auth, XML schema, field mapping, status/method mapping, known limitations). Retains ADR-027's tag vocabulary re-expressed: cold-chain = product tag on Raw SKUs; rush = ShippingMethod (Next-Day); box = CustomField1; custom-request = CustomField2. Caroline coordinates the sandbox store + co-man tag/rule ratification.
+ADR-028 records the Custom Store decision (GET export + POST shipnotify, Basic Auth, XML schema, field mapping, status/service mapping, known limitations). Retains ADR-027's tag vocabulary re-expressed: cold-chain = product tag on Raw SKUs (+ a ShipStation automation → next-day reco); **requested_service** = a curated ShipStation `serviceCode` dropdown → `ShippingMethod` (mapped 1:1; `rush` **retired**); box = CustomField1; custom-request = CustomField2. Caroline coordinates the sandbox store + co-man tag/rule ratification.
 
-### Task 3.2 — Writeback migration
-`*_sample_shipment_tracking.sql`: add nullable `tracking_number`, `carrier`, `service`, `shipped_at` to `sample_shipments` (the shipnotify landing columns). Forward-only, manual apply.
+### Task 3.2 — Writeback + service migration
+`*_sample_shipment_tracking.sql`: add nullable `tracking_number`, `carrier`, `service`, `shipped_at` to `sample_shipments` (the shipnotify landing columns); add `requested_service text NOT NULL DEFAULT 'ups_ground'` and **drop** the retired `rush` column. Forward-only, manual apply.
+
+### Task 3.2b — Sample builder: requested-service dropdown
+`SampleCentral.jsx`: replace the **Rush checkbox** (builder) + **Rush badge** (mission control) with a curated **shipping-service dropdown** — UPS Ground (default) · UPS Next Day Air · FedEx Ground · FedEx Priority Overnight · USPS Priority Mail · USPS Priority Mail Express; display name shown, `serviceCode` stored in `requested_service`. Update initial/reset state + insert payload (drop `rush`). Salesperson picks per order; default `ups_ground`.
 
 ### Task 3.3 — `shipstation-customstore` Edge Function
 One module, two actions by `action` query param. `action=export` (GET): query `sample_shipments` + items + address for the `start_date`/`end_date` window, emit Custom Store **Orders XML** per the mapping (paging via `page`/`pages`; CDATA free-text; validate State 2-char + PostalCode or skip+log). `action=shipnotify` (POST): parse `ShipNotice`, update the matching `sample_shipments` (tracking/carrier/service/shipped_at, status→shipped); unmatched OrderNumber → log, don't drop. Basic Auth via Vault (`SHIPSTATION_CUSTOMSTORE_USER`/`_PASS`, `get_secret`); reject non-match 401. Mirror `gmail-*` conventions (Deno, injected client).
 
 ### Task 3.4 — Account-side config doc ✅ (done in planning)
-`docs/SHIPSTATION_SETUP_CHECKLIST.md`: connect Custom Store (endpoint URL + Basic Auth → Vault), status mapping, **launch-blocking** shipping-method mapping + automation rules, cold-chain product tags (co-man), box packages, packing-slip token, email BCC, sandbox mapping test (manual import, no label needed).
+`docs/SHIPSTATION_SETUP_CHECKLIST.md`: connect Custom Store (endpoint URL + Basic Auth → Vault), status mapping, **launch-blocking** shipping-service mapping (serviceCode 1:1) + automation rules (incl. cold-chain → next-day), cold-chain product tags (co-man), box packages, packing-slip token, email BCC, sandbox mapping test (manual import, no label needed).
 
 ### Task 3.5 — Verify in sandbox, then flip to production. ADR + PR.
 Manual store import confirms field mapping; optional ship test confirms shipnotify writeback. Then swap Vault creds + Custom Store URL to production, re-confirm rules/tags exist per-store. Note: `delivered` not wired (pipeline ends at shipped).
