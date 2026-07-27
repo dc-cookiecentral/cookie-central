@@ -10,6 +10,7 @@ repeat on production (go-live). Pairs with `docs/SHIPSTATION_INTEGRATION.md`.
 > and the pull model surfaces no error if they're missing.
 
 ## 0. Store + credentials
+- [x] ShipStation **account** `support@dirtycookie.com` — already created (Dirty Cookie's single account; the co-man is a user in it).
 - [ ] Duplicate the production store into a **sandbox** store (ShipStation's recommended path for integration work).
 - [ ] Settings → **Selling Channels → Store Setup → Connect a Store → Custom Store**.
 - [ ] Set the **URL to Custom XML Page** = the `shipstation-customstore` Edge Function URL.
