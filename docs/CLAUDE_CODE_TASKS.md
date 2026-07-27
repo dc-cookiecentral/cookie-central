@@ -17,7 +17,7 @@ Read and report back to Caroline BEFORE proceeding:
 
 ---
 
-## Phase 1 — Product spine (Spec Sheet)
+## Phase 1 — Product spine (Spec Sheet) — ✅ Completed July 15, 2026 (ADR-025)
 
 ### Task 1.1 — Product spine migration
 Write migration `*_create_product_spine.sql`: `products`, `eaches`, `inners`, `master_cases`, `stuffings` per `DATA_MODEL_ADDITIONS.md`, with RLS matching existing role patterns. **No derived columns** (no stored storage/temp/net-weight). Apply via SQL editor; confirm.
@@ -42,7 +42,7 @@ Record "Finished-goods replaced by Cookulator product model" in `docs/DECISIONS.
 
 ---
 
-## Phase 2 — Sample Central
+## Phase 2 — Sample Central — ✅ Completed July 16, 2026 (ADR-026)
 Branch: `feat/sample-central` (off updated `main` after Phase 1 merges).
 
 ### Task 2.1 — Tables migration
@@ -70,7 +70,7 @@ App switcher between Spec Sheet and Sample Central. Role-aware per existing auth
 
 ---
 
-## Phase 3 — ShipStation via Custom Store (see SHIPSTATION_INTEGRATION.md + ADR-028)
+## Phase 3 — ShipStation via Custom Store (see SHIPSTATION_INTEGRATION.md + ADR-028) — ✅ Completed July 27, 2026 (ADR-029)
 Branch: `feat/shipstation`. **Custom Store pattern** — NOT the V1 order-push (superseded, ADR-027) and NOT the V2 Sales Orders API (beta, not sandbox-testable).
 
 ### Task 3.1 — Custom Store contract + ADR ✅ (done in planning)
