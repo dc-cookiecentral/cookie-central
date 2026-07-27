@@ -59,3 +59,23 @@ export const COLLATERAL_OPTIONS = [
   'Reusable tote',
 ];
 export const BOX_OPTIONS = ['Dirty Cookie', 'Custom / Branded'];
+
+// Requested shipping service (ADR-028). `code` is a real ShipStation serviceCode
+// stored in sample_shipments.requested_service and pushed as <ShippingMethod>,
+// resolved 1:1 by the Custom Store service mapping. Keep this list in lockstep
+// with the requested_service CHECK (migration 20260726120000) and
+// SHIPSTATION_SETUP_CHECKLIST.md §2. Default is UPS Ground; cold-chain orders are
+// auto-upgraded to next-day by a ShipStation automation, not here.
+export const SERVICE_OPTIONS = [
+  { code: 'ups_ground', label: 'UPS Ground' },
+  { code: 'ups_next_day_air', label: 'UPS Next Day Air' },
+  { code: 'fedex_ground', label: 'FedEx Ground' },
+  { code: 'fedex_priority_overnight', label: 'FedEx Priority Overnight' },
+  { code: 'usps_priority_mail', label: 'USPS Priority Mail' },
+  { code: 'usps_priority_mail_express', label: 'USPS Priority Mail Express' },
+];
+export const DEFAULT_SERVICE = 'ups_ground';
+export const serviceLabel = (code) =>
+  (SERVICE_OPTIONS.find((s) => s.code === code) || {}).label || code || '—';
+// Expedited services keep the old Rush visual cue in mission control.
+export const isExpeditedService = (code) => /next_day|overnight|express/.test(code || '');
