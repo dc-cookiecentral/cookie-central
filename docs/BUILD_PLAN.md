@@ -1,11 +1,13 @@
 # Cookie Central — Build Plan
 
 ## Timeline
+*(current as of July 27, 2026)*
 - **Start:** Wednesday May 21, 2026
 - **Phase 1 demo:** delivered June 2026 (Marc + David) ✅
-- **Phase 1 ship:** in progress. Demo modules are live; AI email reader (Day 10) ✅ and lot-traceability chain UI (Day 11) ✅ done. Remaining work: Cortina NetSuite real-file reconciliation (waiting on Harshita's sample).
-- **Phase 2:** weeks following Phase 1 ship
-- **Phase 3:** late summer 2026
+- **Phase 1 ship:** largely live. AI email reader (Day 10) ✅ and lot-traceability chain UI (Day 11) ✅ done. Remaining: Cortina NetSuite real-file reconciliation (waiting on Harshita's sample); DOT/QBO real-file reconciliation non-blocking.
+- **Extension track — Spec Sheet → Sample Central → ShipStation** (separate from the Operations/Financials phases below): built July 2026. Phase 1 Cookulator product spine (ADR-025) ✅, Phase 2 Sample Central (ADR-026) ✅, Phase 3 ShipStation Custom Store (ADR-028/029) ✅ **verified end-to-end July 27, 2026**. Pending: launch-blocking ShipStation §2–§4 config + frontend deploy from `feat/shipstation`.
+- **Phase 2 — Operations:** upcoming (weeks following Phase 1 ship).
+- **Phase 3 — Financials + Rollout:** late summer 2026.
 
 ## Blockers (Phase 1)
 - [x] systems@dirtycookie.com access — DONE
