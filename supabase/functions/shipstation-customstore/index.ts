@@ -30,13 +30,29 @@ import {
 
 const PAGE_SIZE = 100;
 const SELECT =
-  '*, salesperson:salesperson_user_id ( email, full_name ), address:address_id ( * ), sample_shipment_items ( * )';
+  '*, salesperson:user_profiles!salesperson_user_id ( email, full_name ), address:addresses!address_id ( * ), sample_shipment_items ( * )';
 
 function xml(body: string, status = 200): Response {
   return new Response(body, {
     status,
     headers: { 'content-type': 'text/xml; charset=utf-8' },
   });
+}
+
+// get_secret occasionally hits a transient "JWT issued at future" clock-skew when
+// PostgREST validates the service-role token. Retry a couple times with a short
+// backoff so ShipStation's scheduled imports don't fail on a one-off.
+async function readSecret(supabase: ReturnType<typeof serviceClient>, name: string): Promise<string | null> {
+  let lastErr: unknown;
+  for (let i = 0; i < 3; i++) {
+    try {
+      return await getSecret(supabase, name);
+    } catch (e) {
+      lastErr = e;
+      await new Promise((r) => setTimeout(r, 500 * (i + 1)));
+    }
+  }
+  throw lastErr;
 }
 
 Deno.serve(async (req) => {
@@ -47,8 +63,8 @@ Deno.serve(async (req) => {
   try {
     // ── Basic Auth against Vault ──────────────────────────────────────────
     const [user, pass] = await Promise.all([
-      getSecret(supabase, 'SHIPSTATION_CUSTOMSTORE_USER'),
-      getSecret(supabase, 'SHIPSTATION_CUSTOMSTORE_PASS'),
+      readSecret(supabase, 'SHIPSTATION_CUSTOMSTORE_USER'),
+      readSecret(supabase, 'SHIPSTATION_CUSTOMSTORE_PASS'),
     ]);
     if (!user || !pass) {
       return xml('<Error>Custom Store credentials not configured in Vault.</Error>', 500);
