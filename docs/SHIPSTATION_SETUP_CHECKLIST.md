@@ -1,7 +1,9 @@
-# ShipStation Setup Checklist — Custom Store (Caroline + co-man)
+# Sample Central Launch Checklist — ShipStation Custom Store (Caroline + co-man)
 
-Phase 3, account-side config for the **Custom Store** integration (ADR-028). These
-are the ShipStation-dashboard settings the app can't set via the API. Pairs with
+Everything that has to be true before Cortina can place real sample orders.
+Mostly ShipStation-dashboard config for the **Custom Store** integration
+(ADR-028) — the settings the app can't set via the API — plus **§A**, the
+app-side prerequisites that live nowhere else. Pairs with
 `docs/SHIPSTATION_INTEGRATION.md`.
 
 > **No sandbox — this is the production store.** The sandbox path was tried and
@@ -14,6 +16,40 @@ are the ShipStation-dashboard settings the app can't set via the API. Pairs with
 > Convention: items marked **🚦 LAUNCH-BLOCKING** must exist before the first
 > real order — the shipping-speed mapping and the cold-chain / box behaviours
 > don't happen without them, and the pull model surfaces no error if they're missing.
+
+## A. App-side prerequisites — users + address book 🚦 LAUNCH-BLOCKING
+
+Not ShipStation config, but the app is unusable without it. Tracked here so
+launch has one list. (Origin: ADR-026 carried item b.)
+
+### A.1 Seed every Cortina user BEFORE their first sign-in
+
+⚠️ **Order matters and the mistake is not self-correcting.** The
+`handle_new_auth_user` trigger provisions a profile on first sign-in using
+`COALESCE(seed.role, 'ops')`. An unseeded user therefore lands as **`ops`** — an
+*internal* role with access to all of Cookie Central, not the Sample-Central-only
+gate Cortina is supposed to get. And because the insert is
+`ON CONFLICT (id) DO NOTHING`, adding the seed afterwards does **not** fix them;
+you'd have to `UPDATE user_profiles SET role='cortina'` by hand.
+
+- [ ] Insert each Cortina salesperson into `user_role_seeds` **first**:
+```sql
+insert into user_role_seeds (email, full_name, role, title) values
+  ('someone@cortinafoods.com', 'Their Name', 'cortina', 'Sales')
+on conflict (email) do update set role = excluded.role;
+```
+- [ ] Only then send the magic link (auth is magic-link only — there is no password path).
+- [ ] Verify after they sign in:
+```sql
+select email, role, active_in_dropdown from user_profiles order by role, email;
+```
+- [ ] `active_in_dropdown` defaults to `true`, so they appear in the builder's salesperson picker automatically — no extra step.
+
+*As of July 28, 2026: `user_profiles` holds 3 admins and **zero** `cortina` users.*
+
+### A.2 Seed the ship-to address book (optional but recommended)
+
+- [ ] `addresses` is currently **empty**. The builder has inline add, so this isn't blocking — but the first salesperson meets a blank ship-to list. Pre-loading the common retailer addresses makes the stress test realistic and avoids everyone typing the same Kroger address.
 
 ## 0. Store + credentials
 - [x] ShipStation **account** `support@dirtycookie.com` — created (Dirty Cookie's single account; the co-man is a user in it).
@@ -64,7 +100,7 @@ Copy the sample-mgmt inbox on **all orders, shipments, deliveries** — two plac
 - [ ] **Shipment + delivery emails:** Store → Emails/Notifications → **"Blind Copy on Shipment and Delivery Email"** = `samplesmngmt@cortinafoods.com` (BCC; covers shipment + delivery together).
 - [ ] **Order confirmation:** the salesperson (`salesperson_user_id` → their `email`, exported as `CustomerCode`) is the recipient; add the sample-mgmt inbox as an additional recipient/notification if order-creation copies are also required.
 
-## 8. Verify (sandbox) — mapping test, no label needed
+## 8. Verify — mapping test, no label needed
 - [ ] Trigger a **manual store import** in ShipStation.
 - [ ] Confirm a sample order lands in the dashboard with fields mapped: ship-to, items (SKU=product_code), ShippingMethod (**resolves to the picked tier's UPS service — test all three**), CustomField1 (box), CustomField2 (custom-request when present), InternalNotes (collateral/warming/custom specs).
 - [ ] Confirm an invalid address (bad State/zip) does **not** silently vanish — the export skips+logs it (check the function logs).
@@ -109,4 +145,5 @@ go-live is about **clearing test state**, not migrating environments.
 - [ ] **Remove `VITE_SAMPLE_TEST_MODE` (or set it to anything but `true`) and redeploy.** Confirm the amber banner is gone and a new order numbers as `SMP-####`.
 - [ ] Purge `SMP-TEST-%` rows (§8b) **and** cancel the matching orders in ShipStation.
 - [ ] Confirm §2 method-mapping, §3 automation rules and §4 product tags are all in place (they're per-store, and nothing warns you if they're missing).
+- [ ] Confirm every Cortina user resolves to `role='cortina'` (§A.1) — an unseeded user silently got internal `ops` access.
 - [ ] Note: **delivered** is not wired yet — the pipeline ends at *shipped* (no delivery polling).
