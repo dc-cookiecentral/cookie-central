@@ -48,8 +48,15 @@ export function groupCatalog(products) {
 // Unlike VITE_AUTH_BYPASS this is deliberately NOT gated on import.meta.env.DEV
 // — the whole point is to apply to the deployed build the team is testing.
 // It is a build-time flag, so flipping it means redeploying. Clear it (or set it
-// to anything but 'true') before launch; the checklist has this as a go-live step.
-export const TEST_MODE = import.meta.env.VITE_SAMPLE_TEST_MODE === 'true';
+// to `false`) before launch; the checklist has this as a go-live step.
+//
+// Parsed leniently on purpose. This value is typed into a hosting dashboard by a
+// human, and a strict `=== 'true'` silently ignored `TRUE`, a stray quote or a
+// trailing space — with no error anywhere, since a false flag compiles the banner
+// out of the bundle entirely. Accepts true/1/yes in any case, trimmed.
+const TEST_MODE_FLAG = String(import.meta.env.VITE_SAMPLE_TEST_MODE ?? '')
+  .trim().toLowerCase().replace(/^["']|["']$/g, '');
+export const TEST_MODE = ['true', '1', 'yes', 'on'].includes(TEST_MODE_FLAG);
 export const SHIPMENT_PREFIX = TEST_MODE ? 'SMP-TEST-' : 'SMP-';
 
 // Next shipment number from existing shipment_no values (seed starts at 1044).
