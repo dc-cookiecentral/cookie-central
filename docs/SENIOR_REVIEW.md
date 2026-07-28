@@ -44,7 +44,7 @@ This is where the real risk lives. The prototype's integration panel already doc
 
 ### The pitfalls, ranked by how badly they bite
 
-1. **SKU rules break on multi-item orders — THE big one.** ShipStation's Item-SKU automation criteria silently ignore any order with more than one product. A sample manifest is almost always multi-item. **Fix:** never rule on raw SKU. Tag the *product records* in ShipStation (raw SKUs → `cold-chain`), then write automation rules against the **order tag**. Order-tag criteria work on multi-item orders. This tag vocabulary (`cold-chain`, `custom-box`) is the integration contract — lock it with the co-man before writing code. *(As built: speed never became a tag — it rides the native `ShippingMethod` element. See ADR-028.)*
+1. **SKU rules break on multi-item orders — THE big one.** ShipStation's Item-SKU automation criteria silently ignore any order with more than one product. A sample manifest is almost always multi-item. **Fix:** never rule on raw SKU. Tag the *product records* in ShipStation (raw SKUs → `cold-chain`), then write automation rules against the **order tag**. Order-tag criteria work on multi-item orders. This tag vocabulary (`cold-chain`, `custom-box`) is the integration contract — lock it with the co-man before writing code. *(As built: speed is not sent at all — the app expresses no service preference and `ShippingMethod` is omitted. See ADR-031.)*
 
 2. **Derived fields don't map 1:1 to ShipStation's schema.** Temp state, box spec, collateral have no native order fields. Split them: *product-inherent* attributes (cold chain) → ShipStation product tags + rules; *order-level* choices (box, custom-request) → order tags/CustomFields the app pushes at create time.
 

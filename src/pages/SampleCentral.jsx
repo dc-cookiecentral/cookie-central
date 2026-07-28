@@ -570,7 +570,8 @@ function ShipmentCard({ s, open, onToggle }) {
                 <span className="font-mono">{s.tracking_number}</span>{s.carrier ? ` · ${s.carrier}` : ''}{s.service ? ` · ${s.service}` : ''}
               </KV>
             )}
-            {s.shipped_at && <KV label="Shipped">{new Date(s.shipped_at).toLocaleString()}</KV>}
+            {s.shipped_at && <KV label="Shipped">{new Date(s.shipped_at).toLocaleDateString()}{s.label_created_at ? ` · label ${new Date(s.label_created_at).toLocaleString()}` : ''}</KV>}
+            {s.shipping_cost != null && <KV label="Shipping cost">${Number(s.shipping_cost).toFixed(2)}</KV>}
           </div>
 
           <div className="mt-3">

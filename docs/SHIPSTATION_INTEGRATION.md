@@ -92,15 +92,38 @@ Basic HTTP Auth on both actions. Expected creds read from Vault via `get_secret`
 - **Custom lines** (`custom = true`, no `product_code`) are **not** emitted as `<Item>` (no SKU). They ride `InternalNotes` (spec + `project_no`) **and** flag `CustomField2 = custom-request`.
 
 ### ShipNotify (POST body)
+
+ShipStation calls the **same endpoint** with `?action=shipnotify`, and also passes
+`order_number` / `carrier` / `service` / `tracking_number` as **query params** —
+the handler prefers the body and falls back to the query string.
+
 ```xml
 <ShipNotice>
-  <OrderNumber>{shipment_no}</OrderNumber>
-  <TrackingNumber>…</TrackingNumber>
-  <Carrier>…</Carrier>
-  <Service>…</Service>
-  <ShipDate>…</ShipDate>
+  <OrderNumber>ABC123</OrderNumber>        <!-- → sample_shipments.shipment_no (match key) -->
+  <OrderID>123456</OrderID>
+  <CustomerCode>customer@mystore.com</CustomerCode>
+  <CustomerNotes/> <InternalNotes/> <NotesToCustomer/>
+  <NotifyCustomer/>                        <!-- bool: did ShipStation email the buyer -->
+  <LabelCreateDate>10/19/2019 12:56</LabelCreateDate>  <!-- → label_created_at -->
+  <ShipDate>10/19/2019</ShipDate>          <!-- DATE-ONLY → shipped_at -->
+  <Carrier>USPS</Carrier> <Service>Priority Mail</Service>
+  <TrackingNumber>1Z909084330298430820</TrackingNumber>
+  <ShippingCost>4.95</ShippingCost>        <!-- → shipping_cost -->
+  <CustomField1/> <CustomField2/> <CustomField3/>
+  <Recipient>…</Recipient>
+  <Items>…</Items>
 </ShipNotice>
 ```
+
+- **`<ShipDate>` is date-only**; `<LabelCreateDate>` carries the time. Both are captured.
+- **`<ShippingCost>` is the only place a sample's real cost appears** — samples export at `UnitPrice 0.00` / `OrderTotal 0.00` by design.
+- Respond **200/2xx** or ShipStation treats the notification as failed.
+
+⚠️ **This is the ONLY push ShipStation makes.** There is no delivery event and no
+order-status event — the guide states the POST exists to notify "when you ship
+orders". `processing` and `delivered` are therefore unreachable through the
+Custom Store; they would need ShipStation **Webhooks** (a separate feature) or
+carrier tracking polling. See ADR-033.
 
 ---
 
