@@ -370,11 +370,11 @@ One consequence worth knowing: the email fires when ShipStation **imports** the 
 
 **Third-party billing.** Some accounts want samples billed to *their* carrier account. The checkout gains a "Bill shipping to a third-party account" checkbox that reveals carrier / account number / account postal code, stored as `third_party_billing` + `tp_carrier` / `tp_account` / `tp_postal_code` (migration `20260728140000`).
 
-⚠️ **Informational only.** The Custom Store XML has **no billing elements** — `billToParty` / `billToAccount` / `billToPostalCode` exist in ShipStation's REST API, not the store feed. So the export carries the details as text in **`CustomField3`** (`3P FEDEX 123456789 90210`, capped at the field's 100 chars) with an **`InternalNotes` echo** (`BILL THIRD PARTY: …`). CF3 gives grid visibility and rule matching; the notes echo is for whoever buys the label, since they must select third-party billing and key the account in **by hand**. Nothing bills automatically.
+⚠️ **Informational only.** The Custom Store XML has **no billing elements** — `billToParty` / `billToAccount` / `billToPostalCode` exist in ShipStation's REST API, not the store feed. So the export carries the details as text in **`InternalNotes`** (`BILL THIRD PARTY: FedEx acct 123456789 (zip 90210)`), which is where whoever buys the label is already looking. They must select third-party billing and key the account in **by hand**; nothing bills automatically.
+
+**It deliberately does not consume a CustomField.** An earlier revision put it in `CustomField3` as well; that was dropped — no automation rule acts on the value, so grid visibility bought nothing, and a 100-char field is a poor home for text that only a human reads. **`CustomField3` stays free**, leaving one slot for a future rule-matchable flag. Allocation is CF1 `rush`, CF2 `custom-request`, CF3 unused.
 
 **All three details are required together**, enforced app-side at submit and again in the export helper (which returns `''` on a partial set). A partial set is worse than none: it looks configured but cannot be billed. Enforcement is deliberately *not* a DB CHECK, so a later rule change can't invalidate historical rows.
-
-**CustomField allocation is now full** — CF1 `rush`, CF2 `custom-request`, CF3 third-party billing. Anything further needs `CustomerNotes`/`InternalNotes`, or displacing one of these.
 
 **Status is owned by ShipStation.** The editable status dropdown is removed from Pending Shipments and `updateShipmentStatus` is deleted. `submitted` is set at creation; the `shipnotify` writeback advances it to `shipped`. Nothing in the app writes status, so there is no path for the two systems to disagree — an editable field was exactly that path.
 

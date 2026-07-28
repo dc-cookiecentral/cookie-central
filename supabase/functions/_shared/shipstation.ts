@@ -79,18 +79,20 @@ export function rushFlag(rush: boolean | null | undefined): string {
   return rush ? 'rush' : '';
 }
 
-// Third-party billing → CustomField3, e.g. `3P FEDEX 123456789 90210`.
-// The Custom Store XML has no billing elements, so this is text the co-man reads
-// and keys in at label purchase — ShipStation will NOT bill the account itself.
-// Capped at the field's 100 chars. Returns '' unless all three details exist,
-// since a partial set looks configured but cannot actually be used.
+// Third-party billing rides InternalNotes ONLY — see internalNotes() below.
+// It deliberately does not consume a CustomField: the co-man reads the notes when
+// buying the label, and the 100-char CustomFields buy nothing extra for a value
+// no automation rule acts on. CustomField3 stays free.
+//
+// Returns '' unless all three details are present, since a partial set looks
+// configured but cannot actually be billed.
 export function thirdPartyBilling(s: Shipment): string {
   if (!s.third_party_billing) return '';
-  const carrier = (s.tp_carrier ?? '').trim().toUpperCase();
+  const carrier = (s.tp_carrier ?? '').trim();
   const account = (s.tp_account ?? '').trim();
   const zip = (s.tp_postal_code ?? '').trim();
   if (!carrier || !account || !zip) return '';
-  return `3P ${carrier} ${account} ${zip}`.slice(0, 100);
+  return `BILL THIRD PARTY: ${carrier} acct ${account} (zip ${zip})`;
 }
 
 // State must be 2 letters, zip 5 or 5-4; ShipStation silently rejects malformed
@@ -105,11 +107,8 @@ export function internalNotes(s: Shipment): string {
   if (s.collateral?.length) parts.push(`Collateral: ${s.collateral.join(', ')}`);
   if (s.temp) parts.push(`Handling: ${s.temp}${s.temp_override ? ' (override)' : ''}`);
   if (s.required_by) parts.push(`Required by: ${s.required_by}`);
-  // Echoed as well as CustomField3: CF3 gives grid visibility and rule matching,
-  // but whoever buys the label is reading the notes, and they have to key these
-  // in by hand — ShipStation cannot bill a third-party account from a feed.
   const tp = thirdPartyBilling(s);
-  if (tp) parts.push(`BILL THIRD PARTY: ${s.tp_carrier} acct ${s.tp_account} (zip ${s.tp_postal_code})`);
+  if (tp) parts.push(tp);
   if (s.notes) parts.push(`Notes: ${s.notes}`);
   for (const i of s.sample_shipment_items ?? []) {
     if (i.custom) parts.push(`Custom: ${i.custom_spec ?? ''}${i.project_no ? ` (proj ${i.project_no})` : ''}`.trim());
@@ -151,7 +150,7 @@ export function buildOrderXml(s: Shipment): string {
     `    <InternalNotes>${cdata(internalNotes(s))}</InternalNotes>\n` +
     `    <CustomField1>${xmlEscape(rushFlag(s.rush))}</CustomField1>\n` +
     `    <CustomField2>${hasCustom ? 'custom-request' : ''}</CustomField2>\n` +
-    `    <CustomField3>${xmlEscape(thirdPartyBilling(s))}</CustomField3>\n` +
+    `    <CustomField3></CustomField3>\n` +   // free/unused — billing rides InternalNotes
     `    <Customer>\n` +
     `      <CustomerCode>${xmlEscape(s.salesperson?.email ?? '')}</CustomerCode>\n` +
     `      <BillTo>\n` +

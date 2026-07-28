@@ -206,8 +206,8 @@ Deno.test('rushFlag: false, null and undefined produce an empty field', () => {
 // ── thirdPartyBilling (CustomField3) ────────────────────────────────────────
 const TP = { third_party_billing: true, tp_carrier: 'FedEx', tp_account: '123456789', tp_postal_code: '90210' };
 
-Deno.test('thirdPartyBilling: formats carrier, account and zip, carrier upper-cased', () => {
-  assertEquals(thirdPartyBilling(shipment(TP)), '3P FEDEX 123456789 90210');
+Deno.test('thirdPartyBilling: formats carrier, account and zip for the label buyer', () => {
+  assertEquals(thirdPartyBilling(shipment(TP)), 'BILL THIRD PARTY: FedEx acct 123456789 (zip 90210)');
 });
 Deno.test('thirdPartyBilling: empty when the flag is off, even with details present', () => {
   assertEquals(thirdPartyBilling(shipment({ ...TP, third_party_billing: false })), '');
@@ -220,11 +220,7 @@ Deno.test('thirdPartyBilling: empty when any single detail is missing', () => {
   }
 });
 Deno.test('thirdPartyBilling: trims surrounding whitespace on the details', () => {
-  assertEquals(thirdPartyBilling(shipment({ ...TP, tp_account: '  123456789  ' })), '3P FEDEX 123456789 90210');
-});
-Deno.test('thirdPartyBilling: never exceeds the CustomField 100-char limit', () => {
-  const out = thirdPartyBilling(shipment({ ...TP, tp_account: '9'.repeat(200) }));
-  assertEquals(out.length, 100);
+  assertEquals(thirdPartyBilling(shipment({ ...TP, tp_account: '  123456789  ' })), 'BILL THIRD PARTY: FedEx acct 123456789 (zip 90210)');
 });
 
 // ── validState / validZip ───────────────────────────────────────────────────
@@ -344,9 +340,9 @@ Deno.test('buildOrderXml: flags custom-request in CustomField2 only when a custo
   });
   assertEquals(el(buildOrderXml(withCustom), 'CustomField2'), 'custom-request');
 });
-Deno.test('buildOrderXml: CustomField3 carries third-party billing, empty otherwise', () => {
+Deno.test('buildOrderXml: CustomField3 stays free even with third-party billing set', () => {
   assertEquals(el(buildOrderXml(shipment()), 'CustomField3'), '');
-  assertEquals(el(buildOrderXml(shipment(TP)), 'CustomField3'), '3P FEDEX 123456789 90210');
+  assertEquals(el(buildOrderXml(shipment(TP)), 'CustomField3'), '');
 });
 Deno.test('buildOrderXml: echoes third-party billing into InternalNotes for the label buyer', () => {
   const notes = el(buildOrderXml(shipment(TP)), 'InternalNotes') ?? '';
