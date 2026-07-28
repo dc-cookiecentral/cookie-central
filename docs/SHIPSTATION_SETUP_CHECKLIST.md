@@ -17,12 +17,18 @@ app-side prerequisites that live nowhere else. Pairs with
 > real order — the shipping-speed mapping and the cold-chain / box behaviours
 > don't happen without them, and the pull model surfaces no error if they're missing.
 
-## A. App-side prerequisites — users + address book 🚦 LAUNCH-BLOCKING
+## A. App-side prerequisites — users + address book
 
 Not ShipStation config, but the app is unusable without it. Tracked here so
 launch has one list. (Origin: ADR-026 carried item b.)
 
-### A.1 Seed every Cortina user BEFORE their first sign-in
+> **Soft launch (from July 28, 2026) is Dirty Cookie internal only — no Cortina
+> logins yet.** DC staff already hold internal roles, so **§A.1 is not blocking
+> for the soft launch**. It becomes 🚦 LAUNCH-BLOCKING the moment the first
+> Cortina salesperson is invited, and the hazard below is not self-correcting —
+> read it before sending that first magic link.
+
+### A.1 Seed every Cortina user BEFORE their first sign-in 🚦 blocking at Cortina onboarding
 
 ⚠️ **Order matters and the mistake is not self-correcting.** The
 `handle_new_auth_user` trigger provisions a profile on first sign-in using
@@ -47,6 +53,11 @@ select email, role, active_in_dropdown from user_profiles order by role, email;
 
 *As of July 28, 2026: `user_profiles` holds 3 admins and **zero** `cortina` users.*
 
+**Applies to the internal soft launch too.** Any Dirty Cookie tester who has
+never signed in provisions as **`ops`** if they aren't in `user_role_seeds` —
+broad internal access, granted silently. Seed DC testers with their intended
+role first if `ops` isn't what you want them to have.
+
 ### A.2 Seed the ship-to address book (optional but recommended)
 
 - [ ] `addresses` is currently **empty**. The builder has inline add, so this isn't blocking — but the first salesperson meets a blank ship-to list. Pre-loading the common retailer addresses makes the stress test realistic and avoids everyone typing the same Kroger address.
@@ -67,7 +78,7 @@ Set the status fields so our statuses route correctly:
 
 ## 2. Shipping-service mapping 🚦 LAUNCH-BLOCKING
 The app's checkout offers a **3-tier speed selector** (Ground / 2-Day / Overnight). The export resolves the tier to a real UPS **`serviceCode`** and sends it in `<ShippingMethod>`. Map each **1:1** to the matching ShipStation service (source: `docs/Shipstation Shipping Doc/Shipping Services - 07-23.xlsx`, US domestic):
-- [ ] **Confirm the connected carrier is UPS** (`carrierCode = ups`). The three codes below are UPS-specific — if the account ships on a different carrier, stop and update `SHIPPING_SPEEDS` in `src/utils/sampleCentral.js` + `supabase/functions/_shared/shipstation.ts` first.
+- [x] **Connected carriers confirmed July 28, 2026: UPS and USPS.** UPS is what matters here — the three codes below are UPS-specific and now known-good. USPS is connected but **deliberately unused by the tier map**: the salesperson picks a speed, not a carrier, so all three tiers resolve to UPS. The co-man can still buy a USPS label at fulfilment if it's cheaper; `ShippingMethod` is a *requested* service, not a mandate. Offering USPS tiers would mean editing `SHIPPING_SPEEDS` in `src/utils/sampleCentral.js` + `supabase/functions/_shared/shipstation.ts` together.
 - [ ] `ups_ground` → UPS Ground *(app default — tier `ground`)*
 - [ ] `ups_2nd_day_air` → UPS 2nd Day Air® *(tier `2day`)*
 - [ ] `ups_next_day_air` → UPS Next Day Air® *(tier `overnight`)*
@@ -81,10 +92,10 @@ Rule on **order tags / CustomFields / requested method — never on Item SKU** (
 - [ ] `if CustomField2 = custom-request` → route to **manual review** (no auto-fulfil).
 - [ ] (**No speed rule needed** — the chosen tier maps 1:1 to a serviceCode in §2, so speed *is* the requested service. Only the cold-chain automation overrides it.)
 
-## 4. Product tags — cold-chain (co-man owns this) 🚦 LAUNCH-BLOCKING for raw samples
+## 4. Product tags — cold-chain (co-man owns this) 🚦 LAUNCH-BLOCKING — now live
 - [ ] Create the product tag **`cold-chain`**.
 - [ ] Apply `cold-chain` to every **Raw** product record (the SKU→tag map). ShipStation auto-applies it to any imported order containing that product — the two-step indirection. Do **not** write SKU-based rules.
-- [ ] (Not blocking today: the current 8 sample-eligible cookies are all Baked. Becomes blocking the day a raw sample is enabled.)
+- [ ] ⚠️ **This became blocking on July 28, 2026.** Migration `20260728120000` opened the catalog to all 27 products, including the **9 Raw** ones, so a salesperson can now build a frozen shipment (`derivedTemp` marks any cart with a Raw line as Cold). Until the tags and the §3 rule exist, a frozen sample imports as an ordinary ambient order and ships unrefrigerated — silently.
 
 ## 5. Box inventory (packages)
 - [ ] Define each physical box as a ShipStation **package**: insulated box, branded mailer, standard package (at minimum the three the rules above reference).

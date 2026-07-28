@@ -138,7 +138,7 @@ Columns are the **real** ADR-026 names.
   | `2day` | 2-Day | `ups_2nd_day_air` |
   | `overnight` | Overnight | `ups_next_day_air` |
 
-  `carrierCode` = **`ups`** (confirm against the account's connected carrier — checklist §2). Codes verified against `docs/Shipstation Shipping Doc/Shipping Services - 07-23.xlsx` (serviceCode source-of-truth, US domestic).
+  `carrierCode` = **`ups`** — confirmed July 28, 2026 (account has UPS + USPS connected; USPS is deliberately unused by the tier map). Codes verified against `docs/Shipstation Shipping Doc/Shipping Services - 07-23.xlsx` (serviceCode source-of-truth, US domestic).
 
   **Carrier choice is app config, not order data.** `SHIPPING_CARRIER` + `SHIPPING_SPEEDS` in `src/utils/sampleCentral.js`, mirrored in `supabase/functions/_shared/shipstation.ts`. The schema stores only the tier, so switching carriers is a config/map change plus the ShipStation §2 remap — no data migration. Keep the two maps, the `shipping_speed` CHECK (migration `20260727120000`), and checklist §2 in lockstep.
 - **box** → `CustomField1` (`dc-box`/`custom-box`) → automation rule → package.

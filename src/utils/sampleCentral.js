@@ -2,8 +2,6 @@
 // Catalog rows are `products WHERE sample_eligible = true`; fields follow the DB
 // spine (description, outer_cookie, dough_oz), not the prototype's CATALOG array.
 
-export const familyEmoji = (form) => (form === 'Shot' ? '🥤' : '🍪');
-
 export const flavorFamily = (p) =>
   p.stuffing ? `${p.outer_cookie} / ${p.stuffing}` : p.outer_cookie || p.description;
 
