@@ -1,6 +1,6 @@
 # ShipStation Integration Spec — Custom Store pattern
 
-**Supersedes the V1 order-push design.** See ADR-028 (mechanism) + ADR-027 (retained tag vocabulary). Do **not** build the V1 `/orders/createorder` push or the V2 Sales Orders API (beta, not sandbox-testable).
+**Supersedes the V1 order-push design.** See ADR-028 (mechanism, incl. the July 27 2026 3-tier shipping-speed amendment) + ADR-027 (retained tag vocabulary) + ADR-029 (as-built). Do **not** build the V1 `/orders/createorder` push or the V2 Sales Orders API (beta, not sandbox-testable).
 
 **Boundary principle:** the app pushes *intent* (a clean order + a few fields); ShipStation resolves *fulfilment* (box, service, labels, emails). No fulfilment logic is duplicated app-side.
 
@@ -57,7 +57,7 @@ Basic HTTP Auth on both actions. Expected creds read from Vault via `get_secret`
     <OrderDate>{created_at, MM/dd/yyyy HH:mm}</OrderDate>
     <OrderStatus>{status}</OrderStatus>                 <!-- app status verbatim: submitted|processing|shipped|delivered -->
     <LastModified>{updated_at}</LastModified>
-    <ShippingMethod>{requested_service}</ShippingMethod>          <!-- ShipStation serviceCode, e.g. ups_ground; mapped 1:1 -->
+    <ShippingMethod>{shipping_speed → UPS serviceCode}</ShippingMethod>  <!-- ups_ground | ups_2nd_day_air | ups_next_day_air; mapped 1:1 -->
     <OrderTotal>0.00</OrderTotal>                        <!-- REQUIRED by ShipStation's XSD; samples are free -->
     <CustomField1>{box_spec → 'dc-box' | 'custom-box'}</CustomField1>
     <CustomField2>{any custom line ? 'custom-request' : ''}</CustomField2>
@@ -114,7 +114,7 @@ Columns are the **real** ADR-026 names.
 | `OrderID` | `sample_shipments.id` | |
 | `OrderDate` | `created_at` | not `required_by` |
 | `OrderStatus` | `status` | app status **verbatim**; ShipStation Marketplace mapping routes submitted/processing → **Awaiting Shipment**, shipped/delivered → **Shipped** |
-| `ShippingMethod` | `requested_service` | ShipStation **serviceCode** from the curated dropdown (default `ups_ground`); Custom Store service-mapping resolves it **1:1** — no free-text |
+| `ShippingMethod` | `shipping_speed` | Resolved to a UPS **serviceCode** at export (`ground`→`ups_ground`, `2day`→`ups_2nd_day_air`, `overnight`→`ups_next_day_air`); Custom Store service-mapping resolves it **1:1** — no free-text, no friendly label |
 | `CustomField1` | `box_spec` | `dc-box` / `custom-box` |
 | `CustomField2` | any `sample_shipment_items.custom` | `custom-request` (grid-visible + rule-matchable) |
 | `CustomField3` | — | reserved |
@@ -130,7 +130,17 @@ Columns are the **real** ADR-026 names.
 ## Tags, collateral & the multi-item pitfall (retained from ADR-027)
 
 - **Never rule on raw SKU.** ShipStation *Item SKU* automation criteria silently ignore any multi-item order, and sample manifests are usually multi-item. **cold-chain** is therefore a **product tag** the co-man applies to each Raw product record once; ShipStation auto-applies it to any order containing that product, and automation rules run against the resulting **order** tag. A ShipStation automation keyed on that cold-chain tag applies **refrigerated handling + insulated box + a next-day service recommendation** — cold orders are expedited in ShipStation, not by the app. (Today all 8 `sample_eligible` cookies are Baked, so no Raw SKUs carry it yet — the map still must exist for when raw samples ship.)
-- **requested service** (replaces `rush`) → `ShippingMethod = {serviceCode}` from the curated dropdown → Custom Store service-mapping resolves it **1:1** to the real ShipStation service. Curated launch set: UPS Ground (default) · UPS Next Day Air · FedEx Ground · FedEx Priority Overnight · USPS Priority Mail · USPS Priority Mail Express. No free-text, no reverse-mapping — and no rush automation rule needed, since the picked service *is* the requested service.
+- **shipping speed** (replaces `rush`; supersedes the friendly-label service dropdown) → the salesperson picks a **tier**, not a carrier, and the export sends the corresponding UPS `serviceCode` **directly** in the dedicated `<ShippingMethod>` element. **No tag, no CustomField, no automation rule** — the picked tier *is* the requested service, and the Custom Store service-mapping resolves it 1:1.
+
+  | `sample_shipments.shipping_speed` | UI label | `<ShippingMethod>` |
+  |---|---|---|
+  | `ground` *(default)* | Ground | `ups_ground` |
+  | `2day` | 2-Day | `ups_2nd_day_air` |
+  | `overnight` | Overnight | `ups_next_day_air` |
+
+  `carrierCode` = **`ups`** (confirm against the account's connected carrier — checklist §2). Codes verified against `docs/Shipstation Shipping Doc/Shipping Services - 07-23.xlsx` (serviceCode source-of-truth, US domestic).
+
+  **Carrier choice is app config, not order data.** `SHIPPING_CARRIER` + `SHIPPING_SPEEDS` in `src/utils/sampleCentral.js`, mirrored in `supabase/functions/_shared/shipstation.ts`. The schema stores only the tier, so switching carriers is a config/map change plus the ShipStation §2 remap — no data migration. Keep the two maps, the `shipping_speed` CHECK (migration `20260727120000`), and checklist §2 in lockstep.
 - **box** → `CustomField1` (`dc-box`/`custom-box`) → automation rule → package.
 - **custom-request** → `CustomField2` → automation rule → **manual review** (no auto-fulfil). Kept on a CustomField so it shows in the Orders grid and matches rules — **not** buried in notes.
 - **collateral incl. Warming instructions** → `InternalNotes`, printed via a packing-slip **Field-Replacement** token (bind the token to the Notes field). Watch the 100-char CustomField limit — lists go in the 1000-char `InternalNotes`.
@@ -155,7 +165,7 @@ status fields route each value (samples are free — no "paid"). Configure:
 1. **No import acknowledgment** — the pull model gives no per-order confirmation the order reached ShipStation. The only signal is ShipStation hitting our GET export.
 2. **`delivered` not wired** — the pipeline ends at **shipped**; no carrier delivery-event polling yet.
 3. **Silent import rejection** — a malformed `State` (non-2-char) or `PostalCode` can be dropped by ShipStation with no error; the export validates and skips+logs bad rows.
-4. **Automation rules + method-mapping are launch-blocking** — the rush/cold-chain/box behaviours don't exist until configured in ShipStation (see the setup checklist).
+4. **Automation rules + method-mapping are launch-blocking** — the cold-chain/box/custom-request behaviours don't exist until configured in ShipStation, and the three UPS `serviceCode`s must be mapped for speed to resolve (see the setup checklist).
 5. **Unmatched shipnotify** is logged, not dropped.
 
 ---

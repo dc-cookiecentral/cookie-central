@@ -44,9 +44,9 @@ This is where the real risk lives. The prototype's integration panel already doc
 
 ### The pitfalls, ranked by how badly they bite
 
-1. **SKU rules break on multi-item orders — THE big one.** ShipStation's Item-SKU automation criteria silently ignore any order with more than one product. A sample manifest is almost always multi-item. **Fix:** never rule on raw SKU. Tag the *product records* in ShipStation (raw SKUs → `cold-chain`), then write automation rules against the **order tag**. Order-tag criteria work on multi-item orders. This tag vocabulary (`cold-chain`, `rush`, `custom-box`) is the integration contract — lock it with the co-man before writing code.
+1. **SKU rules break on multi-item orders — THE big one.** ShipStation's Item-SKU automation criteria silently ignore any order with more than one product. A sample manifest is almost always multi-item. **Fix:** never rule on raw SKU. Tag the *product records* in ShipStation (raw SKUs → `cold-chain`), then write automation rules against the **order tag**. Order-tag criteria work on multi-item orders. This tag vocabulary (`cold-chain`, `custom-box`) is the integration contract — lock it with the co-man before writing code. *(As built: speed never became a tag — it rides the native `ShippingMethod` element. See ADR-028.)*
 
-2. **Derived fields don't map 1:1 to ShipStation's schema.** Temp state, box spec, collateral have no native order fields. Split them: *product-inherent* attributes (cold chain) → ShipStation product tags + rules; *order-level* choices (rush, box) → order tags the app pushes at create time.
+2. **Derived fields don't map 1:1 to ShipStation's schema.** Temp state, box spec, collateral have no native order fields. Split them: *product-inherent* attributes (cold chain) → ShipStation product tags + rules; *order-level* choices (box, custom-request) → order tags/CustomFields the app pushes at create time.
 
 3. **Collateral & warming instructions ride the packing slip.** Confirmed against the API: push the collateral list (incl. warming instructions) into an order **Notes** field, then add a Field Replacement token (`[Notes to Buyer]`, etc.) to a custom packing-slip template. **Watch the 100-char limit** on Custom Fields 1–3 — a long list truncates silently; use a Notes field instead.
 

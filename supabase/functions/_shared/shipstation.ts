@@ -71,6 +71,28 @@ export function ssStatus(status: string | null | undefined): string {
   return status ?? 'submitted';
 }
 
+// shipping_speed tier → ShipStation serviceCode for <ShippingMethod>, resolved
+// 1:1 by the Custom Store service mapping (checklist §2). The salesperson picks a
+// *speed*; the carrier is app config, so the codes below are carrier-specific —
+// switching carriers means rewriting this map, not changing stored order data.
+//
+// MIRRORS SHIPPING_SPEEDS in src/utils/sampleCentral.js. Keep both, the
+// shipping_speed CHECK (migration 20260727120000), and checklist §2 in lockstep.
+export const SHIPPING_CARRIER = 'ups';
+export const SPEED_SERVICE_CODES: Record<string, string> = {
+  ground: 'ups_ground',
+  '2day': 'ups_2nd_day_air',
+  overnight: 'ups_next_day_air',
+};
+export const DEFAULT_SHIPPING_SPEED = 'ground';
+
+// An unknown/null tier falls back to ground rather than emitting an empty
+// <ShippingMethod>: the pull model surfaces no error, so a blank method would be
+// a silent mis-ship. The CHECK constraint makes this unreachable in practice.
+export function speedServiceCode(speed: string | null | undefined): string {
+  return SPEED_SERVICE_CODES[speed ?? ''] ?? SPEED_SERVICE_CODES[DEFAULT_SHIPPING_SPEED];
+}
+
 // box_spec intent → order tag. 'Custom / Branded' → custom-box, else dc-box.
 export function boxTag(boxSpec: string | null | undefined): string {
   if (!boxSpec) return '';
@@ -124,7 +146,7 @@ export function buildOrderXml(s: Shipment): string {
     `    <OrderDate>${fmtDate(s.created_at)}</OrderDate>\n` +
     `    <OrderStatus>${ssStatus(s.status)}</OrderStatus>\n` +
     `    <LastModified>${fmtDate(s.updated_at)}</LastModified>\n` +
-    `    <ShippingMethod>${xmlEscape(s.requested_service)}</ShippingMethod>\n` +
+    `    <ShippingMethod>${xmlEscape(speedServiceCode(s.shipping_speed))}</ShippingMethod>\n` +
     `    <OrderTotal>0.00</OrderTotal>\n` +   // required by ShipStation; samples are free
     `    <InternalNotes>${cdata(internalNotes(s))}</InternalNotes>\n` +
     `    <CustomField1>${xmlEscape(boxTag(s.box_spec))}</CustomField1>\n` +
@@ -193,7 +215,7 @@ export interface Shipment {
   shipment_no: string;
   status: string | null;
   account: string | null;
-  requested_service: string | null;
+  shipping_speed: string | null;   // 'ground' | '2day' | 'overnight'
   box_spec: string | null;
   temp: string | null;
   temp_override: string | null;

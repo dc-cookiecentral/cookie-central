@@ -76,7 +76,7 @@ The level-grouped column selection in the UI is a front-end concern over this vi
 - `address_id` (fk→addresses)
 - `temp` (text — the *effective* temp at submit time: derived from items unless overridden)
 - `temp_override` (nullable)
-- `required_by` (date), `rush` (bool)
+- `required_by` (date), `shipping_speed` (text: ground | 2day | overnight, default `ground`)  ← *as-built; the original `rush` bool was retired, see ADR-028*
 - `box_spec` (text: Dirty Cookie | Custom/Branded)  ← *intent* only; ShipStation resolves the physical box
 - `collateral` (text[] — includes "Warming instructions")
 - `notes` (text)

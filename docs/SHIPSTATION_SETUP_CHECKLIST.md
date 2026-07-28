@@ -6,8 +6,8 @@ against the **sandbox store first**, verify an end-to-end sample order, then
 repeat on production (go-live). Pairs with `docs/SHIPSTATION_INTEGRATION.md`.
 
 > Convention: items marked **🚦 LAUNCH-BLOCKING** must exist before the first
-> real order — the rush / cold-chain / box behaviours don't happen without them,
-> and the pull model surfaces no error if they're missing.
+> real order — the shipping-speed mapping and the cold-chain / box behaviours
+> don't happen without them, and the pull model surfaces no error if they're missing.
 
 ## 0. Store + credentials
 - [x] ShipStation **account** `support@dirtycookie.com` — already created (Dirty Cookie's single account; the co-man is a user in it).
@@ -24,22 +24,20 @@ Set the status fields so our statuses route correctly:
 - [ ] Awaiting Payment / Cancelled / On Hold — leave defaults; the app never emits those.
 
 ## 2. Shipping-service mapping 🚦 LAUNCH-BLOCKING
-Our export sends `ShippingMethod` = a real ShipStation **`serviceCode`** the salesperson picked from the app's curated dropdown. Map each **1:1** to the matching ShipStation service (source: `docs/Shipstation Shipping Doc/API Service Codes- CarrierCode_08-22.xlsx`, US domestic):
-- [ ] `ups_ground` → UPS Ground *(app default)*
-- [ ] `ups_next_day_air` → UPS Next Day Air
-- [ ] `fedex_ground` → FedEx Ground
-- [ ] `fedex_priority_overnight` → FedEx Priority Overnight
-- [ ] `usps_priority_mail` → USPS Priority Mail
-- [ ] `usps_priority_mail_express` → USPS Priority Mail Express
-- [ ] (These are real serviceCodes, so the mapping is 1:1 — no free-text reverse-mapping. Add a row here whenever the dropdown gains a service.)
+The app's checkout offers a **3-tier speed selector** (Ground / 2-Day / Overnight). The export resolves the tier to a real UPS **`serviceCode`** and sends it in `<ShippingMethod>`. Map each **1:1** to the matching ShipStation service (source: `docs/Shipstation Shipping Doc/Shipping Services - 07-23.xlsx`, US domestic):
+- [ ] **Confirm the connected carrier is UPS** (`carrierCode = ups`). The three codes below are UPS-specific — if the account ships on a different carrier, stop and update `SHIPPING_SPEEDS` in `src/utils/sampleCentral.js` + `supabase/functions/_shared/shipstation.ts` first.
+- [ ] `ups_ground` → UPS Ground *(app default — tier `ground`)*
+- [ ] `ups_2nd_day_air` → UPS 2nd Day Air® *(tier `2day`)*
+- [ ] `ups_next_day_air` → UPS Next Day Air® *(tier `overnight`)*
+- [ ] (These are real serviceCodes, so the mapping is 1:1 — no free-text reverse-mapping. Speed uses the dedicated `ShippingMethod` element, so **no CustomField and no automation rule is involved**. Add a row here if the app ever gains a tier.)
 
 ## 3. Automation rules 🚦 LAUNCH-BLOCKING
 Rule on **order tags / CustomFields / requested method — never on Item SKU** (SKU rules silently ignore multi-item orders):
-- [ ] `if order includes the cold-chain product tag` → refrigerated service + insulated box **+ upgrade to a next-day service** (this is how frozen products get expedited — the app never sends rush).
+- [ ] `if order includes the cold-chain product tag` → refrigerated service + insulated box **+ upgrade to a next-day service** (this is how frozen products get expedited, overriding the requested tier — the app itself never expedites).
 - [ ] `if CustomField1 = custom-box` → branded mailer package.
 - [ ] `if CustomField1 = dc-box` → standard package.
 - [ ] `if CustomField2 = custom-request` → route to **manual review** (no auto-fulfil).
-- [ ] (No rush rule needed — the salesperson's chosen service maps 1:1 (§2), so speed *is* the requested service. Only the cold-chain automation overrides it.)
+- [ ] (**No speed rule needed** — the chosen tier maps 1:1 to a serviceCode in §2, so speed *is* the requested service. Only the cold-chain automation overrides it.)
 
 ## 4. Product tags — cold-chain (co-man owns this) 🚦 LAUNCH-BLOCKING for raw samples
 - [ ] Create the product tag **`cold-chain`**.
@@ -62,7 +60,7 @@ Copy the sample-mgmt inbox on **all orders, shipments, deliveries** — two plac
 
 ## 8. Verify (sandbox) — mapping test, no label needed
 - [ ] Trigger a **manual store import** in ShipStation.
-- [ ] Confirm a sample order lands in the dashboard with fields mapped: ship-to, items (SKU=product_code), ShippingMethod, CustomField1 (box), CustomField2 (custom-request when present), InternalNotes (collateral/warming/custom specs).
+- [ ] Confirm a sample order lands in the dashboard with fields mapped: ship-to, items (SKU=product_code), ShippingMethod (**resolves to the picked tier's UPS service — test all three**), CustomField1 (box), CustomField2 (custom-request when present), InternalNotes (collateral/warming/custom specs).
 - [ ] Confirm an invalid address (bad State/zip) does **not** silently vanish — the export skips+logs it (check the function logs).
 - [ ] (Optional) Test a full ship: mark shipped in ShipStation → confirm `shipnotify` updates `sample_shipments` (tracking #, status → shipped).
 

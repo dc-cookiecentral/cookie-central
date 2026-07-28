@@ -55,7 +55,7 @@ Branch: `feat/sample-central` (off updated `main` after Phase 1 merges).
 Sample Central catalog reading `products WHERE sample_eligible = true`, grouped Prep→Tier→Size, UOM "1 cookie · EA", full descriptions.
 
 ### Task 2.4 — Shipment builder
-Salesperson + account first; address book w/ inline add; derived-temp badge + deprioritized override; required-by + rush; box_spec (intent); collateral checklist incl. Warming instructions; custom request lines with project #.
+Salesperson + account first; address book w/ inline add; derived-temp badge + deprioritized override; required-by + shipping speed; box_spec (intent); collateral checklist incl. Warming instructions; custom request lines with project #.
 
 ### Task 2.5 — Mission control
 Pending shipments list, stat tiles, salesperson filter, status pipeline, custom-item badges + project #.
@@ -74,13 +74,17 @@ App switcher between Spec Sheet and Sample Central. Role-aware per existing auth
 Branch: `feat/shipstation`. **Custom Store pattern** — NOT the V1 order-push (superseded, ADR-027) and NOT the V2 Sales Orders API (beta, not sandbox-testable).
 
 ### Task 3.1 — Custom Store contract + ADR ✅ (done in planning)
-ADR-028 records the Custom Store decision (GET export + POST shipnotify, Basic Auth, XML schema, field mapping, status/service mapping, known limitations). Retains ADR-027's tag vocabulary re-expressed: cold-chain = product tag on Raw SKUs (+ a ShipStation automation → next-day reco); **requested_service** = a curated ShipStation `serviceCode` dropdown → `ShippingMethod` (mapped 1:1; `rush` **retired**); box = CustomField1; custom-request = CustomField2. Caroline coordinates the sandbox store + co-man tag/rule ratification.
+ADR-028 records the Custom Store decision (GET export + POST shipnotify, Basic Auth, XML schema, field mapping, status/service mapping, known limitations). Retains ADR-027's tag vocabulary re-expressed: cold-chain = product tag on Raw SKUs (+ a ShipStation automation → next-day reco); **shipping_speed** = a 3-tier selector (Ground/2-Day/Overnight) → UPS `serviceCode` in `ShippingMethod` (mapped 1:1; `rush` **retired**, and the interim `requested_service` friendly-label dropdown superseded — see the ADR-028 amendment); box = CustomField1; custom-request = CustomField2; CustomField3 free. Caroline coordinates the sandbox store + co-man tag/rule ratification.
 
 ### Task 3.2 — Writeback + service migration
 `*_sample_shipment_tracking.sql`: add nullable `tracking_number`, `carrier`, `service`, `shipped_at` to `sample_shipments` (the shipnotify landing columns); add `requested_service text NOT NULL DEFAULT 'ups_ground'` and **drop** the retired `rush` column. Forward-only, manual apply.
 
-### Task 3.2b — Sample builder: requested-service dropdown
-`SampleCentral.jsx`: replace the **Rush checkbox** (builder) + **Rush badge** (mission control) with a curated **shipping-service dropdown** — UPS Ground (default) · UPS Next Day Air · FedEx Ground · FedEx Priority Overnight · USPS Priority Mail · USPS Priority Mail Express; display name shown, `serviceCode` stored in `requested_service`. Update initial/reset state + insert payload (drop `rush`). Salesperson picks per order; default `ups_ground`.
+### Task 3.2b — Sample builder: shipping-speed selector
+`SampleCentral.jsx`: replace the **Rush checkbox** (builder) + **Rush badge** (mission control) with a **3-tier shipping-speed dropdown** — Ground (default) · 2-Day · Overnight; the tier is stored in `shipping_speed` and mission control shows the tier (expedited tiers highlighted). Update initial/reset state + insert payload. Salesperson picks a *speed*, never a carrier — carrier lives in app config (`SHIPPING_CARRIER` / `SHIPPING_SPEEDS` in `src/utils/sampleCentral.js`).
+*(Superseded step: the interim six-service friendly-label dropdown storing `requested_service` — dropped by migration `20260727120000`.)*
+
+### Task 3.2c — Shipping-speed migration
+`*_sample_shipment_shipping_speed.sql`: add `shipping_speed text NOT NULL DEFAULT 'ground'` with a CHECK on `ground|2day|overnight`; backfill from `requested_service`; **drop** `requested_service`. Forward-only, manual apply.
 
 ### Task 3.3 — `shipstation-customstore` Edge Function
 One module, two actions by `action` query param. `action=export` (GET): query `sample_shipments` + items + address for the `start_date`/`end_date` window, emit Custom Store **Orders XML** per the mapping (paging via `page`/`pages`; CDATA free-text; validate State 2-char + PostalCode or skip+log). `action=shipnotify` (POST): parse `ShipNotice`, update the matching `sample_shipments` (tracking/carrier/service/shipped_at, status→shipped); unmatched OrderNumber → log, don't drop. Basic Auth via Vault (`SHIPSTATION_CUSTOMSTORE_USER`/`_PASS`, `get_secret`); reject non-match 401. Mirror `gmail-*` conventions (Deno, injected client).
@@ -89,7 +93,7 @@ One module, two actions by `action` query param. `action=export` (GET): query `s
 `docs/SHIPSTATION_SETUP_CHECKLIST.md`: connect Custom Store (endpoint URL + Basic Auth → Vault), status mapping, **launch-blocking** shipping-service mapping (serviceCode 1:1) + automation rules (incl. cold-chain → next-day), cold-chain product tags (co-man), box packages, packing-slip token, email BCC, sandbox mapping test (manual import, no label needed).
 
 ### Task 3.5 — Verify, then flip to production. ADR + PR. ✅ (as-built ADR-029)
-Verified end-to-end against the live account: a test order imported into ShipStation's **Awaiting Shipment** queue with fields mapped, and a `shipnotify` POST wrote tracking back + advanced `status → shipped`. As-built recorded in **ADR-029** (incl. the XSD corrections: `<Country>US</Country>` + `<OrderTotal>` are required, status exported verbatim, PostgREST `table!fk` embeds). **Remaining (Caroline):** launch-blocking §2–§4 config (serviceCode 1:1 mapping, automation rules, cold-chain tags) + deploy this branch's frontend (migration already dropped `rush`). Note: `delivered` not wired (pipeline ends at shipped).
+Verified end-to-end against the live account: a test order imported into ShipStation's **Awaiting Shipment** queue with fields mapped, and a `shipnotify` POST wrote tracking back + advanced `status → shipped`. As-built recorded in **ADR-029** (incl. the XSD corrections: `<Country>US</Country>` + `<OrderTotal>` are required, status exported verbatim, PostgREST `table!fk` embeds). **Remaining (Caroline):** launch-blocking §2–§4 config (serviceCode 1:1 mapping — now the three UPS codes; confirm `carrierCode = ups` against the connected carrier; automation rules; cold-chain tags) + deploy this branch's frontend (the migrations dropped `rush`, then `requested_service`). Note: `delivered` not wired (pipeline ends at shipped).
 
 ---
 

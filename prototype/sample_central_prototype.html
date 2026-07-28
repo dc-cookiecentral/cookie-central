@@ -4,7 +4,7 @@
 :root{
 --aubergine:#2D2235;--aubergine-lt:#3E3049;--pink:#C2185B;--pink-lt:#E91E7B;
 --cream:#FAF7F3;--paper:#FFFFFF;--ink:#2B2530;--muted:#8A8194;--line:#EAE4EE;
---mint:#2E9E7B;--amber:#C9820E;--sky:#2E7DB5;--rush:#D33A2C;
+--mint:#2E9E7B;--amber:#C9820E;--sky:#2E7DB5;--exp:#D33A2C;
 --radius:12px;--shadow:0 1px 3px rgba(45,34,53,.08),0 8px 24px rgba(45,34,53,.04);
 }
 *{box-sizing:border-box}
@@ -101,7 +101,7 @@ textarea{resize:vertical;min-height:60px}
 .toggle-opt .ic{font-size:18px;display:block;margin-bottom:3px}
 .toggle-opt.on{border-color:var(--pink);background:#FDF0F6;color:var(--pink)}
 .toggle-opt.on.cold{border-color:var(--sky);background:#EDF5FB;color:var(--sky)}
-.toggle-opt.on.rush{border-color:var(--rush);background:#FCEEEC;color:var(--rush)}
+.toggle-opt.on.exp{border-color:var(--exp);background:#FCEEEC;color:var(--exp)}
 .hint{font-size:11px;color:var(--muted);margin-top:4px}
 /* ===== CART DRAWER ===== */
 .drawer-bg{position:fixed;inset:0;background:rgba(45,34,53,.4);z-index:90;display:none}
@@ -132,8 +132,8 @@ textarea{resize:vertical;min-height:60px}
 .badges{display:flex;gap:6px;flex-wrap:wrap}
 .badge2{font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:11px;text-transform:uppercase;letter-spacing:.3px;display:inline-flex;align-items:center;gap:3px}
 .b-cold{background:#EDF5FB;color:var(--sky)}.b-ambient{background:#F3ECDD;color:var(--amber)}
-.b-air{background:#FCEEEC;color:var(--rush)}.b-ground{background:#EEF3EC;color:var(--mint)}
-.b-rush{background:var(--rush);color:#fff}
+.b-air{background:#FCEEEC;color:var(--exp)}.b-ground{background:#EEF3EC;color:var(--mint)}
+.b-exp{background:var(--exp);color:#fff}
 .status-pill{font-size:11px;font-weight:800;padding:4px 12px;border-radius:20px}
 .st-draft{background:#EEE9F2;color:#6B5B7E}
 .st-submitted{background:#FDF0F6;color:var(--pink)}
@@ -293,7 +293,11 @@ let view='shop';
 let shopFilter='All';
 // shipment being built
 let ship=blankShip();
-function blankShip(){return {addrId:null,salesperson:'',account:'',tempOverride:'',reqDate:'',rush:false,box:'Dirty Cookie',collateral:[],notes:''};}
+function blankShip(){return {addrId:null,salesperson:'',account:'',tempOverride:'',reqDate:'',speed:'ground',box:'Dirty Cookie',collateral:[],notes:''};}
+// Shipping speed is a 3-tier choice; the carrier is app config, not a per-order pick.
+// Each tier maps 1:1 to a real ShipStation serviceCode in the Custom Store export.
+const SPEEDS=[{value:'ground',label:'Ground',service:'ups_ground'},{value:'2day',label:'2-Day',service:'ups_2nd_day_air'},{value:'overnight',label:'Overnight',service:'ups_next_day_air'}];
+const speedLabel=v=>(SPEEDS.find(s=>s.value===v)||{}).label||v||'—';
 // Ship temp is derived from the products: any raw (frozen) item => Cold chain, else Ambient.
 function derivedTemp(){
  const anyRaw=cart.some(it=>{const c=CATALOG.find(x=>x.code===it.code);return c&&(c.prep||'').toLowerCase()==='raw';});
@@ -316,9 +320,9 @@ let TEMPLATES=[
  {id:'T3',name:'Buyer Dozen — mixed',desc:'12 assorted best-sellers',items:[{code:'CCH-3OZ-BAK-C',qty:4},{code:'CC-2OZ-BAK-G',qty:4},{code:'PBJ-3OZ-BAK-C',qty:4}]},
 ];
 let shipments=[
- {id:'SMP-1042',status:'processing',addr:addresses[0],salesperson:'Jamie Rivera',account:'Whole Foods Market',temp:'Ambient',method:'Ground',reqDate:'2026-07-08',rush:false,box:'Dirty Cookie',collateral:['Line sheet'],items:[{code:'CCH-3OZ-BAK-C',desc:'Classic Chocolate Chip / Choc. Hazelnut — 3oz, Baked',qty:6},{code:'PBJ-3OZ-BAK-C',desc:'Classic Peanut Butter & Jelly — 3oz, Baked',qty:6}],notes:'First meeting, keep it classic.'},
- {id:'SMP-1043',status:'submitted',addr:addresses[1],salesperson:'Alex Morgan',account:'Kroger Co.',temp:'Cold',method:'Next-Day Air',reqDate:'2026-07-03',rush:true,box:'Custom / Branded',collateral:['Line sheet','Brand story card'],items:[{code:'CC-2OZ-BAK-G',desc:'Gourmet Chocolate Chip — 2oz, Baked',qty:12}],notes:'Rush — buyer meeting Thursday.'},
- {id:'SMP-1041',status:'shipped',addr:addresses[2],salesperson:'Priya Patel',account:'Sprouts Farmers Market',temp:'Ambient',method:'Ground',reqDate:'2026-07-01',rush:false,box:'Dirty Cookie',collateral:[],items:[{code:'RV-2OZ-BAK-G',desc:'Gourmet Red Velvet — 2oz, Baked',qty:4},{code:'CH-2OZ-BAK-G',desc:'Gourmet Churro — 2oz, Baked',qty:4}],notes:''},
+ {id:'SMP-1042',status:'processing',addr:addresses[0],salesperson:'Jamie Rivera',account:'Whole Foods Market',temp:'Ambient',speed:'ground',reqDate:'2026-07-08',box:'Dirty Cookie',collateral:['Line sheet'],items:[{code:'CCH-3OZ-BAK-C',desc:'Classic Chocolate Chip / Choc. Hazelnut — 3oz, Baked',qty:6},{code:'PBJ-3OZ-BAK-C',desc:'Classic Peanut Butter & Jelly — 3oz, Baked',qty:6}],notes:'First meeting, keep it classic.'},
+ {id:'SMP-1043',status:'submitted',addr:addresses[1],salesperson:'Alex Morgan',account:'Kroger Co.',temp:'Cold',speed:'overnight',reqDate:'2026-07-03',box:'Custom / Branded',collateral:['Line sheet','Brand story card'],items:[{code:'CC-2OZ-BAK-G',desc:'Gourmet Chocolate Chip — 2oz, Baked',qty:12}],notes:'Overnight — buyer meeting Thursday.'},
+ {id:'SMP-1041',status:'shipped',addr:addresses[2],salesperson:'Priya Patel',account:'Sprouts Farmers Market',temp:'Ambient',speed:'ground',reqDate:'2026-07-01',box:'Dirty Cookie',collateral:[],items:[{code:'RV-2OZ-BAK-G',desc:'Gourmet Red Velvet — 2oz, Baked',qty:4},{code:'CH-2OZ-BAK-G',desc:'Gourmet Churro — 2oz, Baked',qty:4}],notes:''},
 ];
 let shipSeq=1044;
 
@@ -500,9 +504,9 @@ function shipForm(){
    h+='</div></div>';
  }
  h+='</div>';
- // Required date + rush
+ // Required date + shipping speed
  h+='<div class="fld row"><div><label>Required delivery date</label><input type="date" value="'+esc(ship.reqDate)+'" onchange="ship.reqDate=this.value"></div>';
- h+='<div><label>Priority</label><div class="toggle-opt rush'+(ship.rush?' on':'')+'" onclick="ship.rush=!ship.rush;renderCart()" style="height:38px;display:flex;align-items:center;justify-content:center;gap:6px">'+(ship.rush?'🔥 Rush order':'Mark as rush')+'</div></div></div>';
+ h+='<div><label>Shipping speed</label><select onchange="ship.speed=this.value;renderCart()">'+SPEEDS.map(s=>'<option value="'+s.value+'"'+(ship.speed===s.value?' selected':'')+'>'+esc(s.label)+'</option>').join('')+'</select><div class="hint">Carrier is set in ShipStation, not here.</div></div></div>';
  // Box
  h+='<div class="fld"><label>Box specification</label><div class="toggle-group">'+BOXES.map(b=>'<div class="toggle-opt'+(ship.box===b?' on':'')+'" onclick="ship.box=\''+b+'\';renderCart()">'+esc(b)+'</div>').join('')+'</div></div>';
  // Collateral
@@ -524,7 +528,7 @@ function submitShipment(){
  if(blankCustom){alert('Describe the customization for each custom request (or remove empty ones).');return;}
  const items=cart.map(c=>({code:c.code,desc:c.desc,qty:c.qty}));
  const customs=customItems.map(ci=>({custom:true,desc:ci.spec,qty:ci.qty,projectNo:ci.projectNo||''}));
- shipments.unshift({id:'SMP-'+(shipSeq++),status:'submitted',addr,salesperson:ship.salesperson,account:ship.account||'',temp:effectiveTemp(),tempOverride:ship.tempOverride||'',reqDate:ship.reqDate,rush:ship.rush,box:ship.box,collateral:ship.collateral.slice(),items:items.concat(customs),notes:ship.notes});
+ shipments.unshift({id:'SMP-'+(shipSeq++),status:'submitted',addr,salesperson:ship.salesperson,account:ship.account||'',temp:effectiveTemp(),tempOverride:ship.tempOverride||'',reqDate:ship.reqDate,speed:ship.speed,box:ship.box,collateral:ship.collateral.slice(),items:items.concat(customs),notes:ship.notes});
  cart=[];customItems=[];ship=blankShip();closeCart();go('mission');
 }
 
@@ -557,7 +561,7 @@ function ssPanel(){
   h+='<li><b>Custom Store connection</b> — ShipStation treats this app as an order source, so orders group under one store and inherit its automation rules.</li>';
   h+='<li><b>Status back via webhooks</b> — <span class="mono">ORDER_NOTIFY</span> and <span class="mono">SHIP_NOTIFY</span> push events so the pending page reflects real fulfillment state without polling.</li>';
   h+='<li><b>Confirmation emails</b> — ShipStation\'s ShipNotify emails the salesperson with tracking when the label is created.</li>';
-  h+='<li><b>Tags</b> — flags like <span class="mono">RUSH</span> or <span class="mono">Refrigerated</span> can be pushed as ShipStation tags to drive the co-man\'s automation rules.</li>';
+  h+='<li><b>Tags</b> — flags like <span class="mono">Refrigerated</span> or <span class="mono">custom-box</span> can be pushed as ShipStation tags to drive the co-man\'s automation rules. (Speed is <i>not</i> a tag — it rides the dedicated <span class="mono">ShippingMethod</span> element.)</li>';
   h+='</ul></div>';
   h+='<div class="ss-col"><div class="ss-ct warn">⚠ Challenges &amp; pitfalls to plan for</div><ul>';
   h+='<li><b>Field mapping is the real work.</b> Our model (salesperson, account, temp state, box spec, collateral, required-by date) doesn\'t map 1:1 to ShipStation\'s order schema. Only some fields have native homes; the rest must ride in <span class="mono">customField1-3</span>, <span class="mono">internalNotes</span>, tags, or advanced options — and the co-man must know where to look.</li>';
@@ -582,7 +586,7 @@ function ssPanel(){
   h+='<li><b>Write rules against the order tag</b>, not the SKU: <span class="mono">if order includes cold-chain → set refrigerated service</span>. Order-tag criteria work on multi-item orders, so it fires reliably in a mixed manifest.</li>';
   h+='</ol>';
   h+='<div class="ss-split"><div class="ss-split-col"><div class="ss-split-h">Product-inherent → tag in ShipStation, rules handle it</div><ul><li><b>Prep / cold chain</b> — tag raw SKUs <span class="mono">cold-chain</span>; don\'t push it as a field. It\'s already known in Cookie Central (Raw → Frozen), so you\'re just mirroring it.</li><li>Any per-product packaging or handling need.</li></ul></div>';
-  h+='<div class="ss-split-col"><div class="ss-split-h">Order-level choice → this app pushes as an order tag</div><ul><li><b>Rush</b> → push <span class="mono">rush</span> tag; rule sets Next-Day service + alert.</li><li><b>Box spec</b> → push <span class="mono">custom-box</span> / <span class="mono">dc-box</span> tag; rule sets package + packing slip.</li><li><b>Required-by date</b> → drives service selection.</li></ul></div></div>';
+  h+='<div class="ss-split-col"><div class="ss-split-h">Order-level choice → this app pushes as an order tag</div><ul><li><b>Shipping speed</b> → <i>not</i> a tag: the picked tier maps 1:1 to a UPS <span class="mono">serviceCode</span> sent in <span class="mono">ShippingMethod</span>.</li><li><b>Box spec</b> → push <span class="mono">custom-box</span> / <span class="mono">dc-box</span> tag; rule sets package + packing slip.</li><li><b>Required-by date</b> → drives service selection.</li></ul></div></div>';
   h+='<div class="ss-note"><b>Timing gotcha:</b> rules run when an order <b>imports</b> (enters Awaiting Shipment) — once. Edits to an order already in Awaiting Shipment <b>won\'t</b> re-trigger rules. If a leader changes a shipment after pushing, plan a deliberate re-process or re-push.</div>';
   h+='</div>';
     h+='<div class="ss-config"><div class="ss-config-t">📋 ShipStation configuration — set these up once (not built into this app)</div>';
@@ -592,7 +596,7 @@ function ssPanel(){
   h+='<div class="ss-warn-box" style="margin-top:8px"><b>⚠ Two nuances to know:</b> (1) It\'s a <b>BCC</b>, and it covers shipment + delivery emails <b>together</b> — you can\'t BCC only one. (2) That field covers shipment/delivery, but the outbound <b>order confirmation</b> to the salesperson is the recipient field. To also copy the sample-management inbox on order creation, add it to the order\'s recipient emails (comma-separated) at push time, or wire a dedicated notification. Decide whether "all orders, shipments, and deliveries" means adding it in <b>both</b> places.</div>';
   h+='</div>';
   h+='</div>';
-    h+='<p class="ss-foot"><b>PM recommendation:</b> build against a <b>duplicate/sandbox store</b> first (ShipStation\'s own advice), lock the <b>field-mapping contract</b> and SKU list with the co-man before writing code, encode handling as <b>ShipStation product tags + order tags feeding automation rules</b> (never raw-SKU rules, which break on multi-item orders), drive status via <b>webhooks</b> (not polling), and keep keys server-side. Lock the <b>tag vocabulary</b> (<span class="mono">cold-chain</span>, <span class="mono">rush</span>, <span class="mono">custom-box</span>…) and the SKU-to-tag map with the co-man before writing code — that mapping <i>is</i> the integration contract. Treat collateral as an explicit decision (packing-slip note field + template token). And capture the two <b>ShipStation-side configs</b> above as setup steps: box mapping via packages + rules, and the BCC of <span class="mono">samplesmngmt@cortinafoods.com</span> on notifications.</p>';
+    h+='<p class="ss-foot"><b>PM recommendation:</b> build against a <b>duplicate/sandbox store</b> first (ShipStation\'s own advice), lock the <b>field-mapping contract</b> and SKU list with the co-man before writing code, encode handling as <b>ShipStation product tags + order tags feeding automation rules</b> (never raw-SKU rules, which break on multi-item orders), drive status via <b>webhooks</b> (not polling), and keep keys server-side. Lock the <b>tag vocabulary</b> (<span class="mono">cold-chain</span>, <span class="mono">custom-box</span>…) and the SKU-to-tag map with the co-man before writing code — that mapping <i>is</i> the integration contract. Treat collateral as an explicit decision (packing-slip note field + template token). And capture the two <b>ShipStation-side configs</b> above as setup steps: box mapping via packages + rules, and the BCC of <span class="mono">samplesmngmt@cortinafoods.com</span> on notifications.</p>';
   h+='</div>';
  }
  h+='</div>';
@@ -611,7 +615,7 @@ function renderMission(){
  h+='<div class="stat"><div class="n" style="color:var(--pink)">'+byStatus('submitted')+'</div><div class="l">Submitted</div></div>';
  h+='<div class="stat"><div class="n" style="color:var(--amber)">'+byStatus('processing')+'</div><div class="l">Processing</div></div>';
  h+='<div class="stat"><div class="n" style="color:var(--mint)">'+byStatus('shipped')+'</div><div class="l">Shipped</div></div>';
- h+='<div class="stat"><div class="n" style="color:var(--rush)">'+shipments.filter(s=>s.rush).length+'</div><div class="l">🔥 Rush</div></div>';
+ h+='<div class="stat"><div class="n" style="color:var(--exp)">'+shipments.filter(s=>s.speed!=='ground').length+'</div><div class="l">⚡ Expedited</div></div>';
  h+='</div>';
  // filter by salesperson
  h+='<div class="shopbar"><button class="chipfilter'+(mcFilter==='All'?' on':'')+'" onclick="setMc(\'All\')">All salespeople</button>';
@@ -630,16 +634,15 @@ function shipmentCard(s){
  h+='<div><div class="sh-id">'+esc(s.id)+(s.account?' · <span style="font-weight:600;color:var(--muted)">'+esc(s.account)+'</span>':'')+'</div><div class="sh-to">'+esc(s.addr.nick)+'</div></div>';
  h+='<div class="badges">';
  h+='<span class="status-pill st-'+s.status+'">'+PIPE_LABEL[s.status]+'</span>';
- if(s.rush)h+='<span class="badge2 b-rush">🔥 Rush</span>';
  h+='<span class="badge2 '+(s.temp==='Cold'?'b-cold':'b-ambient')+'">'+(s.temp==='Cold'?'❄️ Cold':'🌡 Ambient')+'</span>';
- h+='<span class="badge2 '+(s.method==='Next-Day Air'?'b-air':'b-ground')+'">'+(s.method==='Next-Day Air'?'✈️ Next-Day':'🚚 Ground')+'</span>';
+ h+='<span class="badge2 '+(s.speed==='ground'?'b-ground':'b-air')+'">'+(s.speed==='ground'?'🚚 ':'✈️ ')+esc(speedLabel(s.speed))+'</span>';
  h+='</div>';
  h+='<span class="sh-sp">'+esc(s.salesperson)+'</span></div>';
  // detail
  h+='<div class="sh-detail" id="d-'+s.id+'">';
  h+='<div class="pipeline">'+PIPE.map((p,i)=>'<div class="step '+(i<stIdx?'done':i===stIdx?'current':'')+'"><span class="dot"></span>'+PIPE_LABEL[p]+'</div>').join('')+'</div>';
  h+='<div class="row2"><div class="kv"><div class="k">Ship to</div>'+esc(s.addr.name)+' · '+esc(s.addr.company)+'<br>'+esc(s.addr.street)+', '+esc(s.addr.city)+' '+esc(s.addr.state)+' '+esc(s.addr.zip)+'</div>';
- h+='<div class="kv"><div class="k">Required by</div>'+(s.reqDate?esc(s.reqDate):'—')+(s.rush?' <span class="badge2 b-rush">RUSH</span>':'')+'</div>';
+ h+='<div class="kv"><div class="k">Required by</div>'+(s.reqDate?esc(s.reqDate):'—')+(s.speed!=='ground'?' <span class="badge2 b-exp">'+esc(speedLabel(s.speed))+'</span>':'')+'</div>';
  h+='<div class="kv"><div class="k">Box</div>'+esc(s.box)+'</div>';
  h+='<div class="kv"><div class="k">Collateral</div>'+(s.collateral.length?s.collateral.map(c=>'<span class="tag">'+esc(c)+'</span>').join(' '):'—')+'</div></div>';
  h+='<div class="sh-items"><div class="k" style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;margin-bottom:5px">Samples</div>';

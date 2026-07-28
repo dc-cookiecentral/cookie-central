@@ -60,22 +60,30 @@ export const COLLATERAL_OPTIONS = [
 ];
 export const BOX_OPTIONS = ['Dirty Cookie', 'Custom / Branded'];
 
-// Requested shipping service (ADR-028). `code` is a real ShipStation serviceCode
-// stored in sample_shipments.requested_service and pushed as <ShippingMethod>,
-// resolved 1:1 by the Custom Store service mapping. Keep this list in lockstep
-// with the requested_service CHECK (migration 20260726120000) and
-// SHIPSTATION_SETUP_CHECKLIST.md §2. Default is UPS Ground; cold-chain orders are
-// auto-upgraded to next-day by a ShipStation automation, not here.
-export const SERVICE_OPTIONS = [
-  { code: 'ups_ground', label: 'UPS Ground' },
-  { code: 'ups_next_day_air', label: 'UPS Next Day Air' },
-  { code: 'fedex_ground', label: 'FedEx Ground' },
-  { code: 'fedex_priority_overnight', label: 'FedEx Priority Overnight' },
-  { code: 'usps_priority_mail', label: 'USPS Priority Mail' },
-  { code: 'usps_priority_mail_express', label: 'USPS Priority Mail Express' },
+// ── Shipping speed (ADR-028, 3-tier) ────────────────────────────────────────
+// The salesperson picks a *speed*, not a carrier: carrier choice is app config
+// (one connected ShipStation carrier), not a per-order decision. `value` is what
+// lands in sample_shipments.shipping_speed; `serviceCode` is the real ShipStation
+// serviceCode the export sends as <ShippingMethod>, resolved 1:1 by the Custom
+// Store service mapping.
+//
+// SHIPPING_CARRIER prefixes the serviceCodes below. Change it only alongside the
+// connected carrier in ShipStation — the codes are carrier-specific, so a swap
+// means rewriting SHIPPING_SPEEDS, not just this constant.
+//
+// Keep in lockstep with: the shipping_speed CHECK (migration 20260727120000),
+// the same map in supabase/functions/_shared/shipstation.ts, and
+// SHIPSTATION_SETUP_CHECKLIST.md §2.
+export const SHIPPING_CARRIER = 'ups';
+export const SHIPPING_SPEEDS = [
+  { value: 'ground', label: 'Ground', serviceCode: 'ups_ground' },
+  { value: '2day', label: '2-Day', serviceCode: 'ups_2nd_day_air' },
+  { value: 'overnight', label: 'Overnight', serviceCode: 'ups_next_day_air' },
 ];
-export const DEFAULT_SERVICE = 'ups_ground';
-export const serviceLabel = (code) =>
-  (SERVICE_OPTIONS.find((s) => s.code === code) || {}).label || code || '—';
-// Expedited services keep the old Rush visual cue in mission control.
-export const isExpeditedService = (code) => /next_day|overnight|express/.test(code || '');
+export const DEFAULT_SHIPPING_SPEED = 'ground';
+const speedByValue = new Map(SHIPPING_SPEEDS.map((s) => [s.value, s]));
+export const speedLabel = (value) => speedByValue.get(value)?.label || value || '—';
+export const speedServiceCode = (value) =>
+  (speedByValue.get(value) || speedByValue.get(DEFAULT_SHIPPING_SPEED)).serviceCode;
+// Expedited tiers get the visual cue in mission control.
+export const isExpeditedSpeed = (value) => value === '2day' || value === 'overnight';

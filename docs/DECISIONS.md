@@ -217,12 +217,12 @@ Secrets live in **Vault**; Edge Functions read/write them via two `SECURITY DEFI
 | Tag | Meaning | Set by | ShipStation rule it drives |
 |---|---|---|---|
 | `cold-chain` | needs refrigerated handling | **product tag** on Raw SKUs (co-man tags the product record once) | order includes cold-chain → refrigerated service + insulated box |
-| `rush` | expedite | **order tag** pushed by app when `sample_shipments.rush` | next-day service + priority alert |
+| ~~`rush`~~ | ~~expedite~~ | **Retired** — speed is no longer a tag. See ADR-028: the salesperson picks a 3-tier shipping speed, which the export sends as a UPS `serviceCode` in the dedicated `<ShippingMethod>` element. No tag, no automation rule. | — |
 | `custom-box` | branded packaging | **order tag** pushed by app when `box_spec = 'Custom / Branded'` | branded mailer package |
 | `dc-box` | standard box | **order tag** pushed by app when `box_spec = 'Dirty Cookie'` | standard package |
 | `custom-request` | contains a bespoke no-SKU item | **order tag** pushed by app when any line has `custom = true` | route to manual review (no auto-fulfill) |
 
-**Split rule:** product-inherent attributes (cold chain) = **ShipStation product tags** (co-man-owned); order-level choices (rush, box, custom) = **order tags the app pushes**.
+**Split rule:** product-inherent attributes (cold chain) = **ShipStation product tags** (co-man-owned); order-level choices (box, custom) = **order tags the app pushes**. Shipping **speed** is neither — it has a native XML element (`<ShippingMethod>`), so it never became a tag (ADR-028).
 
 **Two-step indirection (the critical pitfall):** ShipStation's *Item SKU* automation criteria silently ignore any multi-item order — and sample manifests are almost always multi-item. So we NEVER rule on raw SKU. Instead: (1) the co-man tags each Raw **product record** with `cold-chain` once; ShipStation auto-applies it to any order containing that product on import; (2) automation rules run against the **order tag** `cold-chain`.
 
@@ -232,7 +232,7 @@ Secrets live in **Vault**; Edge Functions read/write them via two `SECURITY DEFI
 
 **What Caroline coordinates before code:** (a) duplicate/sandbox ShipStation store; (b) ratify this vocabulary + SKU→tag map with the co-man and have them apply the `cold-chain` product tags; (c) load V1 API keys into Vault via `set_secret` (`SHIPSTATION_API_KEY`, `SHIPSTATION_API_SECRET` — V1/V2 keys are not interchangeable; order-create maturity is V1). Server-side only — never `VITE_*`.
 
-**Rationale:** The tag vocabulary is the contract surface between two systems; fixing it first (and in an ADR) prevents the classic multi-item-SKU-rule failure and keeps the app/ShipStation split clean. `sample_shipments` already carries `box_spec`, `rush`, `collateral`, and `shipstation_order_id`, so the push maps straight from existing columns.
+**Rationale:** The tag vocabulary is the contract surface between two systems; fixing it first (and in an ADR) prevents the classic multi-item-SKU-rule failure and keeps the app/ShipStation split clean. `sample_shipments` already carries `box_spec`, `collateral`, and `shipstation_order_id`, so the push maps straight from existing columns.
 
 ## ADR-028: ShipStation integration via Custom Store pattern (supersedes ADR-027 mechanism)
 **Date:** July 16, 2026
@@ -248,7 +248,7 @@ Secrets live in **Vault**; Edge Functions read/write them via two `SECURITY DEFI
 
 **Tag/collateral carry-over from ADR-027, re-expressed (confirmed field assignment):**
 - **cold-chain** — still the "any Raw line ⇒ whole order cold" rule, achieved via the **ShipStation product tag** on Raw SKUs (co-man applies it once; ShipStation auto-applies to any order containing that product on import — the ADR-027 two-step indirection). **The app does not push cold-chain.** A ShipStation **automation** keys on the cold-chain tag to apply refrigerated handling + insulated box **and bump the order to a next-day service recommendation** — so speed for cold orders is decided in ShipStation, never by the app. (`sample_shipments.temp` remains the app-side snapshot; it rides `InternalNotes` as informational only.)
-- **requested service (supersedes `rush`)** — the Sample Site presents a **curated dropdown of real ShipStation services** (display name shown, `serviceCode` stored in `sample_shipments.requested_service`; salesperson picks per order, default **UPS Ground**). The export sends that `serviceCode` as **`<ShippingMethod>`**, which the Custom Store's shipping-service mapping resolves **1:1** — no free-text, no reverse-mapping. The old `rush` boolean is **retired**: speed is now either the service the salesperson picks or the cold-chain automation above. Curated launch set: `ups_ground`, `ups_next_day_air`, `fedex_ground`, `fedex_priority_overnight`, `usps_priority_mail`, `usps_priority_mail_express` (source: `docs/Shipstation Shipping Doc/API Service Codes- CarrierCode_08-22.xlsx`, US domestic — this is the serviceCode source-of-truth).
+- **shipping speed (supersedes `rush`, and supersedes the friendly-label service dropdown)** — *amended July 27, 2026; see "Amendment: 3-tier shipping speed" below.* The Sample Site presents a **3-tier speed selector** — **Ground** (default) · **2-Day** · **Overnight** — stored as `sample_shipments.shipping_speed` (`ground` | `2day` | `overnight`). The export resolves the tier to a real UPS **`serviceCode`** and sends it as **`<ShippingMethod>`**, which the Custom Store's shipping-service mapping resolves **1:1** — no free-text, no reverse-mapping. The old `rush` boolean is **retired**: speed is now either the tier the salesperson picks or the cold-chain automation above.
 - **box** — **`CustomField1`** = `dc-box` | `custom-box` (from `box_spec`).
 - **custom-request** — **`CustomField2`** = `custom-request` when any line has `custom = true`. Kept on a **CustomField** (not notes-only) so it's **Orders-grid-visible and rule-matchable**; the bespoke item's `custom_spec` + `project_no` are additionally detailed in `InternalNotes`.
 - **`CustomField3`** — free/unused (reserved).
@@ -256,14 +256,33 @@ Secrets live in **Vault**; Edge Functions read/write them via two `SECURITY DEFI
 
 **Field mapping** is in `docs/SHIPSTATION_INTEGRATION.md` (reconciled against the real `sample_shipments` / `sample_shipment_items` / `addresses` columns — ADR-026 names). `Country` is exported as **`US`** — ShipStation's `ShipTo` schema **requires** it and rejects the whole batch if it's missing (samples are US-only). `UnitPrice` = `0.00` (samples unpriced). `OrderDate` = `created_at`.
 
-**Schema addition (one migration).** The `shipnotify` writeback needs landing columns that don't exist yet: `sample_shipments` gains nullable `tracking_number`, `carrier`, `service`, `shipped_at`. The requested-service dropdown adds `requested_service text` (a ShipStation `serviceCode`; default `ups_ground`), **replacing** the `rush` boolean (dropped — superseded by service selection + the cold-chain automation). Forward-only migration, manual apply. `shipstation_order_id` (added for the superseded V1 push) is **unused** under Custom Store — orders key on `OrderNumber` = `shipment_no`.
+**Schema addition (two migrations).** The `shipnotify` writeback needs landing columns that don't exist yet: `sample_shipments` gains nullable `tracking_number`, `carrier`, `service`, `shipped_at` (migration `20260726120000`, which also dropped the retired `rush` boolean). The speed selector adds `shipping_speed text NOT NULL DEFAULT 'ground'` with a CHECK on `ground|2day|overnight` (migration `20260727120000`, which drops the interim `requested_service` column — see the amendment below). Forward-only migrations, manual apply. `shipstation_order_id` (added for the superseded V1 push) is **unused** under Custom Store — orders key on `OrderNumber` = `shipment_no`.
+
+**Amendment (July 27, 2026): 3-tier shipping speed + direct UPS service-code mapping.**
+Supersedes the interim design in which the salesperson picked from a curated six-service dropdown of **friendly labels** across three carriers (`ups_ground`, `ups_next_day_air`, `fedex_ground`, `fedex_priority_overnight`, `usps_priority_mail`, `usps_priority_mail_express`) stored in `requested_service`.
+
+*Why it changed.* That dropdown made the salesperson choose a **carrier** as a side effect of choosing a **speed**. Carrier selection belongs to fulfilment and to app config (Dirty Cookie ships on one connected carrier), not to a per-order sales decision — and offering FedEx/USPS options that no connected carrier could actually buy was a silent-failure path. Speed is the only dimension the salesperson genuinely knows at order time, so speed is what we store.
+
+*The mapping.* `<ShippingMethod>` carries the UPS `serviceCode` **directly** — no friendly label, no reverse-mapping:
+
+| `shipping_speed` | UI label | `<ShippingMethod>` serviceCode |
+|---|---|---|
+| `ground` *(default)* | Ground | `ups_ground` |
+| `2day` | 2-Day | `ups_2nd_day_air` |
+| `overnight` | Overnight | `ups_next_day_air` |
+
+`carrierCode` = **`ups`** — *to confirm against the account's connected carrier before go-live* (checklist §2). All three codes verified against `docs/Shipstation Shipping Doc/Shipping Services - 07-23.xlsx` (the serviceCode source-of-truth, US domestic).
+
+*Carrier choice now lives in app config*, not in the schema and not in the UI: `SHIPPING_CARRIER` + the `SHIPPING_SPEEDS` map in `src/utils/sampleCentral.js`, mirrored in `supabase/functions/_shared/shipstation.ts`. Changing carrier means rewriting that map (the codes are carrier-specific), not editing per-order data.
+
+*No CustomField is consumed* — speed uses the dedicated `<ShippingMethod>` element. CustomField assignment is unchanged: **CF1** = box, **CF2** = custom-request, **CF3** free/reserved.
 
 **Status mapping.** The export emits the app's **own status verbatim** (samples are free — no "paid" token). ShipStation's Marketplace status mapping routes it: `submitted`/`processing` → **Awaiting Shipment** (the co-man's work queue), `shipped`/`delivered` → **Shipped**. So ShipStation "Awaiting Shipment Statuses" = `submitted, processing`; "Shipment Statuses" = `shipped, delivered`. ShipStation has no "delivered" bucket.
 
 **Known limitations (recorded deliberately):**
 1. **No import acknowledgment.** The Custom Store is a **pull** model — the app cannot confirm an order actually reached ShipStation. The only signal is ShipStation hitting our GET export; there is no per-order ack. (A future enhancement could reconcile via ShipStation's order list.)
 2. **`delivered` is not wired.** The pipeline effectively ends at **shipped** — ShipStation's shipnotify covers shipment, not delivery, and we do no carrier delivery-event polling yet.
-3. **Automation rules are launch-blocking.** The rush→handling and cold-chain→refrigerated behaviours depend on ShipStation **automation rules + the method-mapping** existing *before* the first real order. They're documented as launch-blocking in `SHIPSTATION_SETUP_CHECKLIST.md`.
+3. **Automation rules + the method-mapping are launch-blocking.** The box→package, custom-request→manual-review and cold-chain→refrigerated behaviours depend on ShipStation **automation rules** existing *before* the first real order, and speed depends on the three `serviceCode`s being mapped. They're documented as launch-blocking in `SHIPSTATION_SETUP_CHECKLIST.md`.
 4. **Silent import rejection.** ShipStation may silently reject an order with a malformed `State` (must be 2-char) or `PostalCode`; the pull model surfaces no error. The export **validates** these and skips+logs a bad row rather than poisoning the batch.
 5. **Unmatched shipnotify is logged, not dropped.** If a `shipnotify` `OrderNumber` doesn't match a `shipment_no`, the function logs it and returns 200-with-warning rather than silently discarding the tracking update.
 
@@ -273,7 +292,7 @@ Secrets live in **Vault**; Edge Functions read/write them via two `SECURITY DEFI
 **Date:** July 27, 2026
 **Status:** Built & **verified end-to-end** against the live ShipStation account (`support@dirtycookie.com`). Branch `feat/shipstation`. Realizes ADR-028.
 
-**What shipped.** (3.2) migration `20260726120000` — `sample_shipments` gains `tracking_number`/`carrier`/`service`/`shipped_at` + `requested_service` (CHECK on the 6 serviceCodes, default `ups_ground`), drops `rush`. (3.2b) `SampleCentral.jsx` — Rush checkbox/badge → curated service dropdown. (3.3) Edge Function `shipstation-customstore` — GET `action=export` (Orders XML) + POST `action=shipnotify` (tracking writeback), Basic-Auth against Vault, pure helpers in `_shared/shipstation.ts` (54 unit tests). (3.4) `SHIPSTATION_SETUP_CHECKLIST.md`.
+**What shipped.** (3.2) migration `20260726120000` — `sample_shipments` gains `tracking_number`/`carrier`/`service`/`shipped_at` + `requested_service` (CHECK on the 6 serviceCodes, default `ups_ground`), drops `rush`. (3.2b) `SampleCentral.jsx` — Rush checkbox/badge → curated service dropdown. *(Both since superseded by the 3-tier speed selector — migration `20260727120000` + the ADR-028 amendment; `requested_service` is backfilled into `shipping_speed`, then dropped.)* (3.3) Edge Function `shipstation-customstore` — GET `action=export` (Orders XML) + POST `action=shipnotify` (tracking writeback), Basic-Auth against Vault, pure helpers in `_shared/shipstation.ts` (54 unit tests). (3.4) `SHIPSTATION_SETUP_CHECKLIST.md`.
 
 **Verified.** A test order exported → imported into ShipStation's **Awaiting Shipment** queue with all fields mapped; a `shipnotify` POST wrote tracking back and advanced `status → shipped`. Both directions confirmed through ShipStation's real UI, not just curl.
 
@@ -287,4 +306,4 @@ Secrets live in **Vault**; Edge Functions read/write them via two `SECURITY DEFI
 
 **Operational as-built.** The function is deployed with **`verify_jwt = false`** (ShipStation authenticates with **Basic Auth**, not a Supabase JWT). The Custom Store URL is the **Edge Function URL** (`…supabase.co/functions/v1/shipstation-customstore`), not the app subdomain, and needs **no ShipStation V1/V2 API key** — the Basic-Auth user/pass are self-defined, stored in Vault (`SHIPSTATION_CUSTOMSTORE_USER`/`_PASS`) and entered identically in the Custom Store connection. `getSecret` retries on a transient **"JWT issued at future"** clock-skew that PostgREST occasionally throws validating the service-role token. Each export logs its requested window + match/export counts (the pull model surfaces nothing otherwise).
 
-**Carried forward.** (a) **Launch-blocking** ShipStation config remains Caroline's to set (`SHIPSTATION_SETUP_CHECKLIST.md` §2 serviceCode 1:1 mapping, §3 automation rules incl. cold-chain→next-day, §4 cold-chain product tags) — orders import without them, but the automations don't fire. (b) The **frontend deploy** to the subdomain must ship this branch's UI, since the migration already dropped `rush`. (c) `delivered` is not wired — the pipeline ends at **shipped** (no carrier delivery polling).
+**Carried forward.** (a) **Launch-blocking** ShipStation config remains Caroline's to set (`SHIPSTATION_SETUP_CHECKLIST.md` §2 serviceCode 1:1 mapping — now just the **three UPS codes**, §3 automation rules incl. cold-chain→next-day, §4 cold-chain product tags) — orders import without them, but the automations don't fire. (b) **Confirm `carrierCode = ups`** matches the account's connected carrier before go-live; the three service codes are UPS-specific. (c) The **frontend deploy** to the subdomain must ship this branch's UI, since the migrations dropped `rush` and then `requested_service`. (d) `delivered` is not wired — the pipeline ends at **shipped** (no carrier delivery polling).
