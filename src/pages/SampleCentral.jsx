@@ -2,11 +2,12 @@ import { useMemo, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import AppSwitcher from '../components/AppSwitcher';
 import {
-  useSampleCentral, addAddress, createShipment, updateShipmentStatus, saveTemplate, deleteTemplate,
+  useSampleCentral, addAddress, createShipment, saveTemplate, deleteTemplate,
 } from '../hooks/useSampleCentral';
 import {
   flavorFamily, derivedTemp, effectiveTemp, groupCatalog,
   SHIP_STATUSES, COLLATERAL_OPTIONS, RUSH_NOTICE,
+  TP_CARRIERS, TP_NOTICE, tpComplete,
   TEST_MODE, SHIPMENT_PREFIX,
 } from '../utils/sampleCentral';
 
@@ -23,6 +24,7 @@ const TABS = [
 const EMPTY_HEADER = {
   salesperson_user_id: '', account: '', address_id: '', temp_override: '',
   required_by: '', rush: false, collateral: [], notes: '',
+  third_party_billing: false, tp_carrier: '', tp_account: '', tp_postal_code: '',
 };
 
 const TempBadge = ({ temp, overridden }) => (
@@ -68,6 +70,7 @@ export default function SampleCentral() {
     if (!header.salesperson_user_id) return setToast({ err: 'Pick a salesperson first.' });
     if (!header.address_id) return setToast({ err: 'Pick a ship-to address.' });
     if (cartLines.length === 0 && customItems.length === 0) return setToast({ err: 'Add at least one cookie or custom line.' });
+    if (!tpComplete(header)) return setToast({ err: 'Third-party billing needs carrier, account number and postal code — the co-man cannot bill the account without all three.' });
     const items = [
       ...cartLines.map((l) => ({ product_code: l.code, custom: false, qty: l.qty, description: l.product?.description || l.code })),
       ...customItems.filter((c) => c.spec).map((c) => ({ product_code: null, custom: true, custom_spec: c.spec, project_no: c.project_no || null, qty: Number(c.qty) || 1, description: c.spec })),
@@ -76,6 +79,10 @@ export default function SampleCentral() {
       salesperson_user_id: header.salesperson_user_id, account: header.account || null, address_id: header.address_id,
       temp, temp_override: header.temp_override || null, required_by: header.required_by || null, rush: !!header.rush,
       collateral: header.collateral, notes: header.notes || null, status: 'submitted',
+      third_party_billing: !!header.third_party_billing,
+      tp_carrier: header.third_party_billing ? header.tp_carrier : null,
+      tp_account: header.third_party_billing ? header.tp_account.trim() : null,
+      tp_postal_code: header.third_party_billing ? header.tp_postal_code.trim() : null,
     };
     const { error: e, shipment } = await createShipment(h, items, data.shipments);
     if (e) return setToast({ err: e.message });
@@ -144,7 +151,7 @@ export default function SampleCentral() {
         {!loading && !error && (
           <>
             {tab === 'shop' && <CatalogView data={data} filter={filter} setFilter={setFilter} cart={cart} setQty={setQty} addToCart={addToCart} />}
-            {tab === 'mission' && <MissionView data={data} refresh={refresh} canWrite={canWrite} setToast={setToast} />}
+            {tab === 'mission' && <MissionView data={data} />}
             {tab === 'address' && <AddressView data={data} refresh={refresh} canWrite={canWrite} setToast={setToast} />}
           </>
         )}
@@ -324,6 +331,32 @@ function CartDrawer({
                 <span className="block text-[10.5px] text-gr">{RUSH_NOTICE}</span>
               </span>
             </label>
+            <label className={`flex items-start gap-2 mt-2 p-2 rounded-lg border cursor-pointer ${header.third_party_billing ? 'border-pk bg-pink-50' : 'border-lt bg-bg'}`}>
+              <input type="checkbox" checked={!!header.third_party_billing} onChange={(e) => set('third_party_billing', e.target.checked)} className="mt-0.5" />
+              <span>
+                <span className="block text-[12.5px] font-bold text-dk">Bill shipping to a third-party account</span>
+                <span className="block text-[10.5px] text-gr">Use the customer&rsquo;s carrier account instead of Dirty Cookie&rsquo;s.</span>
+              </span>
+            </label>
+            {header.third_party_billing && (
+              <div className="mt-1.5 p-2 rounded-lg border border-lt bg-bg space-y-1.5">
+                <Labeled label="Carrier *">
+                  <select value={header.tp_carrier} onChange={(e) => set('tp_carrier', e.target.value)} className="w-full px-2 py-1 rounded border border-lt text-[12.5px] bg-cd">
+                    <option value="">— select —</option>
+                    {TP_CARRIERS.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </Labeled>
+                <div className="grid grid-cols-2 gap-2">
+                  <Labeled label="Account number *">
+                    <input value={header.tp_account} onChange={(e) => set('tp_account', e.target.value)} placeholder="123456789" className="w-full px-2 py-1 rounded border border-lt text-[12.5px] font-mono" />
+                  </Labeled>
+                  <Labeled label="Account postal code *">
+                    <input value={header.tp_postal_code} onChange={(e) => set('tp_postal_code', e.target.value)} placeholder="90210" className="w-full px-2 py-1 rounded border border-lt text-[12.5px] font-mono" />
+                  </Labeled>
+                </div>
+                <div className="text-[10.5px] text-gr">{TP_NOTICE}</div>
+              </div>
+            )}
             <div className="text-[10.5px] text-gr mt-2">Shipping service and box are chosen in ShipStation. Cold-chain orders are auto-upgraded to next-day there.</div>
           </Section>
 
@@ -439,15 +472,15 @@ function InlineAddress({ onSaved, canWrite, setToast }) {
 }
 
 // ── Pending Shipments ───────────────────────────────────────────────────────
-function MissionView({ data, refresh, canWrite, setToast }) {
+// Status is READ-ONLY: it is owned by ShipStation. `submitted` is set at order
+// creation; the shipnotify POST advances it to `shipped` when the co-man buys a
+// label. Nothing in the app writes it, deliberately — an editable field here
+// would let the two systems disagree with no way to reconcile.
+function MissionView({ data }) {
   const [sp, setSp] = useState('All');
+  const [openId, setOpenId] = useState(null);
   const rows = data.shipments.filter((s) => sp === 'All' || s.salesperson?.id === sp);
   const stat = (st) => data.shipments.filter((s) => s.status === st).length;
-  const setStatus = async (id, status) => {
-    const { error } = await updateShipmentStatus(id, status);
-    if (error) setToast({ err: error.message });
-    else refresh();
-  };
   return (
     <div>
       <div className="grid grid-cols-4 gap-2 mb-4">
@@ -469,36 +502,114 @@ function MissionView({ data, refresh, canWrite, setToast }) {
         <div className="text-[13px] text-gr italic py-8 text-center">No shipments yet.</div>
       ) : (
         <div className="space-y-2">
-          {rows.map((s) => {
-            const items = s.sample_shipment_items || [];
-            const hasCustom = items.some((i) => i.custom);
-            return (
-              <div key={s.id} className="bg-cd border border-lt rounded-xl p-3">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-[12.5px] font-bold text-dk">{s.shipment_no}</span>
-                      <StatusPill s={s.status} />
-                      <TempBadge temp={s.temp} overridden={!!s.temp_override} />
-                      {s.rush && <span className="text-[10.5px] font-bold uppercase px-1.5 py-px rounded bg-red-600 text-white">Rush</span>}
-                      {hasCustom && <span className="text-[10.5px] font-semibold px-1.5 py-px rounded bg-pink-100 text-pk">Custom</span>}
-                    </div>
-                    <div className="text-[12.5px] text-dk mt-1">{s.account || '—'} · {s.salesperson?.full_name || 'Unknown'}</div>
-                    <div className="text-[11.5px] text-gr">
-                      {items.map((i) => `${i.qty}× ${i.description || i.product_code || i.custom_spec}${i.project_no ? ` (proj ${i.project_no})` : ''}`).join(' · ')}
-                    </div>
-                    {s.required_by && <div className="text-[10.5px] text-gr mt-0.5">Required by {s.required_by}</div>}
-                    {s.tracking_number && <div className="text-[10.5px] text-gr mt-0.5">Tracking <span className="font-mono">{s.tracking_number}</span>{s.carrier ? ` · ${s.carrier}` : ''}</div>}
-                  </div>
-                  <select value={s.status} onChange={(e) => setStatus(s.id, e.target.value)} disabled={!canWrite} className="px-2 py-1 rounded border border-lt text-[11.5px] bg-bg disabled:opacity-50">
-                    {SHIP_STATUSES.map((st) => <option key={st} value={st}>{st}</option>)}
-                  </select>
-                </div>
-              </div>
-            );
-          })}
+          {rows.map((s) => (
+            <ShipmentCard key={s.id} s={s} open={openId === s.id} onToggle={() => setOpenId(openId === s.id ? null : s.id)} />
+          ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// Collapsed summary + expandable detail, mirroring the prototype's shipment card.
+function ShipmentCard({ s, open, onToggle }) {
+  const items = s.sample_shipment_items || [];
+  const hasCustom = items.some((i) => i.custom);
+  const addr = s.address || {};
+  const stIdx = SHIP_STATUSES.indexOf(s.status);
+  return (
+    <div className="bg-cd border border-lt rounded-xl overflow-hidden">
+      <button onClick={onToggle} aria-expanded={open} className="w-full text-left p-3 hover:bg-pc">
+        <div className="flex justify-between items-start gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-mono text-[12.5px] font-bold text-dk">{s.shipment_no}</span>
+              <StatusPill s={s.status} />
+              <TempBadge temp={s.temp} overridden={!!s.temp_override} />
+              {s.rush && <span className="text-[10.5px] font-bold uppercase px-1.5 py-px rounded bg-red-600 text-white">Rush</span>}
+              {s.third_party_billing && <span className="text-[10.5px] font-semibold px-1.5 py-px rounded bg-violet-100 text-violet-700">3rd-party billing</span>}
+              {hasCustom && <span className="text-[10.5px] font-semibold px-1.5 py-px rounded bg-pink-100 text-pk">Custom</span>}
+            </div>
+            <div className="text-[12.5px] text-dk mt-1">{s.account || '—'} · {s.salesperson?.full_name || 'Unknown'}</div>
+            <div className="text-[11.5px] text-gr truncate">{items.length} line{items.length === 1 ? '' : 's'} · {items.reduce((n, i) => n + (i.qty || 0), 0)} cookies</div>
+          </div>
+          <span className="text-gr text-[13px] shrink-0">{open ? '▾' : '▸'}</span>
+        </div>
+      </button>
+
+      {open && (
+        <div className="border-t border-lt px-3 py-3">
+          <div className="flex items-center gap-1 mb-3">
+            {SHIP_STATUSES.map((p, i) => (
+              <div key={p} className="flex items-center gap-1">
+                <span className={`w-2 h-2 rounded-full ${i < stIdx ? 'bg-green-500' : i === stIdx ? 'bg-pk' : 'bg-lt'}`} />
+                <span className={`text-[10.5px] ${i === stIdx ? 'font-bold text-dk' : 'text-gr'}`}>{p}</span>
+                {i < SHIP_STATUSES.length - 1 && <span className="w-4 h-px bg-lt mx-1" />}
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <KV label="Ship to">
+              {addr.contact_name || '—'}{addr.company ? ` · ${addr.company}` : ''}<br />
+              {addr.street}, {addr.city}, {addr.state} {addr.zip}
+            </KV>
+            <KV label="Required by">{s.required_by || '—'}</KV>
+            <KV label="Collateral">
+              {(s.collateral || []).length ? (s.collateral || []).map((c) => (
+                <span key={c} className="inline-block text-[10.5px] font-semibold px-2 py-px rounded bg-bg border border-lt mr-1 mb-1">{c}</span>
+              )) : '—'}
+            </KV>
+            <KV label="Billing">
+              {s.third_party_billing
+                ? `${s.tp_carrier || '—'} · acct ${s.tp_account || '—'} · ${s.tp_postal_code || '—'}`
+                : 'Dirty Cookie account'}
+            </KV>
+            {s.tracking_number && (
+              <KV label="Tracking">
+                <span className="font-mono">{s.tracking_number}</span>{s.carrier ? ` · ${s.carrier}` : ''}{s.service ? ` · ${s.service}` : ''}
+              </KV>
+            )}
+            {s.shipped_at && <KV label="Shipped">{new Date(s.shipped_at).toLocaleString()}</KV>}
+          </div>
+
+          <div className="mt-3">
+            <div className="text-[10.5px] text-gr uppercase font-bold tracking-wider mb-1">Samples</div>
+            <div className="divide-y divide-bg border border-lt rounded-lg">
+              {items.map((i) => (
+                <div key={i.id || i.product_code || i.custom_spec} className="flex justify-between items-center px-2 py-1.5">
+                  <span className="text-[12.5px] text-dk">
+                    {i.custom && <span className="text-[10.5px] font-semibold px-1.5 py-px rounded bg-pink-100 text-pk mr-1">Custom</span>}
+                    {i.description || i.product_code || i.custom_spec}
+                    {i.project_no ? <span className="text-[10.5px] text-gr"> (proj {i.project_no})</span> : null}
+                  </span>
+                  <span className="text-[12.5px] font-bold text-dk">×{i.qty}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {s.notes && (
+            <div className="mt-3">
+              <div className="text-[10.5px] text-gr uppercase font-bold tracking-wider mb-1">Notes</div>
+              <div className="text-[12.5px] text-dk">{s.notes}</div>
+            </div>
+          )}
+
+          <div className="text-[10.5px] text-gr mt-3">
+            Status is set by ShipStation — <span className="font-semibold">submitted</span> on creation, <span className="font-semibold">shipped</span> when the co-man buys a label.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function KV({ label, children }) {
+  return (
+    <div>
+      <div className="text-[10.5px] text-gr uppercase font-bold tracking-wider mb-0.5">{label}</div>
+      <div className="text-[12.5px] text-dk">{children}</div>
     </div>
   );
 }

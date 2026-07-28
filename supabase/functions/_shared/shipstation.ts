@@ -79,6 +79,22 @@ export function rushFlag(rush: boolean | null | undefined): string {
   return rush ? 'rush' : '';
 }
 
+// Third-party billing rides InternalNotes ONLY — see internalNotes() below.
+// It deliberately does not consume a CustomField: the co-man reads the notes when
+// buying the label, and the 100-char CustomFields buy nothing extra for a value
+// no automation rule acts on. CustomField3 stays free.
+//
+// Returns '' unless all three details are present, since a partial set looks
+// configured but cannot actually be billed.
+export function thirdPartyBilling(s: Shipment): string {
+  if (!s.third_party_billing) return '';
+  const carrier = (s.tp_carrier ?? '').trim();
+  const account = (s.tp_account ?? '').trim();
+  const zip = (s.tp_postal_code ?? '').trim();
+  if (!carrier || !account || !zip) return '';
+  return `BILL THIRD PARTY: ${carrier} acct ${account} (zip ${zip})`;
+}
+
 // State must be 2 letters, zip 5 or 5-4; ShipStation silently rejects malformed
 // values, so the export validates and skips+logs a bad row instead.
 export const validState = (s: string | null | undefined) => !!s && /^[A-Za-z]{2}$/.test(s.trim());
@@ -91,6 +107,8 @@ export function internalNotes(s: Shipment): string {
   if (s.collateral?.length) parts.push(`Collateral: ${s.collateral.join(', ')}`);
   if (s.temp) parts.push(`Handling: ${s.temp}${s.temp_override ? ' (override)' : ''}`);
   if (s.required_by) parts.push(`Required by: ${s.required_by}`);
+  const tp = thirdPartyBilling(s);
+  if (tp) parts.push(tp);
   if (s.notes) parts.push(`Notes: ${s.notes}`);
   for (const i of s.sample_shipment_items ?? []) {
     if (i.custom) parts.push(`Custom: ${i.custom_spec ?? ''}${i.project_no ? ` (proj ${i.project_no})` : ''}`.trim());
@@ -132,7 +150,7 @@ export function buildOrderXml(s: Shipment): string {
     `    <InternalNotes>${cdata(internalNotes(s))}</InternalNotes>\n` +
     `    <CustomField1>${xmlEscape(rushFlag(s.rush))}</CustomField1>\n` +
     `    <CustomField2>${hasCustom ? 'custom-request' : ''}</CustomField2>\n` +
-    `    <CustomField3></CustomField3>\n` +
+    `    <CustomField3></CustomField3>\n` +   // free/unused — billing rides InternalNotes
     `    <Customer>\n` +
     `      <CustomerCode>${xmlEscape(s.salesperson?.email ?? '')}</CustomerCode>\n` +
     `      <BillTo>\n` +
@@ -197,6 +215,10 @@ export interface Shipment {
   status: string | null;
   account: string | null;
   rush: boolean | null;
+  third_party_billing: boolean | null;
+  tp_carrier: string | null;
+  tp_account: string | null;
+  tp_postal_code: string | null;
   temp: string | null;
   temp_override: string | null;
   required_by: string | null;
