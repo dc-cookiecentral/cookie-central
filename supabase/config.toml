@@ -21,3 +21,9 @@ import_map = "./functions/import_map.json"
 [functions.gmail-extract]
 verify_jwt = true
 import_map = "./functions/import_map.json"
+
+# shipstation-customstore is PUBLIC to ShipStation — it authenticates with HTTP
+# Basic Auth (Vault creds), not a Supabase JWT, so verify_jwt = false.
+[functions.shipstation-customstore]
+verify_jwt = false
+import_map = "./functions/import_map.json"

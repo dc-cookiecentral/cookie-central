@@ -25,7 +25,12 @@ export function useRawMaterialDetail(code) {
          default_lead_days, category, last_upload_at,
          raw_material_suppliers ( id, distributor, brand, cost_per_unit, moq, lead_time_days, is_active ),
          raw_material_lots ( id, lot_number, quantity, received_date, expiry_date, fifo_order ),
-         bill_of_materials ( id, quantity_per_batch, unit, products ( sku, short_name, full_name ) )`
+         bill_of_materials ( id, quantity_per_batch, unit )`
+        // NOTE: the nested products(...) embed was dropped when the legacy
+        // finished-goods `products` table was replaced by the Cookulator spine
+        // (ADR-024). bill_of_materials.product_id pointed at the old table and no
+        // consumer rendered the product name. BoM→cookie linking will be
+        // re-established against the new products spine when BoM data is populated.
       )
       .eq('code', code)
       .maybeSingle();

@@ -121,3 +121,191 @@ Secrets live in **Vault**; Edge Functions read/write them via two `SECURITY DEFI
 **Date:** June 2, 2026
 **Decision:** The Weekly Report page reads from the `weekly_reports` table (via `useWeeklyReports`), merged with the legacy static seed (`src/data/weeklyReports.js`) — DB rows win per week, seed fills weeks the DB lacks, sorted newest-first. The newest week is selected by default.
 **Rationale:** The page originally rendered only from the hardcoded seed (WK13–16), so agent-written rows (e.g. WK17, `auto_generated=true`) never appeared. Merging keeps the curated historical seed (which carries attachment `detail` the table doesn't capture yet) while surfacing every live agent-ingested week. No `auto_generated` filter — auto and manual weeks render identically (auto shows an "Auto from email" badge).
+
+## ADR-024: Finished-goods (`products`) replaced by the Cookulator product model
+**Date:** July 14, 2026
+**Status:** Accepted (Task 0 discovery). Records the reconciliation for the Spec Sheet / Sample Central extension; Phase 1 schema work proceeds on branch `feat/spec-sheet-and-sample-central` after this ADR.
+
+**Context — the "finished-goods table":** There is no table named `finished_goods`. The finished-goods spine is the existing **`products`** table (`20260521000000_initial_schema.sql`), later extended with `cortina_item_number` (`20260602170000`/`20260615130000`), `aliases text[]` + GIN index (`20260617140000`), and interim Cortina→internal→display name mapping (`20260617130000`). Two *separate* artifacts represent finished goods today:
+1. **DB `products` table — 4 rows**, keyed by Cortina/Walmart SKU strings: `WMWHTCHCCHPCOOKIESTUFCBDC` (WCCB, cortina# 1252), `WMPBCOOKIESTUFGRPJLYDC` (PBG, 1251), `WMCHOCCHPCOOKIESTUFCHOCDC` (CCF, 1287, alias `C-F-S`), `C-WCCB-12-13-KF` (WCCB-KF, Kroger). This is the FK target of `po_line_items`, `dot_inventory`, `bill_of_materials`.
+2. **Static `src/data/itemMaster.js` — 2 rows** (`679640563` DC WHITE CHOC CKE, `679640564` DC PB COOKIE), the `/reference` → "Finished Goods" display seed only. A JS constant; nothing FK-references it. (These Walmart *item numbers* are what "delete 679640563/564" referred to — they live here, not in the DB `products` rows.)
+
+**Naming collision:** The extension plan introduces a *new* table also named `products` — but semantically different: the **cookie atom / BOM base** (`code` PK, flavor/tier/form/prep/dough_oz/`sample_eligible`). The existing `products` is the **sellable retail SKU**, which in the Cookulator model corresponds to **`master_cases`**, not the new atom `products`. The two cannot coexist under one name.
+
+**Decision:**
+1. Existing finished-goods data is **demo/disposable** — replace, do not migrate. **Clean-delete** the 4 DB `products` rows and remove the static `itemMaster.js` seed; rebuild from the Cookulator prototype.
+2. Build the full Cookulator spine per `DATA_MODEL_ADDITIONS.md`: `products` (cookie atom), `eaches`, `inners`, `master_cases`, `stuffings`, plus a thin `product_prices` table and a `price_list` **VIEW** (no stored derived values).
+3. **`/orders` and `/payments` re-point is owned by Caroline**, not this workstream — she wires those sections to the Cookulator products once the Cookulator is built. Task 1.4 re-point scope here is therefore limited to the two live display joins (`useDotInventory.js:18`, `useRawMaterialDetail.js:28`) and the `/reference` `ProductsView` static seed.
+4. FK columns on `po_line_items.product_id` and `dot_inventory.product_id` are **unpopulated** (parsers key off text SKU / `cortina_item_number`), so the delete cascades to **no real dependent rows**. Old `products` is dropped **last**, after re-point is verified (`*_drop_finished_goods.sql`).
+
+**Dependency map (what references DB `products`):**
+| Reference | Location | Kind | Populated? |
+|---|---|---|---|
+| `dot_inventory.product_id` → products(id) | schema FK | FK column | No — `dot.js` writes `sku` text only |
+| `po_line_items.product_id` → products(id) | schema FK | FK column | No — netsuite/cortinaPO/walmartOrders use text SKU / `cortina_item_number` |
+| `bill_of_materials.product_id` → products(id) | schema FK | FK column | BOM link (seed status unconfirmed) |
+| `dot_inventory → products(short_name, full_name)` | `useDotInventory.js:18` | embedded join | join null (product_id unset); UI falls back to `d.sku` (`WarehouseView.jsx:97`, `ProductView.jsx:293`) |
+| `bill_of_materials → products(sku, short_name, full_name)` | `useRawMaterialDetail.js:28` | embedded join | — |
+| name / alias display | `usePurchaseOrders.js`, `walmartOrders.js`, `Pill.jsx`, `csvParser.js` | `short_name`/`aliases`/`cortina_item_number` | live |
+| `/reference` "Finished Goods" | `Reference.jsx` `ProductsView` | reads static `itemMaster.js`, **not** the DB table | live (static) |
+
+**Not coupled:** `/trace`, `production_runs`/`_pallets`/`_subcomponents`, `lot_shipments` key off `item_code`/`fg_item_code` **text** — no `products` FK.
+
+**V1–V7 reconciliation:**
+- V1 ✅ FG table = `products` (maps to new `master_cases`, not the new atom `products`).
+- V2 ⚠️ FK columns exist but are unpopulated; `/trace`, production, `lot_shipments` are **not** FK-coupled.
+- V3 ✅ `/reference` item-master is a separate static seed (`itemMaster.js`).
+- V4 ✅ RLS role-based via `user_profiles` (`admin`/`finance`/`ops`); read `USING(true)`, writes gated by role EXISTS-check. **No `Cortina` role exists** — Task 2.7 must add it.
+- V5 ✅ **No `addresses` table** — Sample Central must create it.
+- V6 ✅ Migrations `YYYYMMDDHHMMSS_*.sql`, manual SQL-editor apply, forward-only (latest `20260618120000`).
+- V7 ✅ One-file-per-route `src/pages`, data via `src/hooks`; no waffle switcher / `active_in_dropdown` / `sample_eligible` yet.
+
+**Open items carried forward:** (a) add a `Cortina` role for Task 2.7's role gate; (b) create `addresses` in Phase 2; (c) decide the fate of `itemMaster.js` + `ProductsView` (repoint to `master_cases` view or retire); (d) confirm `bill_of_materials` seed rows before dropping old `products`.
+
+**Rationale:** The data is demo, so a clean schema replacement + reseed is simpler and lower-risk than an in-place FK migration — and the FKs are unpopulated anyway. Modeling the cookie atom as `products` (per the plan) with `master_cases` as the sellable unit matches the Cookulator's real composition hierarchy; the old flat `products`-as-retail-SKU conflated two levels. Caroline owning the `/orders`+`/payments` re-point keeps the finance-critical surfaces under her control while this workstream focuses on the product spine and Sample Central.
+
+## ADR-025: Phase 1 built — Cookulator product spine + Spec Sheet UI (as-built)
+**Date:** July 15, 2026
+**Status:** Accepted. Implements ADR-024. Branch `feat/spec-sheet-and-sample-central`; migrations applied manually by Caroline in filename order before the UI renders live.
+
+**What shipped (Phase 1, Tasks 1.1–1.6):**
+- **Product spine** (`20260714120000_create_product_spine.sql`): `products` (cookie atom), `eaches`, `inners`, `master_cases`, `stuffings`. RLS mirrors the existing pattern — all authenticated read; **admin/ops** write.
+- **WIP/dough layer** (`20260715140000_wip_dough_layer.sql`): `raw_doughs` + `wip_doughs`. ADR-024 flagged this layer as optional; it was **added** so the Spec Sheet's WIP tab is table-backed at the "full parity" bar Caroline set. `products.tier`/`form` are also stored, but the Cookies tab **inherits** Form/Tier from the dough (matching the prototype), falling back to the stored columns.
+- **Pricing** (`20260715120000_price_list_view.sql`): thin `product_prices` table (only stored pricing, `list_price` NULL = TBD, **finance/admin** write) + a `price_list` **VIEW** (`security_invoker`) resolving the polymorphic composition chain via guarded LEFT JOINs.
+- **Seed** (`supabase/seeds/product_spine_cookulator.sql`, per ADR-019): 5 raw doughs, 13 WIP doughs, 27 cookies (1 duplicate code deduped), 5 stuffings, 3 eaches, 4 inners, 15 master cases; **8 cookies** flagged `sample_eligible`. tier/form derived from `wip_dough` at seed time.
+- **Legacy drop** (`20260715130000_drop_finished_goods.sql`): dropped `products_legacy` + the three dead, unpopulated FK columns (`po_line_items`/`dot_inventory`/`bill_of_materials`.`product_id`).
+- **UI** (`/spec-sheet`): all 6 Cookulator tabs, read-only default + edit-mode lock (role-gated), reusable `SpecTable` (sort/filter/level-grouped column chooser), config-driven add/edit/delete modal, sample-eligibility chip/toggle, Price Lists over the `price_list` view.
+
+**Key implementation decisions (deviations from / refinements to ADR-024 + `DATA_MODEL_ADDITIONS.md`):**
+1. **`cases_per_pallet` is stored**, not derived. `DATA_MODEL_ADDITIONS` lists it as a `master_cases` column and flags **only** net weight as derived for master cases. The view/app fall back to `ti × hi` when it's unset.
+2. **Only master-case net weight + storage are derived** (never stored): net weight rolls down to cookie `dough_oz` (÷16 for lb), storage from `prep` (Raw→Frozen, else Ambient, `storage_override` wins). Computed both in `price_list` and in `utils/cookulator.js`.
+3. **WIP/dough layer promoted to real tables** (see above) — a scope addition beyond the ADR-024 "5-table spine," justified by the full-parity requirement.
+4. **Re-point = removal, not FK rewrite.** The only live code refs to the old table were two null-returning embeds (`useDotInventory`, `useRawMaterialDetail`), removed in Task 1.4. The DB FK columns were dead/unpopulated and dropped with the table. There was nothing meaningful to "re-point" at the FK level.
+5. **DTC shipping boxes deferred** to the e-commerce phase (out of scope per `EXTENSION_BUILD_PLAN` "what NOT to do").
+
+**Carried forward:** (a) migrations are **not yet applied** — Caroline applies them manually in filename order, then the seed, then verifies; (b) `/orders`+`/payments` catalog linkage to the new spine is Caroline's (dead `product_id` columns dropped — she adds correct `master_cases`/`eaches` linkage when wiring); (c) Caroline authorized purging **all non-Cookulator data** (Cookulator = master data) — to be executed as a separate, discrete cleanup step; (d) Phase 2 (Sample Central) still needs a `Cortina` role + `addresses` table (ADR-024 open items).
+
+**Rationale:** Keeping every level table-backed (including WIP) makes the whole Cookulator data-driven and consistent with the rest of the app, and lets Sample Central read `products.sample_eligible` directly. Deriving net weight/storage in a view keeps the "no stored derived values" rule intact while the UI still renders them live. Storing `cases_per_pallet` follows the authoring doc rather than over-applying the derived rule to a figure real pallets can deviate on.
+
+## ADR-026: Phase 2 built — Sample Central (as-built)
+**Date:** July 16, 2026
+**Status:** Accepted. Branch `feat/sample-central` (stacked on `feat/spec-sheet-and-sample-central` since Phase 1 isn't merged yet; its PR will show only the Phase 2 diff once Phase 1 lands). Migrations applied manually.
+
+**What shipped (Phase 2, Tasks 2.1–2.7):**
+- **Tables** (`20260715160000_sample_central_tables.sql`): `addresses`, `sample_shipments`, `sample_shipment_items`, `sample_templates`. Salesperson stored by user id; items reference `products` by **code** (custom lines carry null `product_code` + `custom_spec` + `project_no`). `sample_shipments.shipstation_order_id` is present for the Phase 3 push.
+- **Dropdown flag** (`20260715170000_user_active_in_dropdown.sql`): `user_profiles.active_in_dropdown` (default true).
+- **Cortina role** (`20260715180000_cortina_role.sql`): added to the `user_profiles` + `user_role_seeds` role CHECK.
+- **UI** (`/sample-central`): catalog (Prep→Tier→Size over `sample_eligible`), shipment builder (derived-temp badge + override, collateral incl. Warming instructions, custom lines w/ project #, inline address add), mission control (stat tiles, salesperson filter, status pipeline), quick start (templates + duplicate-past-shipment). Waffle **AppSwitcher** + **role gate**.
+
+**Key decisions / deviations:**
+1. **`sample_shipments` / `sample_shipment_items`**, not `shipments` / `shipment_items` (`DATA_MODEL_ADDITIONS` names): a PO-level `shipments` table already exists (the `/orders` domain). Same collision-avoidance pattern as products→master_cases (ADR-024).
+2. **Role gate is app-side + DB-side.** App: `InternalOnly` route wrapper redirects Cortina to `/sample-central`, and the Sidebar/AppSwitcher hide internal apps for that role. DB: sample-table RLS names `admin/finance/ops/cortina`; the `cortina` role value is added by `20260715180000`. Sample-table policies **forward-declared** `cortina` (harmless before the role exists) to avoid re-editing them.
+3. **Derived `temp` is stored as a snapshot.** Cold if any Raw/frozen line, else Ambient; `temp_override` wins. This is a historical fact of the shipment (not a live product attribute), so storing the decision is correct — consistent with the "no stored *derived-from-live-data*" rule.
+4. **ShipStation / DTC deferred to Phase 3** (`shipstation_order_id` column stubbed now; the push/webhook Edge Functions are Phase 3).
+
+**Carried forward:** (a) migrations applied manually — apply `20260715160000` → `170000` → `180000` (order-independent among these three) after Phase 1; (b) to onboard a Cortina user, seed them in `user_role_seeds` with `role='cortina'` before first sign-in; (c) Phase 3 wires ShipStation (order push + status webhook) per `SHIPSTATION_INTEGRATION.md`.
+
+**Rationale:** Sample Central sits directly on the Phase 1 spine (`products.sample_eligible`), so no duplicate catalog. Storing salesperson by id keeps history stable across dropdown changes; referencing products by code keeps line items durable. The role gate is enforced in both the router and RLS so a Cortina user can neither navigate to nor write outside Sample Central.
+
+## ADR-027: ShipStation tag contract (Phase 3, Task 3.1)
+**Date:** July 16, 2026
+**Status:** **Superseded (mechanism) by ADR-028.** The V1 order-push mechanism is dropped; the **tag/collateral/custom-item vocabulary** below is retained and re-expressed in Custom Store fields (CustomFields + ShippingMethod + product tags). Read ADR-028 for the live design.
+
+**Boundary:** the app pushes *intent* (a clean order + tags); ShipStation resolves *fulfillment* (box, service, labels, emails). No fulfillment logic is duplicated app-side.
+
+**The tag vocabulary (this IS the integration — both sides must agree):**
+| Tag | Meaning | Set by | ShipStation rule it drives |
+|---|---|---|---|
+| `cold-chain` | needs refrigerated handling | **product tag** on Raw SKUs (co-man tags the product record once) | order includes cold-chain → refrigerated service + insulated box |
+| ~~`rush`~~ | ~~expedite~~ | **Retired** — speed is no longer a tag. See ADR-028: the salesperson picks a 3-tier shipping speed, which the export sends as a UPS `serviceCode` in the dedicated `<ShippingMethod>` element. No tag, no automation rule. | — |
+| `custom-box` | branded packaging | **order tag** pushed by app when `box_spec = 'Custom / Branded'` | branded mailer package |
+| `dc-box` | standard box | **order tag** pushed by app when `box_spec = 'Dirty Cookie'` | standard package |
+| `custom-request` | contains a bespoke no-SKU item | **order tag** pushed by app when any line has `custom = true` | route to manual review (no auto-fulfill) |
+
+**Split rule:** product-inherent attributes (cold chain) = **ShipStation product tags** (co-man-owned); order-level choices (box, custom) = **order tags the app pushes**. Shipping **speed** is neither — it has a native XML element (`<ShippingMethod>`), so it never became a tag (ADR-028).
+
+**Two-step indirection (the critical pitfall):** ShipStation's *Item SKU* automation criteria silently ignore any multi-item order — and sample manifests are almost always multi-item. So we NEVER rule on raw SKU. Instead: (1) the co-man tags each Raw **product record** with `cold-chain` once; ShipStation auto-applies it to any order containing that product on import; (2) automation rules run against the **order tag** `cold-chain`.
+
+**SKU→tag map:** every product with `prep = 'Raw'` gets the `cold-chain` product tag in ShipStation. (Today the 8 `sample_eligible` cookies are all Baked, so none carry it yet — the map still must be defined for when raw samples are enabled. `sample_shipment_items.product_code` is the SKU pushed; it must match the co-man's stock exactly.)
+
+**Gotchas locked into the design (webhook/edit discipline):** no "order update" webhook (edits after push must be re-pushed deliberately); rules run once on import (edits to Awaiting-Shipment orders don't re-trigger); immutable once shipped/cancelled. Collateral (incl. Warming instructions) rides an order **Notes** field (not a Custom Field — 100-char truncation), printed via a packing-slip Field-Replacement token. Custom items ride as a note + `project_no` + the `custom-request` tag; never as a SKU line.
+
+**What Caroline coordinates before code:** (a) duplicate/sandbox ShipStation store; (b) ratify this vocabulary + SKU→tag map with the co-man and have them apply the `cold-chain` product tags; (c) load V1 API keys into Vault via `set_secret` (`SHIPSTATION_API_KEY`, `SHIPSTATION_API_SECRET` — V1/V2 keys are not interchangeable; order-create maturity is V1). Server-side only — never `VITE_*`.
+
+**Rationale:** The tag vocabulary is the contract surface between two systems; fixing it first (and in an ADR) prevents the classic multi-item-SKU-rule failure and keeps the app/ShipStation split clean. `sample_shipments` already carries `box_spec`, `collateral`, and `shipstation_order_id`, so the push maps straight from existing columns.
+
+## ADR-028: ShipStation integration via Custom Store pattern (supersedes ADR-027 mechanism)
+**Date:** July 16, 2026
+**Status:** Accepted. Branch `feat/shipstation`. Supersedes ADR-027's V1 order-push mechanism; **retains** ADR-027's tag vocabulary + collateral/custom-item rules, re-expressed in Custom Store fields.
+
+**Decision.** Integrate the Sample Site with ShipStation using ShipStation's **Custom Store** connection — **not** the V1 order-push API and **not** the V2 Sales Orders API (beta, not sandbox-testable). The Sample Site exposes one Web Endpoint (a Supabase Edge Function, `shipstation-customstore`) that ShipStation connects to as a Custom Store. ShipStation **GET**s sample orders (imported into Dirty Cookie's dashboard for the co-man to fulfil) and **POST**s `shipnotify` back with carrier + tracking number when shipped.
+
+**Flow (3 steps).** (1) Cortina places a sample order in the Sample Site → row in `sample_shipments` (+ items). (2) ShipStation's scheduled/manual store import GETs our export XML; the order lands in Dirty Cookie's ShipStation dashboard where the co-man (a user in Dirty Cookie's one account) views it, prints the pack list, picks dimensions, and ships. (3) ShipStation POSTs `shipnotify` with tracking → we update the shipment and advance the pipeline.
+
+**Rationale.** Matches our exact 3-step flow; mature/documented/non-beta; the intended pattern for a custom order source with no pre-built integration. One ShipStation account (Dirty Cookie's); the co-man is a user in it.
+
+**Auth / contract.** ShipStation calls our endpoint with **Basic HTTP Auth** (creds in Vault: `SHIPSTATION_CUSTOMSTORE_USER` / `SHIPSTATION_CUSTOMSTORE_PASS`, read via the `get_secret` RPC per ADR-021; a non-matching Basic Auth → 401). Our endpoint emits/validates ShipStation's **Custom Store XML** (Orders export on GET `action=export`; `ShipNotice` on POST `action=shipnotify`). Status mapping is configured in the Custom Store connection UI; **Paid = ready-to-ship = what the co-man works**.
+
+**Tag/collateral carry-over from ADR-027, re-expressed (confirmed field assignment):**
+- **cold-chain** — still the "any Raw line ⇒ whole order cold" rule, achieved via the **ShipStation product tag** on Raw SKUs (co-man applies it once; ShipStation auto-applies to any order containing that product on import — the ADR-027 two-step indirection). **The app does not push cold-chain.** A ShipStation **automation** keys on the cold-chain tag to apply refrigerated handling + insulated box **and bump the order to a next-day service recommendation** — so speed for cold orders is decided in ShipStation, never by the app. (`sample_shipments.temp` remains the app-side snapshot; it rides `InternalNotes` as informational only.)
+- **shipping speed (supersedes `rush`, and supersedes the friendly-label service dropdown)** — *amended July 27, 2026; see "Amendment: 3-tier shipping speed" below.* The Sample Site presents a **3-tier speed selector** — **Ground** (default) · **2-Day** · **Overnight** — stored as `sample_shipments.shipping_speed` (`ground` | `2day` | `overnight`). The export resolves the tier to a real UPS **`serviceCode`** and sends it as **`<ShippingMethod>`**, which the Custom Store's shipping-service mapping resolves **1:1** — no free-text, no reverse-mapping. The old `rush` boolean is **retired**: speed is now either the tier the salesperson picks or the cold-chain automation above.
+- **box** — **`CustomField1`** = `dc-box` | `custom-box` (from `box_spec`).
+- **custom-request** — **`CustomField2`** = `custom-request` when any line has `custom = true`. Kept on a **CustomField** (not notes-only) so it's **Orders-grid-visible and rule-matchable**; the bespoke item's `custom_spec` + `project_no` are additionally detailed in `InternalNotes`.
+- **`CustomField3`** — free/unused (reserved).
+- **collateral** (incl. Warming instructions) + `notes` + `required_by` + handling snapshot → **`InternalNotes`** (1000-char limit; use it, not the 100-char CustomFields, for lists).
+
+**Field mapping** is in `docs/SHIPSTATION_INTEGRATION.md` (reconciled against the real `sample_shipments` / `sample_shipment_items` / `addresses` columns — ADR-026 names). `Country` is exported as **`US`** — ShipStation's `ShipTo` schema **requires** it and rejects the whole batch if it's missing (samples are US-only). `UnitPrice` = `0.00` (samples unpriced). `OrderDate` = `created_at`.
+
+**Schema addition (two migrations).** The `shipnotify` writeback needs landing columns that don't exist yet: `sample_shipments` gains nullable `tracking_number`, `carrier`, `service`, `shipped_at` (migration `20260726120000`, which also dropped the retired `rush` boolean). The speed selector adds `shipping_speed text NOT NULL DEFAULT 'ground'` with a CHECK on `ground|2day|overnight` (migration `20260727120000`, which drops the interim `requested_service` column — see the amendment below). Forward-only migrations, manual apply. `shipstation_order_id` (added for the superseded V1 push) is **unused** under Custom Store — orders key on `OrderNumber` = `shipment_no`.
+
+**Amendment (July 27, 2026): 3-tier shipping speed + direct UPS service-code mapping.**
+Supersedes the interim design in which the salesperson picked from a curated six-service dropdown of **friendly labels** across three carriers (`ups_ground`, `ups_next_day_air`, `fedex_ground`, `fedex_priority_overnight`, `usps_priority_mail`, `usps_priority_mail_express`) stored in `requested_service`.
+
+*Why it changed.* That dropdown made the salesperson choose a **carrier** as a side effect of choosing a **speed**. Carrier selection belongs to fulfilment and to app config (Dirty Cookie ships on one connected carrier), not to a per-order sales decision — and offering FedEx/USPS options that no connected carrier could actually buy was a silent-failure path. Speed is the only dimension the salesperson genuinely knows at order time, so speed is what we store.
+
+*The mapping.* `<ShippingMethod>` carries the UPS `serviceCode` **directly** — no friendly label, no reverse-mapping:
+
+| `shipping_speed` | UI label | `<ShippingMethod>` serviceCode |
+|---|---|---|
+| `ground` *(default)* | Ground | `ups_ground` |
+| `2day` | 2-Day | `ups_2nd_day_air` |
+| `overnight` | Overnight | `ups_next_day_air` |
+
+`carrierCode` = **`ups`** — *to confirm against the account's connected carrier before go-live* (checklist §2). All three codes verified against `docs/Shipstation Shipping Doc/Shipping Services - 07-23.xlsx` (the serviceCode source-of-truth, US domestic).
+
+*Carrier choice now lives in app config*, not in the schema and not in the UI: `SHIPPING_CARRIER` + the `SHIPPING_SPEEDS` map in `src/utils/sampleCentral.js`, mirrored in `supabase/functions/_shared/shipstation.ts`. Changing carrier means rewriting that map (the codes are carrier-specific), not editing per-order data.
+
+*No CustomField is consumed* — speed uses the dedicated `<ShippingMethod>` element. CustomField assignment is unchanged: **CF1** = box, **CF2** = custom-request, **CF3** free/reserved.
+
+**Status mapping.** The export emits the app's **own status verbatim** (samples are free — no "paid" token). ShipStation's Marketplace status mapping routes it: `submitted`/`processing` → **Awaiting Shipment** (the co-man's work queue), `shipped`/`delivered` → **Shipped**. So ShipStation "Awaiting Shipment Statuses" = `submitted, processing`; "Shipment Statuses" = `shipped, delivered`. ShipStation has no "delivered" bucket.
+
+**Known limitations (recorded deliberately):**
+1. **No import acknowledgment.** The Custom Store is a **pull** model — the app cannot confirm an order actually reached ShipStation. The only signal is ShipStation hitting our GET export; there is no per-order ack. (A future enhancement could reconcile via ShipStation's order list.)
+2. **`delivered` is not wired.** The pipeline effectively ends at **shipped** — ShipStation's shipnotify covers shipment, not delivery, and we do no carrier delivery-event polling yet.
+3. **Automation rules + the method-mapping are launch-blocking.** The box→package, custom-request→manual-review and cold-chain→refrigerated behaviours depend on ShipStation **automation rules** existing *before* the first real order, and speed depends on the three `serviceCode`s being mapped. They're documented as launch-blocking in `SHIPSTATION_SETUP_CHECKLIST.md`.
+4. **Silent import rejection.** ShipStation may silently reject an order with a malformed `State` (must be 2-char) or `PostalCode`; the pull model surfaces no error. The export **validates** these and skips+logs a bad row rather than poisoning the batch.
+5. **Unmatched shipnotify is logged, not dropped.** If a `shipnotify` `OrderNumber` doesn't match a `shipment_no`, the function logs it and returns 200-with-warning rather than silently discarding the tracking update.
+
+**Superseded:** ADR-027's `/orders/createorder` V1 push, its V1 key requirement, and any V1/V2 key or Sales Orders API path.
+
+## ADR-029: Phase 3 built — ShipStation Custom Store (as-built)
+**Date:** July 27, 2026
+**Status:** Built & **verified end-to-end** against the live ShipStation account (`support@dirtycookie.com`). Branch `feat/shipstation`. Realizes ADR-028.
+
+**What shipped.** (3.2) migration `20260726120000` — `sample_shipments` gains `tracking_number`/`carrier`/`service`/`shipped_at` + `requested_service` (CHECK on the 6 serviceCodes, default `ups_ground`), drops `rush`. (3.2b) `SampleCentral.jsx` — Rush checkbox/badge → curated service dropdown. *(Both since superseded by the 3-tier speed selector — migration `20260727120000` + the ADR-028 amendment; `requested_service` is backfilled into `shipping_speed`, then dropped.)* (3.3) Edge Function `shipstation-customstore` — GET `action=export` (Orders XML) + POST `action=shipnotify` (tracking writeback), Basic-Auth against Vault, pure helpers in `_shared/shipstation.ts`. (3.4) `SHIPSTATION_SETUP_CHECKLIST.md`.
+
+**Correction (July 27, 2026):** this entry originally claimed the helpers shipped with "54 unit tests". **No test file was ever committed** — `git log --all -S "Deno.test"` returns nothing, and `package.json` had no test runner. The helpers were validated manually during the build; the ADR recorded a throwaway scratch suite as a shipped artifact. A real suite (`_shared/shipstation_test.ts`, 87 `Deno.test` cases, run with `deno test`) was added alongside the 3-tier shipping-speed change — which is precisely the change that would otherwise have had nothing guarding it, since a wrong `serviceCode` produces valid-looking XML that ShipStation silently mis-maps.
+
+**Verified.** A test order exported → imported into ShipStation's **Awaiting Shipment** queue with all fields mapped; a `shipnotify` POST wrote tracking back and advanced `status → shipped`. Both directions confirmed through ShipStation's real UI, not just curl.
+
+**Changed from ADR-028 during build (the corrections that matter):**
+1. **`<Country>US</Country>` is REQUIRED** — ADR-028 said omit it ("store default"); ShipStation's Custom Store **XSD makes it mandatory** (`StringExactly2`) and rejects the whole batch without it. Emit `US` (US-only).
+2. **`<OrderTotal>` is REQUIRED** (`xs:decimal`) — emit `0.00` (samples are free). Not in the original mapping.
+3. **Status is exported VERBATIM, not mapped to Paid/Shipped** — samples are free, so there is no "paid". The export sends `sample_shipments.status` as-is; ShipStation's **Marketplace status mapping** routes it (Awaiting Shipment Statuses = `submitted, processing`; Shipment Statuses = `shipped, delivered`).
+4. **PostgREST embeds need the explicit `table!fk` form** (`address:addresses!address_id`, `salesperson:user_profiles!salesperson_user_id`) — the FK-column short form returned null, so ship-to came back empty and every order was silently dropped by the State/zip validation.
+
+**Schema facts locked in (from the account's XSD).** `<Order>`/`ShipTo` are `<xs:all>` → element order is free, but required fields must all be present. Required: Order = OrderNumber/OrderDate/OrderStatus/LastModified/OrderTotal/Customer/Items; ShipTo = Name/Address1/City/PostalCode/Country (State is optional). `DateTime` = `MM/dd/yyyy HH:mm` (our output matches the XSD pattern); the export **also parses AM/PM** in the `start_date`/`end_date` window ShipStation sends. Custom lines still ride `InternalNotes` + `CustomField2`, never a null-SKU `<Item>`.
+
+**Operational as-built.** The function is deployed with **`verify_jwt = false`** (ShipStation authenticates with **Basic Auth**, not a Supabase JWT). The Custom Store URL is the **Edge Function URL** (`…supabase.co/functions/v1/shipstation-customstore`), not the app subdomain, and needs **no ShipStation V1/V2 API key** — the Basic-Auth user/pass are self-defined, stored in Vault (`SHIPSTATION_CUSTOMSTORE_USER`/`_PASS`) and entered identically in the Custom Store connection. `getSecret` retries on a transient **"JWT issued at future"** clock-skew that PostgREST occasionally throws validating the service-role token. Each export logs its requested window + match/export counts (the pull model surfaces nothing otherwise).
+
+**Carried forward.** (a) **Launch-blocking** ShipStation config remains Caroline's to set (`SHIPSTATION_SETUP_CHECKLIST.md` §2 serviceCode 1:1 mapping — now just the **three UPS codes**, §3 automation rules incl. cold-chain→next-day, §4 cold-chain product tags) — orders import without them, but the automations don't fire. (b) **Confirm `carrierCode = ups`** matches the account's connected carrier before go-live; the three service codes are UPS-specific. (c) The **frontend deploy** to the subdomain must ship this branch's UI, since the migrations dropped `rush` and then `requested_service`. (d) `delivered` is not wired — the pipeline ends at **shipped** (no carrier delivery polling).

@@ -1,0 +1,704 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sample Central — Dirty Cookie</title>
+<style>
+:root{
+--aubergine:#2D2235;--aubergine-lt:#3E3049;--pink:#C2185B;--pink-lt:#E91E7B;
+--cream:#FAF7F3;--paper:#FFFFFF;--ink:#2B2530;--muted:#8A8194;--line:#EAE4EE;
+--mint:#2E9E7B;--amber:#C9820E;--sky:#2E7DB5;--exp:#D33A2C;
+--radius:12px;--shadow:0 1px 3px rgba(45,34,53,.08),0 8px 24px rgba(45,34,53,.04);
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:'Outfit',-apple-system,Segoe UI,sans-serif;background:var(--cream);color:var(--ink);font-size:14px;line-height:1.5}
+/* ===== TOP NAV ===== */
+.nav{background:var(--aubergine);color:#fff;padding:0 24px;display:flex;align-items:center;gap:4px;height:60px;position:sticky;top:0;z-index:50}
+.brand{font-weight:800;font-size:18px;letter-spacing:.3px;margin-right:8px;display:flex;align-items:center;gap:9px}
+.brand .dot{width:10px;height:10px;border-radius:50%;background:var(--pink)}
+.brand small{font-weight:500;color:#C9B8D6;font-size:11px;letter-spacing:.5px;text-transform:uppercase}
+.nav .tabs{display:flex;gap:2px;margin-left:18px}
+.nav .tabs button{background:transparent;border:0;color:#C9B8D6;font-weight:600;font-size:13.5px;padding:8px 15px;border-radius:8px;cursor:pointer;font-family:inherit}
+.nav .tabs button:hover{color:#fff;background:rgba(255,255,255,.08)}
+.nav .tabs button.active{color:#fff;background:var(--pink)}
+.nav .right{margin-left:auto;display:flex;align-items:center;gap:12px}
+.waffle{position:relative}
+.waffle-btn{width:38px;height:38px;border-radius:9px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+.waffle-btn:hover{background:rgba(255,255,255,.18)}
+.waffle-btn svg{width:18px;height:18px}
+.waffle-menu{position:absolute;top:46px;right:0;background:var(--paper);border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 40px rgba(45,34,53,.25);padding:14px;width:280px;z-index:60}
+.waffle-menu .wm-head{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:2px 4px 10px}
+.wm-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.wm-app{display:flex;flex-direction:column;align-items:center;gap:8px;padding:15px 10px;border-radius:11px;border:1px solid var(--line);text-decoration:none;cursor:pointer;background:var(--paper);transition:.12s;text-align:center}
+.wm-app:hover{border-color:var(--pink);background:#FDF0F6}
+.wm-app.current{border-color:var(--aubergine);background:#F6F3FA;cursor:default}
+.wm-app .wm-icon{width:42px;height:42px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:22px}
+.wm-app .wm-name{font-size:12.5px;font-weight:800;color:var(--ink);line-height:1.25}
+.wm-app .wm-tag{font-size:10px;font-weight:700;color:var(--muted)}
+.wm-app.current .wm-tag{color:var(--pink)}
+.wm-note{font-size:10.5px;color:var(--muted);line-height:1.45;margin-top:12px;padding:9px 10px;background:#FBF9FC;border-radius:8px;border:1px solid var(--line)}
+.wm-bg{position:fixed;inset:0;z-index:55}
+.cartbtn{position:relative;background:var(--pink);border:0;color:#fff;font-weight:700;font-size:13px;padding:8px 16px;border-radius:8px;cursor:pointer;font-family:inherit}
+.cartbtn .badge{position:absolute;top:-7px;right:-7px;background:#fff;color:var(--pink);border-radius:50%;width:20px;height:20px;font-size:11px;display:flex;align-items:center;justify-content:center;font-weight:800}
+/* ===== LAYOUT ===== */
+.wrap{max-width:1200px;margin:0 auto;padding:26px 24px 60px}
+.pagehead{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:22px;flex-wrap:wrap;gap:12px}
+.pagehead h1{font-size:26px;font-weight:800;margin:0;letter-spacing:-.4px}
+.pagehead .sub{color:var(--muted);font-size:13.5px;margin-top:3px}
+.btn{border:0;border-radius:9px;font-weight:700;font-size:13.5px;padding:10px 18px;cursor:pointer;font-family:inherit}
+.btn-primary{background:var(--pink);color:#fff}.btn-primary:hover{background:var(--pink-lt)}
+.btn-ghost{background:var(--paper);color:var(--aubergine);border:1px solid var(--line)}.btn-ghost:hover{background:#F6F2FA}
+.btn-sm{padding:6px 12px;font-size:12px;border-radius:7px}
+/* ===== SHOP GRID ===== */
+.shopbar{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;align-items:center}
+.chipfilter{background:var(--paper);border:1px solid var(--line);border-radius:20px;padding:6px 14px;font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer}
+.chipfilter.on{background:var(--aubergine);color:#fff;border-color:var(--aubergine)}
+.tier-gourmet{background:#F3E3D0;color:#9A5B1E}.tier-classic{background:#D9EAF5;color:#1E5F8A}
+/* compact catalog table grouped by flavor */
+.flavgroup{background:var(--paper);border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--line);margin-bottom:14px;overflow:hidden}
+.flavgroup .fg-head{display:flex;align-items:center;gap:11px;padding:13px 18px;background:linear-gradient(90deg,#FBF6F9,#fff);border-bottom:1px solid var(--line)}
+.flavgroup .fg-emoji{font-size:22px}
+.flavgroup .fg-name{font-weight:800;font-size:15px}
+.flavgroup .fg-count{margin-left:auto;font-size:11.5px;color:var(--muted);font-weight:600}
+.catrow{display:grid;grid-template-columns:1.4fr .7fr .9fr 1fr auto;align-items:center;gap:12px;padding:11px 18px;border-bottom:1px solid var(--line)}
+.catrow:last-child{border-bottom:0}
+.catrow:hover{background:#FDFAFC}
+.catrow .c-variant{font-weight:700;font-size:13px}
+.catrow .c-code{font-size:10.5px;color:var(--muted);font-family:ui-monospace,Menlo,monospace}
+.col-head{display:grid;grid-template-columns:1.4fr .7fr .9fr 1fr auto;gap:12px;padding:7px 18px 5px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+.attr-pill{display:inline-block;font-size:11px;font-weight:700;padding:3px 10px;border-radius:11px}
+.size-pill{display:inline-block;font-size:11.5px;font-weight:800;padding:3px 10px;border-radius:8px;background:#F1ECF6;color:var(--aubergine)}
+.prep-baked{background:#F3ECDD;color:#9A5B1E}.prep-raw{background:#DCEBF5;color:#1A6091}
+.qtybox{display:flex;align-items:center;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.qtybox button{background:#F6F2FA;border:0;width:28px;height:30px;font-size:15px;cursor:pointer;color:var(--aubergine);font-weight:700}
+.qtybox input{width:34px;height:30px;border:0;text-align:center;font-size:13px;font-family:inherit;font-weight:700}
+.addbtn{background:var(--aubergine);color:#fff;border:0;border-radius:8px;height:32px;padding:0 16px;font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit;white-space:nowrap}
+.addbtn:hover{background:var(--aubergine-lt)}
+.addbtn.added{background:var(--mint)}
+.rowactions{display:flex;align-items:center;gap:8px;justify-content:flex-end}
+/* prep/tier hierarchy */
+.prepband{margin-bottom:20px}
+.prepband .pb-head{display:flex;align-items:center;gap:10px;padding:9px 4px;margin-bottom:8px}
+.prepband .pb-badge{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;padding:5px 14px;border-radius:20px}
+.prepband .pb-count{font-size:11.5px;color:var(--muted);font-weight:600}
+.tiersect{background:var(--paper);border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--line);margin-bottom:12px;overflow:hidden}
+.tiersect .ts-head{display:flex;align-items:center;gap:10px;padding:11px 18px;border-bottom:1px solid var(--line)}
+.tiersect .ts-name{font-weight:800;font-size:14px}
+.tiersect .ts-count{margin-left:auto;font-size:11px;color:var(--muted);font-weight:600}
+.catrow2{display:grid;grid-template-columns:2.4fr .7fr .9fr 150px;align-items:center;gap:12px;padding:11px 18px;border-bottom:1px solid var(--line)}
+.catrow2:last-child{border-bottom:0}.catrow2:hover{background:#FDFAFC}
+.col-head2{display:grid;grid-template-columns:2.4fr .7fr .9fr 150px;gap:12px;padding:7px 18px 5px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);background:#FBF9FC}
+/* ===== PANELS / CARDS ===== */
+.panel{background:var(--paper);border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--line);padding:20px;margin-bottom:18px}
+.panel h2{font-size:16px;margin:0 0 14px;font-weight:800;display:flex;align-items:center;gap:8px}
+.panel h2 .num{background:var(--pink);color:#fff;width:22px;height:22px;border-radius:50%;font-size:12px;display:flex;align-items:center;justify-content:center}
+/* ===== FORMS ===== */
+.fld{margin-bottom:14px}.fld.row{display:flex;gap:12px}.fld.row>div{flex:1}
+label{display:block;font-size:12px;font-weight:700;margin-bottom:5px;color:var(--ink)}
+label .opt{color:var(--muted);font-weight:500}
+input,select,textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-size:13.5px;font-family:inherit;background:var(--paper)}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--pink-lt);outline-offset:-1px;border-color:transparent}
+textarea{resize:vertical;min-height:60px}
+.toggle-group{display:flex;gap:8px}
+.toggle-opt{flex:1;border:1px solid var(--line);border-radius:9px;padding:11px;text-align:center;cursor:pointer;font-weight:700;font-size:13px;background:var(--paper);transition:.12s}
+.toggle-opt .ic{font-size:18px;display:block;margin-bottom:3px}
+.toggle-opt.on{border-color:var(--pink);background:#FDF0F6;color:var(--pink)}
+.toggle-opt.on.cold{border-color:var(--sky);background:#EDF5FB;color:var(--sky)}
+.toggle-opt.on.exp{border-color:var(--exp);background:#FCEEEC;color:var(--exp)}
+.hint{font-size:11px;color:var(--muted);margin-top:4px}
+/* ===== CART DRAWER ===== */
+.drawer-bg{position:fixed;inset:0;background:rgba(45,34,53,.4);z-index:90;display:none}
+.drawer-bg.open{display:block}
+.drawer{position:fixed;top:0;right:0;height:100%;width:440px;max-width:92vw;background:var(--cream);z-index:91;box-shadow:-8px 0 30px rgba(45,34,53,.2);transform:translateX(100%);transition:transform .25s;display:flex;flex-direction:column}
+.drawer.open{transform:translateX(0)}
+.drawer .dhead{padding:18px 20px;background:var(--aubergine);color:#fff;display:flex;align-items:center;justify-content:space-between}
+.drawer .dhead h3{margin:0;font-size:17px;font-weight:800}
+.drawer .dhead .x{background:none;border:0;color:#fff;font-size:22px;cursor:pointer}
+.drawer .dbody{flex:1;overflow:auto;padding:16px 20px}
+.drawer .dfoot{padding:16px 20px;border-top:1px solid var(--line);background:var(--paper)}
+.lineitem{display:flex;gap:11px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.lineitem .li-emoji{font-size:24px}
+.lineitem .li-name{flex:1;font-size:13px;font-weight:600;line-height:1.3}
+.lineitem .li-meta{font-size:11px;color:var(--muted)}
+.empty-state{text-align:center;padding:40px 20px;color:var(--muted)}
+.empty-state .big{font-size:44px;margin-bottom:10px}
+/* ===== MISSION CONTROL ===== */
+.mc-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px}
+.stat{background:var(--paper);border-radius:var(--radius);border:1px solid var(--line);padding:15px 17px;box-shadow:var(--shadow)}
+.stat .n{font-size:26px;font-weight:800;letter-spacing:-.5px}
+.stat .l{font-size:11.5px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-top:2px}
+.shipment{background:var(--paper);border-radius:var(--radius);border:1px solid var(--line);box-shadow:var(--shadow);margin-bottom:12px;overflow:hidden}
+.shipment .sh-top{padding:14px 18px;display:flex;align-items:center;gap:14px;cursor:pointer}
+.shipment .sh-id{font-weight:800;font-size:14px}
+.shipment .sh-to{font-size:12.5px;color:var(--muted)}
+.shipment .sh-sp{margin-left:auto;font-size:12px;font-weight:700;background:#F3EEF8;color:var(--aubergine);padding:4px 11px;border-radius:20px}
+.badges{display:flex;gap:6px;flex-wrap:wrap}
+.badge2{font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:11px;text-transform:uppercase;letter-spacing:.3px;display:inline-flex;align-items:center;gap:3px}
+.b-cold{background:#EDF5FB;color:var(--sky)}.b-ambient{background:#F3ECDD;color:var(--amber)}
+.b-air{background:#FCEEEC;color:var(--exp)}.b-ground{background:#EEF3EC;color:var(--mint)}
+.b-exp{background:var(--exp);color:#fff}
+.status-pill{font-size:11px;font-weight:800;padding:4px 12px;border-radius:20px}
+.st-draft{background:#EEE9F2;color:#6B5B7E}
+.st-submitted{background:#FDF0F6;color:var(--pink)}
+.st-processing{background:#FEF6E7;color:var(--amber)}
+.st-shipped{background:#EAF6F0;color:var(--mint)}
+.st-delivered{background:#E6F0E9;color:#1E6E45}
+.sh-detail{padding:0 18px 16px;border-top:1px solid var(--line);display:none}
+.sh-detail.open{display:block}
+.sh-detail .row2{display:flex;gap:24px;flex-wrap:wrap;margin-top:12px}
+.sh-detail .kv{font-size:12.5px}.sh-detail .kv .k{color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+.sh-items{margin-top:12px;font-size:12.5px}
+.sh-items .it{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--line)}
+.pipeline{display:flex;gap:0;margin-top:14px}
+.pipeline .step{flex:1;text-align:center;font-size:10px;font-weight:700;color:var(--muted);position:relative;padding-top:18px}
+.pipeline .step::before{content:'';position:absolute;top:6px;left:50%;width:100%;height:2px;background:var(--line)}
+.pipeline .step:last-child::before{display:none}
+.pipeline .step .dot{position:absolute;top:2px;left:50%;transform:translateX(-50%);width:10px;height:10px;border-radius:50%;background:var(--line);z-index:2}
+.pipeline .step.done{color:var(--mint)}.pipeline .step.done .dot{background:var(--mint)}
+.pipeline .step.done::before{background:var(--mint)}
+.pipeline .step.current .dot{background:var(--pink);box-shadow:0 0 0 3px #FDF0F6}
+.pipeline .step.current{color:var(--pink)}
+/* addr book */
+.addr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+.addr-card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:15px 16px;box-shadow:var(--shadow);position:relative}
+.addr-card .anick{font-weight:800;font-size:14px;margin-bottom:5px}
+.addr-card .aline{font-size:12.5px;color:var(--muted);line-height:1.5}
+.addr-card .aacts{margin-top:11px;display:flex;gap:7px}
+/* address table */
+.atable{width:100%;border-collapse:collapse;background:var(--paper);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);border:1px solid var(--line)}
+.atable thead th{text-align:left;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:11px 16px;background:#FBF9FC;border-bottom:1px solid var(--line)}
+.atable tbody td{padding:12px 16px;font-size:13px;border-bottom:1px solid var(--line);vertical-align:top}
+.atable tbody tr:last-child td{border-bottom:0}
+.atable tbody tr:hover{background:#FDFAFC}
+.atable .t-nick{font-weight:700}
+.atable .t-sub{font-size:11.5px;color:var(--muted)}
+.atable .t-acts{display:flex;gap:6px;justify-content:flex-end}
+.selectable{cursor:pointer}.selectable:hover{border-color:var(--pink)}
+.selectable.sel{border-color:var(--pink);box-shadow:0 0 0 2px #FDF0F6}
+.modal-bg{position:fixed;inset:0;background:rgba(45,34,53,.45);z-index:100;display:flex;align-items:flex-start;justify-content:center;padding-top:50px}
+.modal{background:var(--paper);border-radius:14px;width:520px;max-width:94vw;max-height:85vh;overflow:auto;box-shadow:0 16px 50px rgba(45,34,53,.3)}
+.modal .mhead{padding:17px 22px;border-bottom:1px solid var(--line);font-weight:800;font-size:16px}
+.modal .mbody{padding:20px 22px}.modal .mfoot{padding:15px 22px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:9px}
+.collateral-list label{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;padding:7px 0;cursor:pointer}
+.collateral-list input{width:auto}
+.reqframe{background:#FBF6F9;border:1px solid #F0E2EC;border-radius:11px;padding:14px 15px;margin-bottom:16px}
+.reqframe .rf-title{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--pink);margin-bottom:10px}
+.quickstart{background:#F6F3FA;border:1px solid #E9E1F2;border-radius:11px;padding:13px 15px;margin-bottom:16px}
+.quickstart .qs-title{font-size:12.5px;font-weight:800;color:var(--aubergine);margin-bottom:9px}
+.quickstart .qs-label{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:6px}
+.qs-chips{display:flex;flex-wrap:wrap;gap:7px}
+.qs-chip{background:#fff;border:1px solid var(--line);border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;color:var(--aubergine);cursor:pointer;font-family:inherit}
+.qs-chip:hover{border-color:var(--pink);background:#FDF0F6}
+.qs-chip.dup{color:var(--sky)}.qs-chip.dup:hover{border-color:var(--sky);background:#EDF5FB}
+.tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:6px;background:#F3EEF8;color:var(--aubergine)}
+/* shipstation panel */
+.sspanel{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:20px;overflow:hidden}
+.ss-head{display:flex;align-items:center;gap:11px;padding:13px 18px;cursor:pointer;background:linear-gradient(90deg,#2D2235,#3E3049)}
+.ss-badge{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;background:#C2185B;color:#fff;padding:4px 11px;border-radius:20px}
+.ss-title{color:#fff;font-weight:700;font-size:13.5px}
+.ss-chev{margin-left:auto;color:#C9B8D6;font-size:11px}
+.ss-body{padding:18px 20px}
+.ss-p{font-size:13px;line-height:1.6;margin:0 0 14px}
+.mono{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;background:#F3EEF8;color:#5B3A86;padding:1px 6px;border-radius:5px}
+.ss-cols{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:14px}
+@media(max-width:820px){.ss-cols{grid-template-columns:1fr}}
+.ss-col{background:#FBFAFC;border:1px solid var(--line);border-radius:10px;padding:13px 15px}
+.ss-ct{font-size:12px;font-weight:800;color:var(--mint);margin-bottom:8px}
+.ss-ct.warn{color:var(--amber)}
+.ss-col ul{margin:0;padding-left:16px}
+.ss-col li{font-size:12px;line-height:1.55;margin-bottom:8px;color:var(--ink)}
+.ss-foot{font-size:12.5px;line-height:1.6;background:#FDF0F6;border:1px solid #F3D9E6;border-radius:10px;padding:12px 15px;margin:0}
+.ss-auto{background:#F6F3FA;border:1px solid #E4DAF0;border-radius:10px;padding:14px 16px;margin-bottom:14px}
+.ss-auto-t{font-size:13px;font-weight:800;color:var(--aubergine);margin-bottom:8px}
+.ss-warn-box{background:#FEF6E7;border:1px solid #F5E2B8;border-radius:8px;padding:10px 13px;font-size:12px;line-height:1.55;color:#8A6410}
+.ss-ol{margin:0;padding-left:18px}.ss-ol li{font-size:12px;line-height:1.55;margin-bottom:7px}
+.ss-split{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+@media(max-width:820px){.ss-split{grid-template-columns:1fr}}
+.ss-split-col{background:#fff;border:1px solid var(--line);border-radius:8px;padding:11px 13px}
+.ss-split-h{font-size:11px;font-weight:800;color:var(--aubergine);margin-bottom:7px;line-height:1.35}
+.ss-split-col ul{margin:0;padding-left:15px}.ss-split-col li{font-size:11.5px;line-height:1.5;margin-bottom:6px}
+.ss-note{margin-top:11px;background:#EDF5FB;border:1px solid #CFE4F2;border-radius:8px;padding:10px 13px;font-size:11.5px;line-height:1.55;color:#1A5276}
+.ss-config{background:#F6F3FA;border:1px solid #E4DAF0;border-radius:10px;padding:14px 16px;margin-bottom:14px}
+.ss-config-t{font-size:13px;font-weight:800;color:var(--aubergine);margin-bottom:8px}
+.ss-cfg-item{background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:10px}
+.ss-cfg-item:last-child{margin-bottom:0}
+.ss-cfg-h{font-size:12.5px;font-weight:800;color:var(--aubergine);margin-bottom:6px}
+.ss-cfg-item p{font-size:12px;line-height:1.55;margin:0;color:var(--ink)}
+/* custom product request */
+.customitem{display:flex;gap:11px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line)}
+.ci-badge{font-size:10px;font-weight:800;color:var(--pink);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px}
+.ci-spec{width:100%;min-height:52px;font-size:12.5px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-family:inherit;resize:vertical;background:#FFFCFD}
+.ci-spec:focus{outline:2px solid var(--pink-lt);outline-offset:-1px;border-color:transparent}
+.ci-tag{font-size:9.5px;font-weight:800;color:#fff;background:var(--pink);padding:2px 7px;border-radius:10px;text-transform:uppercase;letter-spacing:.3px}
+.proj-tag{font-size:10px;font-weight:700;color:#5B3A86;background:#F3EEF8;padding:2px 8px;border-radius:8px}
+.ci-project{width:100%;margin-top:7px;font-size:12px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;font-family:inherit;background:#fff}
+.uom-pill{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:8px;background:#EEF3EC;color:#2E7D6B}
+.temp-derived{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.temp-badge{font-size:12px;font-weight:800;padding:5px 12px;border-radius:20px}
+.tb-cold{background:#EDF5FB;color:var(--sky)}.tb-amb{background:#F3ECDD;color:var(--amber)}
+.temp-note{font-size:11.5px;color:var(--muted)}
+.temp-override-link{margin-left:auto;background:none;border:0;color:var(--muted);font-size:11px;font-weight:700;text-decoration:underline;cursor:pointer;font-family:inherit}
+.temp-override-link:hover{color:var(--pink)}
+.temp-override-box{margin-top:9px;padding:11px;background:#FBF9FC;border:1px dashed var(--line);border-radius:9px}
+.hidden{display:none!important}
+</style></head><body>
+<div class="nav">
+  <div class="brand"><span class="dot"></span>Sample Central <small>Dirty Cookie</small></div>
+  <div class="tabs">
+    <button id="nav-shop" class="active" onclick="go('shop')">Order Samples</button>
+    <button id="nav-mission" onclick="go('mission')">Pending Shipments</button>
+    <button id="nav-address" onclick="go('address')">Address Book</button>
+  </div>
+  <div class="right">
+    <div class="waffle"><button class="waffle-btn" onclick="toggleWaffle(event)" title="Switch apps" aria-label="Switch apps"><svg viewBox="0 0 18 18" fill="currentColor"><circle cx="3" cy="3" r="1.8"/><circle cx="9" cy="3" r="1.8"/><circle cx="15" cy="3" r="1.8"/><circle cx="3" cy="9" r="1.8"/><circle cx="9" cy="9" r="1.8"/><circle cx="15" cy="9" r="1.8"/><circle cx="3" cy="15" r="1.8"/><circle cx="9" cy="15" r="1.8"/><circle cx="15" cy="15" r="1.8"/></svg></button><div id="waffleMenu"></div></div>
+    <button class="cartbtn" onclick="openCart()">🛒 Build Shipment<span class="badge hidden" id="cartBadge">0</span></button>
+  </div>
+</div>
+<div class="wrap" id="view"></div>
+
+<!-- CART DRAWER -->
+<div class="drawer-bg" id="drawerBg" onclick="closeCart()"></div>
+<div class="drawer" id="drawer">
+  <div class="dhead"><h3>Build Sample Shipment</h3><button class="x" onclick="closeCart()">×</button></div>
+  <div class="dbody" id="drawerBody"></div>
+  <div class="dfoot" id="drawerFoot"></div>
+</div>
+<div id="modalMount"></div>
+
+<script>
+const CATALOG=[{"code": "CC-2OZ-BAK-G", "desc": "Gourmet Chocolate Chip — 2oz, Baked", "outer": "Chocolate Chip", "stuffing": "", "tier": "Gourmet", "form": "Shot", "oz": 2, "prep": "Baked"}, {"code": "DC-2OZ-BAK-G", "desc": "Gourmet Double Chocolate — 2oz, Baked", "outer": "Double Chocolate", "stuffing": "", "tier": "Gourmet", "form": "Shot", "oz": 2, "prep": "Baked"}, {"code": "RV-2OZ-BAK-G", "desc": "Gourmet Red Velvet — 2oz, Baked", "outer": "Red Velvet", "stuffing": "", "tier": "Gourmet", "form": "Shot", "oz": 2, "prep": "Baked"}, {"code": "CH-2OZ-BAK-G", "desc": "Gourmet Churro — 2oz, Baked", "outer": "Churro", "stuffing": "", "tier": "Gourmet", "form": "Shot", "oz": 2, "prep": "Baked"}, {"code": "CCH-2OZ-BAK-C", "desc": "Classic Chocolate Chip / Choc. Hazelnut — 2oz, Baked", "outer": "Chocolate Chip", "stuffing": "Choc. Hazelnut", "tier": "Classic", "form": "Stuffed", "oz": 2, "prep": "Baked"}, {"code": "CCH-3OZ-BAK-C", "desc": "Classic Chocolate Chip / Choc. Hazelnut — 3oz, Baked", "outer": "Chocolate Chip", "stuffing": "Choc. Hazelnut", "tier": "Classic", "form": "Stuffed", "oz": 3, "prep": "Baked"}, {"code": "CCH-3OZ-BAK-G", "desc": "Gourmet Chocolate Chip / Choc. Hazelnut — 3oz, Baked", "outer": "Chocolate Chip", "stuffing": "Choc. Hazelnut", "tier": "Gourmet", "form": "Stuffed", "oz": 3, "prep": "Baked"}, {"code": "DCSC-2OZ-BAK-C", "desc": "Classic Double Choc. Salted Caramel — 2oz, Baked", "outer": "Double Chocolate Chip", "stuffing": "Salted Caramel", "tier": "Classic", "form": "Stuffed", "oz": 2, "prep": "Baked"}, {"code": "DCSC-3OZ-BAK-C", "desc": "Classic Double Choc. Salted Caramel — 3oz, Baked", "outer": "Double Chocolate Chip", "stuffing": "Salted Caramel", "tier": "Classic", "form": "Stuffed", "oz": 3, "prep": "Baked"}, {"code": "DCSC-3OZ-BAK-G", "desc": "Gourmet Double Choc. Salted Caramel — 3oz, Baked", "outer": "Double Chocolate Chip", "stuffing": "Salted Caramel", "tier": "Gourmet", "form": "Stuffed", "oz": 3, "prep": "Baked"}, {"code": "WCCB-2OZ-BAK-C", "desc": "Classic White Choc. Chip / Cookie Butter — 2oz, Baked", "outer": "White Choc. Chip", "stuffing": "Cookie Butter", "tier": "Classic", "form": "Stuffed", "oz": 2, "prep": "Baked"}, {"code": "WCCB-3OZ-BAK-C", "desc": "Classic White Choc. Chip / Cookie Butter — 3oz, Baked", "outer": "White Choc. Chip", "stuffing": "Cookie Butter", "tier": "Classic", "form": "Stuffed", "oz": 3, "prep": "Baked"}, {"code": "WCCB-3OZ-BAK-G", "desc": "Gourmet White Choc. Chip / Cookie Butter — 3oz, Baked", "outer": "White Choc. Chip", "stuffing": "Cookie Butter", "tier": "Gourmet", "form": "Stuffed", "oz": 3, "prep": "Baked"}, {"code": "PBJ-2OZ-BAK-C", "desc": "Classic Peanut Butter & Jelly — 2oz, Baked", "outer": "Peanut Cookie", "stuffing": "Grape Jelly", "tier": "Classic", "form": "Stuffed", "oz": 2, "prep": "Baked"}, {"code": "PBJ-3OZ-BAK-C", "desc": "Classic Peanut Butter & Jelly — 3oz, Baked", "outer": "Peanut Cookie", "stuffing": "Grape Jelly", "tier": "Classic", "form": "Stuffed", "oz": 3, "prep": "Baked"}, {"code": "PBJ-3OZ-BAK-G", "desc": "Gourmet Peanut Butter & Jelly — 3oz, Baked", "outer": "Peanut Cookie", "stuffing": "Grape Jelly", "tier": "Gourmet", "form": "Stuffed", "oz": 3, "prep": "Baked"}, {"code": "CC-1.5OZ-BAK-G", "desc": "Gourmet Chocolate Chip — 1.5oz, Baked", "outer": "Chocolate Chip", "stuffing": "", "tier": "Gourmet", "form": "Shot", "oz": 1.5, "prep": "Baked"}, {"code": "SR-2OZ-BAK-C", "desc": "Classic Shortbread Raspberry — 2oz, Baked", "outer": "Shortbread Raspberry", "stuffing": "", "tier": "Gourmet", "form": "Shot", "oz": 2, "prep": "Baked"}, {"code": "CCH-2OZ-RAW-C", "desc": "Classic Chocolate Chip / Choc. Hazelnut — 2oz, Raw", "outer": "Chocolate Chip", "stuffing": "Choc. Hazelnut", "tier": "Classic", "form": "Stuffed", "oz": 2, "prep": "Raw"}, {"code": "CCH-3OZ-RAW-C", "desc": "Classic Chocolate Chip / Choc. Hazelnut — 3oz, Raw", "outer": "Chocolate Chip", "stuffing": "Choc. Hazelnut", "tier": "Classic", "form": "Stuffed", "oz": 3, "prep": "Raw"}, {"code": "DCSC-2OZ-RAW-C", "desc": "Classic Double Choc. Salted Caramel — 2oz, Raw", "outer": "Double Chocolate Chip", "stuffing": "Salted Caramel", "tier": "Classic", "form": "Stuffed", "oz": 2, "prep": "Raw"}, {"code": "DCSC-3OZ-RAW-C", "desc": "Classic Double Choc. Salted Caramel — 3oz, Raw", "outer": "Double Chocolate Chip", "stuffing": "Salted Caramel", "tier": "Classic", "form": "Stuffed", "oz": 3, "prep": "Raw"}, {"code": "WCCB-2OZ-RAW-C", "desc": "Classic White Choc. Chip / Cookie Butter — 2oz, Raw", "outer": "White Choc. Chip", "stuffing": "Cookie Butter", "tier": "Classic", "form": "Stuffed", "oz": 2, "prep": "Raw"}, {"code": "WCCB-3OZ-RAW-C", "desc": "Classic White Choc. Chip / Cookie Butter — 3oz, Raw", "outer": "White Choc. Chip", "stuffing": "Cookie Butter", "tier": "Classic", "form": "Stuffed", "oz": 3, "prep": "Raw"}, {"code": "PBJ-2OZ-RAW-C", "desc": "Classic Peanut Butter & Jelly — 2oz, Raw", "outer": "Peanut Cookie", "stuffing": "Grape Jelly", "tier": "Classic", "form": "Stuffed", "oz": 2, "prep": "Raw"}, {"code": "PBJ-3OZ-RAW-C", "desc": "Classic Peanut Butter & Jelly — 3oz, Raw", "outer": "Peanut Cookie", "stuffing": "Grape Jelly", "tier": "Classic", "form": "Stuffed", "oz": 3, "prep": "Raw"}, {"code": "CCF-3OZ-RAW-C", "desc": "Classic Chocolate Chip Cookie with Fudge — 3oz, Raw", "outer": "Chocolate Chip Cookie", "stuffing": "Fudge", "tier": "Classic", "form": "Stuffed", "oz": 3, "prep": "Raw"}, {"code": "WCCB-3OZ-RAW-C", "desc": "Classic White Chocolate Chip / Cookie Butter — 3oz, Raw", "outer": "White Chocolate Chip", "stuffing": "Cookie Butter", "tier": "Classic", "form": "Stuffed", "oz": 3, "prep": "Raw"}];
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+const EMOJI={Stuffed:'🍪',Shot:'🥤'};
+// ===== APP SWITCHER (waffle menu) =====
+let waffleOpen=false;
+function toggleWaffle(e){if(e)e.stopPropagation();waffleOpen=!waffleOpen;drawWaffle();}
+function closeWaffle(){waffleOpen=false;drawWaffle();}
+function drawWaffle(){
+ const m=document.getElementById('waffleMenu');if(!m)return;
+ if(!waffleOpen){m.innerHTML='';return;}
+ let h='<div class="wm-bg" onclick="closeWaffle()"></div>';
+ h+='<div class="waffle-menu"><div class="wm-head">Cookie Central · Apps</div><div class="wm-grid">';
+ // current app: Sample Central
+ h+='<div class="wm-app current"><div class="wm-icon" style="background:#FDF0F6">🍪</div><div class="wm-name">Sample Central</div><div class="wm-tag">Current</div></div>';
+ // Cookulator — real link
+ h+='<a class="wm-app" href="cookulator.html"><div class="wm-icon" style="background:#F3ECDD">📊</div><div class="wm-name">Cookulator</div><div class="wm-tag">BOM engine</div></a>';
+ h+='</div>';
+ h+='<div class="wm-note">🔒 Internal tools. Cortina sees only Sample Central — the Cookulator won\'t appear here for their role once access-gating is on.</div>';
+ h+='</div>';
+ m.innerHTML=h;
+}
+
+
+// ===== STATE =====
+let cart=[];            // [{code,desc,qty,tier,form}]
+let customItems=[];     // [{id,spec,qty}] — custom product requests (free-text)
+let view='shop';
+let shopFilter='All';
+// shipment being built
+let ship=blankShip();
+function blankShip(){return {addrId:null,salesperson:'',account:'',tempOverride:'',reqDate:'',speed:'ground',box:'Dirty Cookie',collateral:[],notes:''};}
+// Shipping speed is a 3-tier choice; the carrier is app config, not a per-order pick.
+// Each tier maps 1:1 to a real ShipStation serviceCode in the Custom Store export.
+const SPEEDS=[{value:'ground',label:'Ground',service:'ups_ground'},{value:'2day',label:'2-Day',service:'ups_2nd_day_air'},{value:'overnight',label:'Overnight',service:'ups_next_day_air'}];
+const speedLabel=v=>(SPEEDS.find(s=>s.value===v)||{}).label||v||'—';
+// Ship temp is derived from the products: any raw (frozen) item => Cold chain, else Ambient.
+function derivedTemp(){
+ const anyRaw=cart.some(it=>{const c=CATALOG.find(x=>x.code===it.code);return c&&(c.prep||'').toLowerCase()==='raw';});
+ return anyRaw?'Cold':'Ambient';
+}
+function effectiveTemp(){return ship.tempOverride||derivedTemp();}
+// seed data
+let addresses=[
+ {id:'A1',nick:'Whole Foods HQ — Austin',name:'Sarah Chen',company:'Whole Foods Market',street:'550 Bowie St',city:'Austin',state:'TX',zip:'78703'},
+ {id:'A2',nick:'Kroger Innovation Lab',name:'Marcus Webb',company:'Kroger Co.',street:'1014 Vine St',city:'Cincinnati',state:'OH',zip:'45202'},
+ {id:'A3',nick:'Sprouts — Phoenix',name:'Dana Ruiz',company:'Sprouts Farmers Market',street:'5455 E High St',city:'Phoenix',state:'AZ',zip:'85054'},
+];
+const SALESPEOPLE=['Jamie Rivera','Alex Morgan','Priya Patel','Tom Becker','Sales Leader — Dana','Sales Leader — Chris'];
+const COLLATERAL=['Warming instructions','Line sheet','Brand story card','Nutrition & allergen sheet','Cookie shot flyer','Reusable tote'];
+const BOXES=['Dirty Cookie','Custom / Branded'];
+// Saved assortment templates — reusable cookie sets a leader can drop in instantly
+let TEMPLATES=[
+ {id:'T1',name:'Classic Starter — 3oz',desc:'One of each classic 3oz baked',items:[{code:'CCH-3OZ-BAK-C',qty:2},{code:'DCSC-3OZ-BAK-C',qty:2},{code:'PBJ-3OZ-BAK-C',qty:2},{code:'WCCB-3OZ-BAK-C',qty:2}]},
+ {id:'T2',name:'Gourmet Shot Flight — 2oz',desc:'All four gourmet 2oz shots',items:[{code:'CC-2OZ-BAK-G',qty:3},{code:'DC-2OZ-BAK-G',qty:3},{code:'RV-2OZ-BAK-G',qty:3},{code:'CH-2OZ-BAK-G',qty:3}]},
+ {id:'T3',name:'Buyer Dozen — mixed',desc:'12 assorted best-sellers',items:[{code:'CCH-3OZ-BAK-C',qty:4},{code:'CC-2OZ-BAK-G',qty:4},{code:'PBJ-3OZ-BAK-C',qty:4}]},
+];
+let shipments=[
+ {id:'SMP-1042',status:'processing',addr:addresses[0],salesperson:'Jamie Rivera',account:'Whole Foods Market',temp:'Ambient',speed:'ground',reqDate:'2026-07-08',box:'Dirty Cookie',collateral:['Line sheet'],items:[{code:'CCH-3OZ-BAK-C',desc:'Classic Chocolate Chip / Choc. Hazelnut — 3oz, Baked',qty:6},{code:'PBJ-3OZ-BAK-C',desc:'Classic Peanut Butter & Jelly — 3oz, Baked',qty:6}],notes:'First meeting, keep it classic.'},
+ {id:'SMP-1043',status:'submitted',addr:addresses[1],salesperson:'Alex Morgan',account:'Kroger Co.',temp:'Cold',speed:'overnight',reqDate:'2026-07-03',box:'Custom / Branded',collateral:['Line sheet','Brand story card'],items:[{code:'CC-2OZ-BAK-G',desc:'Gourmet Chocolate Chip — 2oz, Baked',qty:12}],notes:'Overnight — buyer meeting Thursday.'},
+ {id:'SMP-1041',status:'shipped',addr:addresses[2],salesperson:'Priya Patel',account:'Sprouts Farmers Market',temp:'Ambient',speed:'ground',reqDate:'2026-07-01',box:'Dirty Cookie',collateral:[],items:[{code:'RV-2OZ-BAK-G',desc:'Gourmet Red Velvet — 2oz, Baked',qty:4},{code:'CH-2OZ-BAK-G',desc:'Gourmet Churro — 2oz, Baked',qty:4}],notes:''},
+];
+let shipSeq=1044;
+
+// ===== NAV =====
+function go(v){view=v;document.querySelectorAll('.nav .tabs button').forEach(b=>b.classList.remove('active'));document.getElementById('nav-'+v).classList.add('active');render();}
+function render(){
+ const el=document.getElementById('view');
+ if(view==='shop')el.innerHTML=renderShop();
+ else if(view==='mission')el.innerHTML=renderMission();
+ else if(view==='address')el.innerHTML=renderAddress();
+ updateCartBadge();
+}
+
+// ===== SHOP =====
+function flavorFamily(c){return c.stuffing?(c.outer+' / '+c.stuffing):(c.outer||c.desc);}
+function familyEmoji(c){return EMOJI[c.form]||'🍪';}
+function renderShop(){
+ const filters=['All','Stuffed','Shot','Gourmet','Classic'];
+ let h='<div class="pagehead"><div><h1>Order Samples</h1><div class="sub">Organized by prep state, then tier, then size — the order that drives how a sample shipment is pulled and handled.</div></div></div>';
+ h+='<div class="shopbar">'+filters.map(f=>'<button class="chipfilter'+(shopFilter===f?' on':'')+'" onclick="setFilter(\''+f+'\')">'+f+'</button>').join('')+'</div>';
+ let items=CATALOG.filter(c=>{
+   if(shopFilter==='All')return true;
+   if(shopFilter==='Stuffed'||shopFilter==='Shot')return c.form===shopFilter;
+   return c.tier===shopFilter;
+ });
+ if(items.length===0)return h+'<div class="empty-state"><div class="big">🍪</div>No cookies match this filter.</div>';
+ // HIERARCHY: Prep State > Tier > Size(row, sorted by size)
+ const prepOrder=['Baked','Raw'];
+ const tierOrder=['Gourmet','Classic'];
+ const preps=prepOrder.filter(p=>items.some(c=>(c.prep||'Baked')===p));
+ preps.forEach(prep=>{
+   const prepItems=items.filter(c=>(c.prep||'Baked')===prep);
+   const prepCls=prep.toLowerCase()==='raw'?'prep-raw':'prep-baked';
+   const storage=prep.toLowerCase()==='raw'?'❄️ ships frozen':'🌡 ships ambient';
+   h+='<div class="prepband"><div class="pb-head"><span class="pb-badge '+prepCls+'">'+esc(prep)+'</span><span class="pb-count">'+prepItems.length+' cookie'+(prepItems.length>1?'s':'')+' · '+storage+'</span></div>';
+   const tiers=tierOrder.filter(t=>prepItems.some(c=>c.tier===t));
+   tiers.forEach(tier=>{
+     const tierItems=prepItems.filter(c=>c.tier===tier).slice().sort((a,b)=>(parseFloat(a.oz)-parseFloat(b.oz))||flavorFamily(a).localeCompare(flavorFamily(b)));
+     const tierCls=tier==='Gourmet'?'tier-gourmet':'tier-classic';
+     h+='<div class="tiersect"><div class="ts-head"><span class="attr-pill '+tierCls+'">'+esc(tier)+'</span><span class="ts-name">'+esc(tier)+' cookies</span><span class="ts-count">'+tierItems.length+' option'+(tierItems.length>1?'s':'')+'</span></div>';
+     h+='<div class="col-head2"><div>Product</div><div>Size</div><div>UOM</div><div style="text-align:right">Qty</div></div>';
+     tierItems.forEach(c=>{
+       const inCart=cart.find(x=>x.code===c.code);
+       h+='<div class="catrow2"><div><div class="c-variant">'+esc(c.desc)+'</div><div class="c-code">'+esc(c.code)+' · '+esc(c.form)+'</div></div>';
+       h+='<div><span class="size-pill">'+esc(c.oz)+'oz</span></div>';
+       h+='<div><span class="uom-pill">1 cookie · EA</span></div>';
+       h+='<div class="rowactions"><div class="qtybox"><button onclick="bump(\''+c.code+'\',-1)">−</button><input id="q-'+c.code+'" value="'+(inCart?inCart.qty:1)+'" onchange="setQty(\''+c.code+'\',this.value)"><button onclick="bump(\''+c.code+'\',1)">+</button></div>';
+       h+='<button class="addbtn'+(inCart?' added':'')+'" onclick="addToCart(\''+c.code+'\')">'+(inCart?'✓ Added':'Add')+'</button></div></div>';
+     });
+     h+='</div>';
+   });
+   h+='</div>';
+ });
+ return h;
+}
+function nameOf(c){if(c.stuffing)return c.outer+' / '+c.stuffing;return c.outer||c.desc;}
+function setFilter(f){shopFilter=f;render();}
+function bump(code,d){const inp=document.getElementById('q-'+code);let v=Math.max(1,(parseInt(inp.value)||1)+d);inp.value=v;}
+function setQty(code,v){const inCart=cart.find(x=>x.code===code);if(inCart)inCart.qty=Math.max(1,parseInt(v)||1);}
+function addToCart(code){
+ const c=CATALOG.find(x=>x.code===code);const qty=Math.max(1,parseInt(document.getElementById('q-'+code).value)||1);
+ const ex=cart.find(x=>x.code===code);
+ if(ex)ex.qty=qty;else cart.push({code:c.code,desc:c.desc,name:nameOf(c),qty,tier:c.tier,form:c.form});
+ render();
+}
+function updateCartBadge(){const n=cart.reduce((s,i)=>s+i.qty,0)+customItems.reduce((s,i)=>s+i.qty,0);const b=document.getElementById('cartBadge');if(n>0){b.textContent=n;b.classList.remove('hidden');}else b.classList.add('hidden');}
+
+// ===== CART DRAWER / SHIPMENT BUILDER =====
+function openCart(){document.getElementById('drawer').classList.add('open');document.getElementById('drawerBg').classList.add('open');renderCart();}
+function closeCart(){document.getElementById('drawer').classList.remove('open');document.getElementById('drawerBg').classList.remove('open');}
+function renderCart(){
+ const body=document.getElementById('drawerBody');const foot=document.getElementById('drawerFoot');
+ if(cart.length===0&&customItems.length===0){body.innerHTML='<div class="empty-state"><div class="big">🍪</div><div style="font-weight:700;color:var(--ink)">No samples yet</div><div style="font-size:12.5px;margin-top:4px">Add cookies from the catalog, or add a custom request below.</div><button class="btn btn-ghost btn-sm" style="margin-top:14px" onclick="addCustom()">+ Add custom product request</button></div>';foot.innerHTML='';return;}
+ let h='';
+ if(cart.length){
+   h+='<div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:6px">Catalog samples ('+cart.reduce((s,i)=>s+i.qty,0)+')</div>';
+   cart.forEach(it=>{
+     h+='<div class="lineitem"><div class="li-name">'+esc(it.name)+'<div class="li-meta">'+esc(it.tier)+' · '+esc(it.code)+'</div></div>';
+     h+='<div class="qtybox"><button onclick="cartQty(\''+it.code+'\',-1)">−</button><input value="'+it.qty+'" onchange="cartSet(\''+it.code+'\',this.value)"><button onclick="cartQty(\''+it.code+'\',1)">+</button></div>';
+     h+='<button class="btn btn-sm btn-ghost" onclick="rmCart(\''+it.code+'\')" style="margin-left:6px">✕</button></div>';
+   });
+ }
+ // custom product requests
+ if(customItems.length){
+   h+='<div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--pink);margin:14px 0 6px">Custom requests ('+customItems.length+')</div>';
+   customItems.forEach(ci=>{
+     h+='<div class="customitem"><div style="flex:1"><div class="ci-badge">✦ Custom</div><textarea class="ci-spec" placeholder="Describe the customization — e.g. logo-embossed cookie, specific color, alt flavor, packaging tweak…" onchange="setCustomSpec(\''+ci.id+'\',this.value)">'+esc(ci.spec)+'</textarea><input class="ci-project" placeholder="Project # (for custom work)" value="'+esc(ci.projectNo||'')+'" onchange="setCustomProject(\''+ci.id+'\',this.value)"></div>';
+     h+='<div class="qtybox"><button onclick="customQty(\''+ci.id+'\',-1)">−</button><input value="'+ci.qty+'" onchange="customSet(\''+ci.id+'\',this.value)"><button onclick="customQty(\''+ci.id+'\',1)">+</button></div>';
+     h+='<button class="btn btn-sm btn-ghost" onclick="rmCustom(\''+ci.id+'\')" style="margin-left:6px">✕</button></div>';
+   });
+ }
+ h+='<button class="btn btn-ghost btn-sm" style="margin-top:10px;width:100%" onclick="addCustom()">+ Add custom product request</button>';
+ // shipment details form
+ h+='<div style="margin-top:18px">'+shipForm()+'</div>';
+ body.innerHTML=h;
+ foot.innerHTML='<button class="btn btn-primary" style="width:100%" onclick="submitShipment()">↗ Push order to ShipStation</button>';
+}
+function cartQty(code,d){const it=cart.find(x=>x.code===code);if(it){it.qty=Math.max(1,it.qty+d);renderCart();render();}}
+function cartSet(code,v){const it=cart.find(x=>x.code===code);if(it){it.qty=Math.max(1,parseInt(v)||1);renderCart();render();}}
+function rmCart(code){cart=cart.filter(x=>x.code!==code);renderCart();render();}
+// custom product requests
+let shipTempPanelOpen=false;
+function toggleTempOverride(){shipTempPanelOpen=!shipTempPanelOpen;renderCart();}
+function setTempOverride(v){ship.tempOverride=v;renderCart();}
+// #1 custom project number lives on the custom line
+function addCustom(){customItems.push({id:'C'+Date.now(),spec:'',qty:1,projectNo:''});renderCart();render();}
+function setCustomProject(id,v){const ci=customItems.find(x=>x.id===id);if(ci)ci.projectNo=v;}
+function setCustomSpec(id,v){const ci=customItems.find(x=>x.id===id);if(ci)ci.spec=v;}
+function customQty(id,d){const ci=customItems.find(x=>x.id===id);if(ci){ci.qty=Math.max(1,ci.qty+d);renderCart();render();}}
+function customSet(id,v){const ci=customItems.find(x=>x.id===id);if(ci){ci.qty=Math.max(1,parseInt(v)||1);renderCart();render();}}
+function rmCustom(id){customItems=customItems.filter(x=>x.id!==id);renderCart();render();}
+
+// Quick-start: duplicate a past shipment or drop in a saved assortment template
+function quickStart(){
+ let h='<div class="quickstart"><div class="qs-title">⚡ Quick start</div>';
+ // templates
+ h+='<div class="qs-label">Saved assortments</div><div class="qs-chips">';
+ TEMPLATES.forEach(t=>{h+='<button class="qs-chip" onclick="applyTemplate(\''+t.id+'\')" title="'+esc(t.desc)+'">'+esc(t.name)+'</button>';});
+ h+='</div>';
+ // duplicate past — filtered to this salesperson if chosen
+ let past=shipments;
+ if(ship.salesperson)past=shipments.filter(s=>s.salesperson===ship.salesperson);
+ if(past.length){
+   h+='<div class="qs-label" style="margin-top:10px">'+(ship.salesperson?'Duplicate '+esc(ship.salesperson.split(' ')[0])+'\'s past shipment':'Duplicate a past shipment')+'</div><div class="qs-chips">';
+   past.slice(0,5).forEach(s=>{const n=s.items.reduce((a,i)=>a+i.qty,0);h+='<button class="qs-chip dup" onclick="duplicateShipment(\''+s.id+'\')" title="'+esc(s.addr.nick)+' · '+n+' samples">'+esc(s.id)+' · '+esc(s.account||s.addr.nick)+'</button>';});
+   h+='</div>';
+ }
+ h+='<div class="hint" style="margin-top:7px">Drops items into the shipment — you can still adjust before submitting.</div></div>';
+ return h;
+}
+function applyTemplate(tid){
+ const t=TEMPLATES.find(x=>x.id===tid);if(!t)return;
+ t.items.forEach(ti=>{
+   const c=CATALOG.find(x=>x.code===ti.code);if(!c)return;
+   const ex=cart.find(x=>x.code===ti.code);
+   if(ex)ex.qty+=ti.qty;else cart.push({code:c.code,desc:c.desc,name:nameOf(c),qty:ti.qty,tier:c.tier,form:c.form});
+ });
+ renderCart();render();
+}
+function duplicateShipment(sid){
+ const s=shipments.find(x=>x.id===sid);if(!s)return;
+ // copy items (match by desc back to catalog code where possible)
+ s.items.forEach(it=>{
+   const c=CATALOG.find(x=>x.code===it.code)||CATALOG.find(x=>x.desc===it.desc);
+   if(c){const ex=cart.find(x=>x.code===c.code);if(ex)ex.qty+=it.qty;else cart.push({code:c.code,desc:c.desc,name:nameOf(c),qty:it.qty,tier:c.tier,form:c.form});}
+ });
+ // copy shipment settings
+ ship.addrId=s.addr.id;ship.salesperson=s.salesperson;ship.account=s.account||'';ship.tempOverride=s.tempOverride||'';ship.box=s.box;ship.collateral=(s.collateral||[]).slice();
+ renderCart();render();
+}
+function shipForm(){
+ const addr=addresses.find(a=>a.id===ship.addrId);
+ let h='<div class="panel" style="box-shadow:none;padding:0;border:0;margin:0">';
+ // === WHO IS THIS FOR (framing facts, first) ===
+ h+='<div class="reqframe"><div class="rf-title">Whose request is this?</div>';
+ h+='<div class="fld"><label>Requesting salesperson</label><select onchange="ship.salesperson=this.value;renderCart()"><option value="">— select salesperson —</option>'+SALESPEOPLE.map(s=>'<option'+(ship.salesperson===s?' selected':'')+'>'+esc(s)+'</option>').join('')+'</select></div>';
+ h+='<div class="fld"><label>Account / buyer</label><input value="'+esc(ship.account||'')+'" placeholder="e.g. Whole Foods Market" onchange="ship.account=this.value"></div>';
+ h+='<div class="hint" style="margin-top:-4px">Confirmation & status emails route to this salesperson.</div>';
+ h+='</div>';
+ // === QUICK START (duplicate / templates) — only useful once salesperson chosen ===
+ h+=quickStart();
+ // Address
+ h+='<div class="fld"><label>Ship to</label>';
+ if(addr){h+='<div class="addr-card sel" style="margin-bottom:6px"><div class="anick">'+esc(addr.nick)+'</div><div class="aline">'+esc(addr.name)+' · '+esc(addr.company)+'<br>'+esc(addr.street)+', '+esc(addr.city)+' '+esc(addr.state)+' '+esc(addr.zip)+'</div></div>';}
+ h+='<select onchange="ship.addrId=this.value;renderCart()"><option value="">— choose a saved address —</option>'+addresses.map(a=>'<option value="'+a.id+'"'+(ship.addrId===a.id?' selected':'')+'>'+esc(a.nick)+'</option>').join('')+'</select>';
+ h+='<button class="btn btn-sm btn-ghost" style="margin-top:8px;width:100%" onclick="openAddrModal(null,true)">+ Add a new address</button>';
+ h+='<div class="hint">New addresses are saved to the Address Book for reuse.</div></div>';
+ // Temperature — derived from products (UI-handled). Shown as a subtle badge; override is deprioritized.
+ const dt=derivedTemp();const eff=effectiveTemp();const overridden=!!ship.tempOverride;
+ h+='<div class="fld"><label>Shipping temperature <span class="opt">— set automatically from the products</span></label>';
+ h+='<div class="temp-derived"><span class="temp-badge '+(eff==='Cold'?'tb-cold':'tb-amb')+'">'+(eff==='Cold'?'❄️ Cold chain':'🌡 Ambient')+'</span>';
+ h+='<span class="temp-note">'+(overridden?'Manually overridden':'Auto ('+ (dt==='Cold'?'contains frozen items':'all shelf-stable') +')')+'</span>';
+ h+='<button class="temp-override-link" onclick="toggleTempOverride()">'+(shipTempPanelOpen?'Hide override':'Override')+'</button></div>';
+ if(shipTempPanelOpen){
+   h+='<div class="temp-override-box"><div class="hint" style="margin:0 0 6px">Rare — only force this if the shipment needs different handling than the products imply.</div><div class="toggle-group">';
+   h+='<div class="toggle-opt'+(ship.tempOverride==='Ambient'?' on':'')+'" onclick="setTempOverride(\'Ambient\')"><span class="ic">🌡</span>Ambient</div>';
+   h+='<div class="toggle-opt cold'+(ship.tempOverride==='Cold'?' on':'')+'" onclick="setTempOverride(\'Cold\')"><span class="ic">❄️</span>Cold</div>';
+   h+='<div class="toggle-opt'+(ship.tempOverride===''?' on':'')+'" onclick="setTempOverride(\'\')">Auto</div>';
+   h+='</div></div>';
+ }
+ h+='</div>';
+ // Required date + shipping speed
+ h+='<div class="fld row"><div><label>Required delivery date</label><input type="date" value="'+esc(ship.reqDate)+'" onchange="ship.reqDate=this.value"></div>';
+ h+='<div><label>Shipping speed</label><select onchange="ship.speed=this.value;renderCart()">'+SPEEDS.map(s=>'<option value="'+s.value+'"'+(ship.speed===s.value?' selected':'')+'>'+esc(s.label)+'</option>').join('')+'</select><div class="hint">Carrier is set in ShipStation, not here.</div></div></div>';
+ // Box
+ h+='<div class="fld"><label>Box specification</label><div class="toggle-group">'+BOXES.map(b=>'<div class="toggle-opt'+(ship.box===b?' on':'')+'" onclick="ship.box=\''+b+'\';renderCart()">'+esc(b)+'</div>').join('')+'</div></div>';
+ // Collateral
+ h+='<div class="fld"><label>Collateral <span class="opt">— marketing materials (optional)</span></label><div class="collateral-list">';
+ COLLATERAL.forEach(c=>{h+='<label><input type="checkbox"'+(ship.collateral.includes(c)?' checked':'')+' onchange="toggleCollateral(\''+esc(c)+'\')"> '+esc(c)+'</label>';});
+ h+='</div></div>';
+ // notes
+ h+='<div class="fld"><label>Notes for fulfillment <span class="opt">(optional)</span></label><textarea onchange="ship.notes=this.value" placeholder="Anything the co-man should know…">'+esc(ship.notes)+'</textarea></div>';
+ h+='</div>';
+ return h;
+}
+function toggleCollateral(c){const i=ship.collateral.indexOf(c);if(i>=0)ship.collateral.splice(i,1);else ship.collateral.push(c);}
+function submitShipment(){
+ if(!ship.addrId){alert('Choose a ship-to address first.');return;}
+ if(!ship.salesperson){alert('Assign the shipment to a salesperson.');return;}
+ const addr=addresses.find(a=>a.id===ship.addrId);
+ // validate custom specs are filled
+ const blankCustom=customItems.find(ci=>!ci.spec.trim());
+ if(blankCustom){alert('Describe the customization for each custom request (or remove empty ones).');return;}
+ const items=cart.map(c=>({code:c.code,desc:c.desc,qty:c.qty}));
+ const customs=customItems.map(ci=>({custom:true,desc:ci.spec,qty:ci.qty,projectNo:ci.projectNo||''}));
+ shipments.unshift({id:'SMP-'+(shipSeq++),status:'submitted',addr,salesperson:ship.salesperson,account:ship.account||'',temp:effectiveTemp(),tempOverride:ship.tempOverride||'',reqDate:ship.reqDate,speed:ship.speed,box:ship.box,collateral:ship.collateral.slice(),items:items.concat(customs),notes:ship.notes});
+ cart=[];customItems=[];ship=blankShip();closeCart();go('mission');
+}
+
+// ===== MISSION CONTROL =====
+let ssPanelOpen=false;
+function toggleSS(){ssPanelOpen=!ssPanelOpen;render();}
+let bnPanelOpen=false;
+function toggleBN(){bnPanelOpen=!bnPanelOpen;render();}
+function buildNotesPanel(){
+ let h='<div class="sspanel"><div class="ss-head" onclick="toggleBN()" style="background:linear-gradient(90deg,#4A2E6B,#2D2235)"><span class="ss-badge" style="background:#5B3A86">Build Notes</span><span class="ss-title">Data model — for the Supabase build</span><span class="ss-chev">'+(bnPanelOpen?'▲':'▼')+'</span></div>';
+ if(bnPanelOpen){
+  h+='<div class="ss-body">';
+  h+='<p class="ss-p">Notes for the real build so prototype shortcuts (like the hard-coded salesperson list) become the right thing in Supabase.</p>';
+  h+='<div class="ss-cfg-item"><div class="ss-cfg-h">👤 Salespeople are Supabase users — email pulled, not typed</div><p>Each salesperson is a user record in Supabase carrying their <b>email</b>. When a shipment is assigned to a salesperson, the order-confirmation and status emails route to <b>that stored email</b> — the app never types the address per order. Selecting the salesperson <i>is</i> selecting the recipient. In this prototype the list is hard-coded and emails are represented; in the build it\'s a join to the users table.</p></div>';
+  h+='<div class="ss-cfg-item"><div class="ss-cfg-h">🔘 Binary "show in dropdown" flag per user</div><p>Each user/salesperson record has a boolean (e.g. <span class="mono">active_in_dropdown</span>). Only users with it <b>true</b> appear in Cookie Central\'s salesperson dropdown. This lets you keep someone in the system — for history and email records — without cluttering the active list (someone who left, is on leave, or is an admin who never receives samples).</p>';
+  h+='<div class="ss-note" style="margin-top:8px"><b>Important:</b> hiding a user from the dropdown affects <b>new selection only</b>. Their name must still appear on their <b>past shipments</b> in mission control — historical records don\'t change when the flag flips. Store the salesperson reference on each shipment (by user id), so the name renders from history regardless of current dropdown status.</div></div>';
+  h+='</div>';
+ }
+ h+='</div>';
+ return h;
+}
+function ssPanel(){
+ let h='<div class="sspanel"><div class="ss-head" onclick="toggleSS()"><span class="ss-badge">ShipStation</span><span class="ss-title">How sample orders connect to fulfillment</span><span class="ss-chev">'+(ssPanelOpen?'▲':'▼')+'</span></div>';
+ if(ssPanelOpen){
+  h+='<div class="ss-body">';
+  h+='<p class="ss-p"><b>The flow.</b> When a sales leader clicks <b>Push order to ShipStation</b>, this site calls ShipStation\'s <span class="mono">POST /orders/createorder</span> endpoint and the shipment lands in your co-man\'s ShipStation <b>Orders</b> tab as <span class="mono">awaiting_shipment</span>. The co-man batches, prints the label + packing slip, and ships. As the label is created and the parcel moves, ShipStation fires <b>webhooks</b> back to this site to advance the status pipeline below, and its <b>ShipNotify</b> email goes to the assigned salesperson.</p>';
+  h+='<div class="ss-cols">';
+  h+='<div class="ss-col"><div class="ss-ct">✓ What the API supports well</div><ul>';
+  h+='<li><b>Order creation</b> — one REST call per shipment (or batch) creates the order with ship-to, line items (by SKU), requested service, and notes.</li>';
+  h+='<li><b>Custom Store connection</b> — ShipStation treats this app as an order source, so orders group under one store and inherit its automation rules.</li>';
+  h+='<li><b>Status back via webhooks</b> — <span class="mono">ORDER_NOTIFY</span> and <span class="mono">SHIP_NOTIFY</span> push events so the pending page reflects real fulfillment state without polling.</li>';
+  h+='<li><b>Confirmation emails</b> — ShipStation\'s ShipNotify emails the salesperson with tracking when the label is created.</li>';
+  h+='<li><b>Tags</b> — flags like <span class="mono">Refrigerated</span> or <span class="mono">custom-box</span> can be pushed as ShipStation tags to drive the co-man\'s automation rules. (Speed is <i>not</i> a tag — it rides the dedicated <span class="mono">ShippingMethod</span> element.)</li>';
+  h+='</ul></div>';
+  h+='<div class="ss-col"><div class="ss-ct warn">⚠ Challenges &amp; pitfalls to plan for</div><ul>';
+  h+='<li><b>Field mapping is the real work.</b> Our model (salesperson, account, temp state, box spec, collateral, required-by date) doesn\'t map 1:1 to ShipStation\'s order schema. Only some fields have native homes; the rest must ride in <span class="mono">customField1-3</span>, <span class="mono">internalNotes</span>, tags, or advanced options — and the co-man must know where to look.</li>';
+  h+='<li><b>Temp state &amp; box spec have no native fields.</b> "Refrigerated vs Ambient" and "Dirty Cookie vs Custom box" aren\'t standard order properties. They must be encoded as tags or custom fields <i>and</i> backed by a written SOP, or they\'ll be missed on the pack bench.</li>';
+  h+='<li><b>Collateral &amp; warming instructions ride on the packing slip.</b> Confirmed against ShipStation\'s API: the packing slip supports <b>Field Replacements</b> — bracketed tokens like <span class="mono">[Notes to Buyer]</span>, <span class="mono">[Gift Message]</span>, or <span class="mono">[Custom Field 1-3]</span> that print order data onto the slip. Push the collateral checklist (incl. Warming instructions) into one of these note fields and add the token to a custom packing-slip template so the co-man packs the right inserts. <b>Watch the 100-character limit</b> on Custom Fields 1-3 — a long collateral list should go in a Notes field (larger) rather than a custom field, or it silently truncates.</li>';
+  h+='<li><b>SKU integrity.</b> Every sample cookie must carry a SKU that exactly matches what the co-man stocks in ShipStation. A mismatch = a line the warehouse can\'t pick. This ties directly to Cookie Central\'s product codes.</li>';
+  h+='<li><b>No native "order update" webhook.</b> ShipStation notifies on new orders and on ship, but not on arbitrary edits. If a leader changes a shipment after pushing, you must re-send/patch deliberately — the two systems can silently drift.</li>';
+  h+='<li><b>Rate limits (~40 req/min).</b> Bulk-entering a batch of requests can hit the ceiling; the integration must queue and back off gracefully.</li>';
+  h+='<li><b>Immutable once shipped.</b> Orders in <span class="mono">shipped</span>/<span class="mono">cancelled</span> can\'t be updated via API — edits must happen before fulfillment.</li>';
+  h+='<li><b>Address validation &amp; residential flag.</b> Bad buyer addresses fail at label time, not at entry. Validate on our side (or via ShipStation) before push to avoid stuck orders.</li>';
+  h+='<li><b>Auth &amp; key rotation.</b> Keys expire (3/6/12-mo) and must be rotated without downtime; webhooks are signed (RSA-SHA256) and should be verified. Secrets live server-side, never in this page.</li>';
+  h+='<li><b>V1 vs V2 + early-access.</b> Order-create maturity lives in V1; V2 (batch/returns/manifests) is still early-access with edge cases and non-interchangeable keys. Pick deliberately and expect gaps.</li>';
+  h+='<li><b>Two-way ownership.</b> Once the co-man edits in ShipStation, decide the source of truth. Without a sync contract, this dashboard and ShipStation disagree.</li>';
+  h+='</ul></div>';
+  h+='</div>';
+  h+='<div class="ss-auto"><div class="ss-auto-t">⚙️ Automation on the ShipStation side (recommended)</div>';
+  h+='<p class="ss-p" style="margin-bottom:10px">Much of the handling logic shouldn\'t be pushed as fields at all — ShipStation <b>automation rules</b> are IF/THEN statements that fire when an order imports. Example intent: <span class="mono">if order needs cold chain → set refrigerated service</span>. This keeps the app\'s job simple: push a clean order, let ShipStation apply the handling.</p>';
+  h+='<div class="ss-warn-box"><b>⚠ The critical catch — don\'t rule on raw SKU.</b> ShipStation\'s <span class="mono">Item SKU</span> criteria <b>only works on single-item orders</b>. A rule like "if SKU = CCH-2OZ-RAW-C → cold chain" <b>silently does nothing</b> the moment a shipment has two different cookies — which is the normal case for a sample manifest.</div>';
+  h+='<p class="ss-p" style="margin:10px 0 6px"><b>The robust pattern (ShipStation\'s own recommendation): product tags, not SKU rules.</b></p>';
+  h+='<ol class="ss-ol">';
+  h+='<li><b>Tag the product record</b> in ShipStation once — e.g. tag every raw SKU with <span class="mono">cold-chain</span>. ShipStation then auto-applies that tag to <i>any</i> order containing that product on import, even mixed multi-item orders.</li>';
+  h+='<li><b>Write rules against the order tag</b>, not the SKU: <span class="mono">if order includes cold-chain → set refrigerated service</span>. Order-tag criteria work on multi-item orders, so it fires reliably in a mixed manifest.</li>';
+  h+='</ol>';
+  h+='<div class="ss-split"><div class="ss-split-col"><div class="ss-split-h">Product-inherent → tag in ShipStation, rules handle it</div><ul><li><b>Prep / cold chain</b> — tag raw SKUs <span class="mono">cold-chain</span>; don\'t push it as a field. It\'s already known in Cookie Central (Raw → Frozen), so you\'re just mirroring it.</li><li>Any per-product packaging or handling need.</li></ul></div>';
+  h+='<div class="ss-split-col"><div class="ss-split-h">Order-level choice → this app pushes as an order tag</div><ul><li><b>Shipping speed</b> → <i>not</i> a tag: the picked tier maps 1:1 to a UPS <span class="mono">serviceCode</span> sent in <span class="mono">ShippingMethod</span>.</li><li><b>Box spec</b> → push <span class="mono">custom-box</span> / <span class="mono">dc-box</span> tag; rule sets package + packing slip.</li><li><b>Required-by date</b> → drives service selection.</li></ul></div></div>';
+  h+='<div class="ss-note"><b>Timing gotcha:</b> rules run when an order <b>imports</b> (enters Awaiting Shipment) — once. Edits to an order already in Awaiting Shipment <b>won\'t</b> re-trigger rules. If a leader changes a shipment after pushing, plan a deliberate re-process or re-push.</div>';
+  h+='</div>';
+    h+='<div class="ss-config"><div class="ss-config-t">📋 ShipStation configuration — set these up once (not built into this app)</div>';
+  h+='<p class="ss-p" style="margin-bottom:10px">Two requirements that belong in ShipStation, not the ordering app, because ShipStation owns the physical fulfillment and the emails. Documented here so they\'re not missed at build time.</p>';
+  h+='<div class="ss-cfg-item"><div class="ss-cfg-h">📦 Box selection → ShipStation packages + automation rules</div><p>The app expresses box <i>intent</i> (Dirty Cookie vs Custom/Branded) as an order tag. The actual physical box is a fulfillment decision the co-man owns in ShipStation. Define the box inventory as ShipStation <b>packages</b>, then use automation rules to map them — e.g. <span class="mono">if order includes cold-chain → insulated box</span>, or <span class="mono">if custom-box tag → branded mailer</span>. Don\'t build a granular box-picker in the order app; it would just create a field the co-man has to reconcile against what they actually stock.</p></div>';
+  h+='<div class="ss-cfg-item"><div class="ss-cfg-h">📧 Always copy samplesmngmt@cortinafoods.com on notifications</div><p>Confirmed against ShipStation\'s settings: there\'s a <b>Blind Copy on Shipment and Delivery Email</b> field in the store\'s Emails/Notifications tab. Enter <span class="mono">samplesmngmt@cortinafoods.com</span> there and ShipStation adds it as a BCC on <b>every</b> shipment and delivery notification automatically — configured once, applies to all orders. This is why it belongs in ShipStation: the emails are generated by ShipStation, not this app.</p>';
+  h+='<div class="ss-warn-box" style="margin-top:8px"><b>⚠ Two nuances to know:</b> (1) It\'s a <b>BCC</b>, and it covers shipment + delivery emails <b>together</b> — you can\'t BCC only one. (2) That field covers shipment/delivery, but the outbound <b>order confirmation</b> to the salesperson is the recipient field. To also copy the sample-management inbox on order creation, add it to the order\'s recipient emails (comma-separated) at push time, or wire a dedicated notification. Decide whether "all orders, shipments, and deliveries" means adding it in <b>both</b> places.</div>';
+  h+='</div>';
+  h+='</div>';
+    h+='<p class="ss-foot"><b>PM recommendation:</b> build against a <b>duplicate/sandbox store</b> first (ShipStation\'s own advice), lock the <b>field-mapping contract</b> and SKU list with the co-man before writing code, encode handling as <b>ShipStation product tags + order tags feeding automation rules</b> (never raw-SKU rules, which break on multi-item orders), drive status via <b>webhooks</b> (not polling), and keep keys server-side. Lock the <b>tag vocabulary</b> (<span class="mono">cold-chain</span>, <span class="mono">custom-box</span>…) and the SKU-to-tag map with the co-man before writing code — that mapping <i>is</i> the integration contract. Treat collateral as an explicit decision (packing-slip note field + template token). And capture the two <b>ShipStation-side configs</b> above as setup steps: box mapping via packages + rules, and the BCC of <span class="mono">samplesmngmt@cortinafoods.com</span> on notifications.</p>';
+  h+='</div>';
+ }
+ h+='</div>';
+ return h;
+}
+const PIPE=['submitted','processing','shipped','delivered'];
+const PIPE_LABEL={submitted:'Submitted',processing:'Processing',shipped:'Shipped',delivered:'Delivered'};
+function renderMission(){
+ let h='<div class="pagehead"><div><h1>Pending Shipments</h1><div class="sub">Every sample shipment in flight. Sent to ShipStation for your co-man to fulfill, label, and ship.</div></div><button class="btn btn-primary" onclick="go(\'shop\')">+ New shipment</button></div>';
+ h+=ssPanel();
+ h+=buildNotesPanel();
+ // stats
+ const byStatus=k=>shipments.filter(s=>s.status===k).length;
+ h+='<div class="mc-stats">';
+ h+='<div class="stat"><div class="n">'+shipments.length+'</div><div class="l">In flight</div></div>';
+ h+='<div class="stat"><div class="n" style="color:var(--pink)">'+byStatus('submitted')+'</div><div class="l">Submitted</div></div>';
+ h+='<div class="stat"><div class="n" style="color:var(--amber)">'+byStatus('processing')+'</div><div class="l">Processing</div></div>';
+ h+='<div class="stat"><div class="n" style="color:var(--mint)">'+byStatus('shipped')+'</div><div class="l">Shipped</div></div>';
+ h+='<div class="stat"><div class="n" style="color:var(--exp)">'+shipments.filter(s=>s.speed!=='ground').length+'</div><div class="l">⚡ Expedited</div></div>';
+ h+='</div>';
+ // filter by salesperson
+ h+='<div class="shopbar"><button class="chipfilter'+(mcFilter==='All'?' on':'')+'" onclick="setMc(\'All\')">All salespeople</button>';
+ [...new Set(shipments.map(s=>s.salesperson))].forEach(sp=>{h+='<button class="chipfilter'+(mcFilter===sp?' on':'')+'" onclick="setMc(\''+esc(sp)+'\')">'+esc(sp)+'</button>';});
+ h+='</div>';
+ let list=shipments.filter(s=>mcFilter==='All'||s.salesperson===mcFilter);
+ list.forEach(s=>{h+=shipmentCard(s);});
+ if(list.length===0)h+='<div class="empty-state"><div class="big">📦</div>No shipments for this filter.</div>';
+ return h;
+}
+let mcFilter='All';
+function setMc(f){mcFilter=f;render();}
+function shipmentCard(s){
+ const stIdx=PIPE.indexOf(s.status);
+ let h='<div class="shipment"><div class="sh-top" onclick="toggleShip(\''+s.id+'\')">';
+ h+='<div><div class="sh-id">'+esc(s.id)+(s.account?' · <span style="font-weight:600;color:var(--muted)">'+esc(s.account)+'</span>':'')+'</div><div class="sh-to">'+esc(s.addr.nick)+'</div></div>';
+ h+='<div class="badges">';
+ h+='<span class="status-pill st-'+s.status+'">'+PIPE_LABEL[s.status]+'</span>';
+ h+='<span class="badge2 '+(s.temp==='Cold'?'b-cold':'b-ambient')+'">'+(s.temp==='Cold'?'❄️ Cold':'🌡 Ambient')+'</span>';
+ h+='<span class="badge2 '+(s.speed==='ground'?'b-ground':'b-air')+'">'+(s.speed==='ground'?'🚚 ':'✈️ ')+esc(speedLabel(s.speed))+'</span>';
+ h+='</div>';
+ h+='<span class="sh-sp">'+esc(s.salesperson)+'</span></div>';
+ // detail
+ h+='<div class="sh-detail" id="d-'+s.id+'">';
+ h+='<div class="pipeline">'+PIPE.map((p,i)=>'<div class="step '+(i<stIdx?'done':i===stIdx?'current':'')+'"><span class="dot"></span>'+PIPE_LABEL[p]+'</div>').join('')+'</div>';
+ h+='<div class="row2"><div class="kv"><div class="k">Ship to</div>'+esc(s.addr.name)+' · '+esc(s.addr.company)+'<br>'+esc(s.addr.street)+', '+esc(s.addr.city)+' '+esc(s.addr.state)+' '+esc(s.addr.zip)+'</div>';
+ h+='<div class="kv"><div class="k">Required by</div>'+(s.reqDate?esc(s.reqDate):'—')+(s.speed!=='ground'?' <span class="badge2 b-exp">'+esc(speedLabel(s.speed))+'</span>':'')+'</div>';
+ h+='<div class="kv"><div class="k">Box</div>'+esc(s.box)+'</div>';
+ h+='<div class="kv"><div class="k">Collateral</div>'+(s.collateral.length?s.collateral.map(c=>'<span class="tag">'+esc(c)+'</span>').join(' '):'—')+'</div></div>';
+ h+='<div class="sh-items"><div class="k" style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;margin-bottom:5px">Samples</div>';
+ s.items.forEach(it=>{h+='<div class="it"><span>'+(it.custom?'<span class="ci-tag">✦ Custom</span> ':'')+esc(it.desc)+(it.custom&&it.projectNo?' <span class="proj-tag">Project '+esc(it.projectNo)+'</span>':'')+'</span><span style="font-weight:700">×'+it.qty+'</span></div>';});
+ h+='</div>';
+ if(s.notes)h+='<div style="margin-top:10px;font-size:12.5px"><span class="k" style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Notes</span><br>'+esc(s.notes)+'</div>';
+ // status advance (demo)
+ h+='<div style="margin-top:14px;display:flex;gap:8px">';
+ if(stIdx<PIPE.length-1)h+='<button class="btn btn-sm btn-primary" onclick="advance(\''+s.id+'\')">Advance to '+PIPE_LABEL[PIPE[stIdx+1]]+' →</button>';
+ h+='<button class="btn btn-sm btn-ghost" onclick="alert(\'In the real build, this pushes the order to ShipStation for your co-man to print labels & packing slips and fulfill. Confirmation and status emails go to '+esc(s.salesperson)+'.\')">↗ Send to ShipStation</button>';
+ h+='</div></div></div>';
+ return h;
+}
+function toggleShip(id){document.getElementById('d-'+id).classList.toggle('open');}
+function advance(id){const s=shipments.find(x=>x.id===id);const i=PIPE.indexOf(s.status);if(i<PIPE.length-1)s.status=PIPE[i+1];render();setTimeout(()=>{const d=document.getElementById('d-'+id);if(d)d.classList.add('open');},0);}
+
+// ===== ADDRESS BOOK =====
+function renderAddress(){
+ let h='<div class="pagehead"><div><h1>Address Book</h1><div class="sub">Saved ship-to addresses. Reused across shipments so you never re-type a buyer\'s details.</div></div><button class="btn btn-primary" onclick="openAddrModal()">+ Add address</button></div>';
+ if(addresses.length===0)return h+'<div class="empty-state"><div class="big">📇</div>No saved addresses yet.</div>';
+ h+='<table class="atable"><thead><tr><th>Nickname</th><th>Contact</th><th>Company</th><th>Address</th><th style="text-align:right">Actions</th></tr></thead><tbody>';
+ addresses.forEach(a=>{
+   h+='<tr><td class="t-nick">'+esc(a.nick)+'</td>';
+   h+='<td>'+esc(a.name||'—')+'</td>';
+   h+='<td>'+esc(a.company||'—')+'</td>';
+   h+='<td>'+esc(a.street)+'<div class="t-sub">'+esc(a.city)+', '+esc(a.state)+' '+esc(a.zip)+'</div></td>';
+   h+='<td><div class="t-acts"><button class="btn btn-sm btn-ghost" onclick="openAddrModal(\''+a.id+'\')">Edit</button><button class="btn btn-sm btn-ghost" onclick="delAddr(\''+a.id+'\')">Delete</button></div></td></tr>';
+ });
+ h+='</tbody></table>';
+ return h;
+}
+let editAddrId=null;
+let addrFromCheckout=false;
+function openAddrModal(id,fromCheckout){
+ editAddrId=id||null;addrFromCheckout=!!fromCheckout;const a=id?addresses.find(x=>x.id===id):{nick:'',name:'',company:'',street:'',city:'',state:'',zip:''};
+ let h='<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="mhead">'+(id?'Edit address':'Add address')+'</div><div class="mbody">';
+ h+='<div class="fld"><label>Nickname</label><input id="a-nick" value="'+esc(a.nick)+'" placeholder="e.g. Whole Foods HQ — Austin"></div>';
+ h+='<div class="fld row"><div><label>Contact name</label><input id="a-name" value="'+esc(a.name)+'"></div><div><label>Company</label><input id="a-company" value="'+esc(a.company)+'"></div></div>';
+ h+='<div class="fld"><label>Street</label><input id="a-street" value="'+esc(a.street)+'"></div>';
+ h+='<div class="fld row"><div><label>City</label><input id="a-city" value="'+esc(a.city)+'"></div><div style="max-width:80px"><label>State</label><input id="a-state" value="'+esc(a.state)+'"></div><div style="max-width:110px"><label>ZIP</label><input id="a-zip" value="'+esc(a.zip)+'"></div></div>';
+ h+='</div><div class="mfoot"><button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveAddr()">'+(id?'Save':'Add address')+'</button></div></div></div>';
+ document.getElementById('modalMount').innerHTML=h;
+}
+function closeModal(){document.getElementById('modalMount').innerHTML='';}
+function saveAddr(){
+ const g=id=>document.getElementById(id).value.trim();
+ const data={nick:g('a-nick'),name:g('a-name'),company:g('a-company'),street:g('a-street'),city:g('a-city'),state:g('a-state'),zip:g('a-zip')};
+ if(!data.nick){alert('Give the address a nickname.');return;}
+ let newId;
+ if(editAddrId){Object.assign(addresses.find(a=>a.id===editAddrId),data);newId=editAddrId;}
+ else{newId='A'+(addresses.length+1)+Date.now()%1000;addresses.push({id:newId,...data});}
+ closeModal();
+ if(addrFromCheckout){ship.addrId=newId;addrFromCheckout=false;renderCart();}
+ else render();
+}
+function delAddr(id){if(confirm('Delete this address?')){addresses=addresses.filter(a=>a.id!==id);render();}}
+
+render();
+</script></body></html>
