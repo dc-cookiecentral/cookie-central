@@ -40,13 +40,31 @@ export function groupCatalog(products) {
   });
 }
 
-// Next SMP-#### number from existing shipment_no values (seed starts at 1044).
+// ── Test mode ───────────────────────────────────────────────────────────────
+// Set VITE_SAMPLE_TEST_MODE=true to prefix generated shipment numbers with
+// TEST-, so orders made during internal stress testing are self-labelling in the
+// co-man's ShipStation queue (SMP-TEST-1044) and trivially greppable when you
+// purge before launch: `delete from sample_shipments where shipment_no like
+// 'SMP-TEST-%'`.
+//
+// Unlike VITE_AUTH_BYPASS this is deliberately NOT gated on import.meta.env.DEV
+// — the whole point is to apply to the deployed build the team is testing.
+// It is a build-time flag, so flipping it means redeploying. Clear it (or set it
+// to anything but 'true') before launch; the checklist has this as a go-live step.
+export const TEST_MODE = import.meta.env.VITE_SAMPLE_TEST_MODE === 'true';
+export const SHIPMENT_PREFIX = TEST_MODE ? 'SMP-TEST-' : 'SMP-';
+
+// Next shipment number from existing shipment_no values (seed starts at 1044).
+// The optional TEST- segment is stripped when reading the high-water mark, so
+// test and real orders share ONE counter. That is intentional: shipment_no is
+// UNIQUE, and separate counters would collide the moment test mode flips off
+// with test rows still in the table.
 export function nextShipmentNo(existing) {
   const max = existing.reduce((m, s) => {
-    const n = parseInt(String(s.shipment_no || '').replace(/^SMP-/, ''), 10);
+    const n = parseInt(String(s.shipment_no || '').replace(/^SMP-(TEST-)?/, ''), 10);
     return isNaN(n) ? m : Math.max(m, n);
   }, 1043);
-  return `SMP-${max + 1}`;
+  return `${SHIPMENT_PREFIX}${max + 1}`;
 }
 
 export const SHIP_STATUSES = ['submitted', 'processing', 'shipped', 'delivered'];

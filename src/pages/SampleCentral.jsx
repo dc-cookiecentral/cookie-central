@@ -7,6 +7,7 @@ import {
   familyEmoji, flavorFamily, derivedTemp, effectiveTemp, groupCatalog,
   SHIP_STATUSES, COLLATERAL_OPTIONS, BOX_OPTIONS,
   SHIPPING_SPEEDS, DEFAULT_SHIPPING_SPEED, speedLabel, isExpeditedSpeed,
+  TEST_MODE, SHIPMENT_PREFIX,
 } from '../utils/sampleCentral';
 
 const FILTERS = ['All', 'Stuffed', 'Shot', 'Gourmet', 'Classic'];
@@ -96,6 +97,11 @@ export default function SampleCentral() {
         <div>
           <h1 className="text-xl font-bold text-dk">Sample Central</h1>
           <div className="text-[11px] text-gr">Cortina sample ordering — catalog, shipment builder, and mission control.</div>
+          {TEST_MODE && (
+            <div className="mt-1 inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
+              🧪 TEST MODE — orders are numbered {SHIPMENT_PREFIX}#### and still reach ShipStation
+            </div>
+          )}
         </div>
         <button onClick={() => setView('builder')} className="relative text-[11px] font-semibold px-3 py-1.5 rounded border border-pk bg-pk text-white hover:bg-pm">
           🛒 Cart · {cartCount}

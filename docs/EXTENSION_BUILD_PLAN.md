@@ -65,7 +65,7 @@ Depends on Phase 1 (reads `products.sample_eligible`). See `DATA_MODEL_ADDITIONS
 4. Build Sample Central pages: catalog (Prep→Tier→Size, reads `sample_eligible`), shipment builder, mission control, address book.
 5. Wire the waffle app-switcher between Spec Sheet and Sample Central (role-aware — see V4).
 
-### Phase 3 — ShipStation integration (last, against sandbox)
+### Phase 3 — ShipStation integration (last; sandbox planned, later abandoned — see ADR-029)
 See `SHIPSTATION_INTEGRATION.md` in full.
 1. Supabase Edge Function for the order push (keys server-side, never client).
 2. Tag vocabulary + product-tag/order-tag strategy locked with co-man first.

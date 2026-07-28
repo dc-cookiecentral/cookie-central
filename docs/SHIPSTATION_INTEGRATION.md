@@ -177,9 +177,9 @@ status fields route each value (samples are free — no "paid"). Configure:
 See **`docs/SHIPSTATION_SETUP_CHECKLIST.md`** — connect the Custom Store, set the endpoint URL + Basic-Auth creds, map statuses + shipping methods, have the co-man tag Raw SKUs `cold-chain`, set the automation rules (launch-blocking), the email BCC, and the packing-slip token.
 
 ## Build order (Phase 3)
-1. Sandbox/duplicate ShipStation store first.
+1. ~~Sandbox/duplicate ShipStation store first.~~ **Abandoned** — the behaviours needing test aren't available in a sandbox store. Work runs against production, with app-side **test mode** (`VITE_SAMPLE_TEST_MODE`) as the safety net. See ADR-029 and checklist §8b.
 2. Lock the tag/field contract with the co-man (ADR-028).
 3. Edge Function `shipstation-customstore` (export + shipnotify; Basic Auth via Vault) + the writeback migration.
 4. Account-side config (setup checklist), incl. the launch-blocking automation rules + method-mapping.
-5. Verify via a **manual store import** in sandbox — confirm a sample order lands with fields mapped (no label purchase needed for the mapping test).
-6. Flip Vault creds + webhook to the production store.
+5. Verify via a **manual store import** — confirm a sample order lands with fields mapped (no label purchase needed for the mapping test).
+6. Internal stress test under **test mode** (`VITE_SAMPLE_TEST_MODE=true`), then clear the flag and purge `SMP-TEST-%` on both sides at go-live — checklist §8b/§9.
