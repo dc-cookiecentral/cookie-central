@@ -13,6 +13,7 @@ import { assert, assertEquals, assertFalse, assertStringIncludes } from 'jsr:@st
 import {
   buildOrderXml,
   rushFlag,
+  thirdPartyBilling,
   cdata,
   checkBasicAuth,
   fmtDate,
@@ -37,6 +38,10 @@ function shipment(overrides: Partial<Shipment> = {}): Shipment {
     status: 'submitted',
     account: 'Kroger Co.',
     rush: false,
+    third_party_billing: false,
+    tp_carrier: null,
+    tp_account: null,
+    tp_postal_code: null,
     temp: 'Ambient',
     temp_override: null,
     required_by: '2026-08-01',
@@ -198,6 +203,30 @@ Deno.test('rushFlag: false, null and undefined produce an empty field', () => {
   assertEquals(rushFlag(undefined), '');
 });
 
+// ── thirdPartyBilling (CustomField3) ────────────────────────────────────────
+const TP = { third_party_billing: true, tp_carrier: 'FedEx', tp_account: '123456789', tp_postal_code: '90210' };
+
+Deno.test('thirdPartyBilling: formats carrier, account and zip, carrier upper-cased', () => {
+  assertEquals(thirdPartyBilling(shipment(TP)), '3P FEDEX 123456789 90210');
+});
+Deno.test('thirdPartyBilling: empty when the flag is off, even with details present', () => {
+  assertEquals(thirdPartyBilling(shipment({ ...TP, third_party_billing: false })), '');
+});
+Deno.test('thirdPartyBilling: empty when any single detail is missing', () => {
+  // A partial set looks configured but cannot be billed — worse than nothing.
+  for (const missing of ['tp_carrier', 'tp_account', 'tp_postal_code']) {
+    assertEquals(thirdPartyBilling(shipment({ ...TP, [missing]: null })), '', `missing ${missing}`);
+    assertEquals(thirdPartyBilling(shipment({ ...TP, [missing]: '   ' })), '', `blank ${missing}`);
+  }
+});
+Deno.test('thirdPartyBilling: trims surrounding whitespace on the details', () => {
+  assertEquals(thirdPartyBilling(shipment({ ...TP, tp_account: '  123456789  ' })), '3P FEDEX 123456789 90210');
+});
+Deno.test('thirdPartyBilling: never exceeds the CustomField 100-char limit', () => {
+  const out = thirdPartyBilling(shipment({ ...TP, tp_account: '9'.repeat(200) }));
+  assertEquals(out.length, 100);
+});
+
 // ── validState / validZip ───────────────────────────────────────────────────
 Deno.test('validState: accepts a 2-letter code in either case', () => {
   assert(validState('OH'));
@@ -315,8 +344,13 @@ Deno.test('buildOrderXml: flags custom-request in CustomField2 only when a custo
   });
   assertEquals(el(buildOrderXml(withCustom), 'CustomField2'), 'custom-request');
 });
-Deno.test('buildOrderXml: leaves CustomField3 free — speed consumes no CustomField', () => {
-  assertEquals(el(buildOrderXml(shipment({ rush: true })), 'CustomField3'), '');
+Deno.test('buildOrderXml: CustomField3 carries third-party billing, empty otherwise', () => {
+  assertEquals(el(buildOrderXml(shipment()), 'CustomField3'), '');
+  assertEquals(el(buildOrderXml(shipment(TP)), 'CustomField3'), '3P FEDEX 123456789 90210');
+});
+Deno.test('buildOrderXml: echoes third-party billing into InternalNotes for the label buyer', () => {
+  const notes = el(buildOrderXml(shipment(TP)), 'InternalNotes') ?? '';
+  assertStringIncludes(notes, 'BILL THIRD PARTY: FedEx acct 123456789 (zip 90210)');
 });
 Deno.test('buildOrderXml: emits real product lines as Items with UnitPrice 0.00', () => {
   const xml = buildOrderXml(shipment());

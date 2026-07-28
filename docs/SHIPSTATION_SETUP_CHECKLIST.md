@@ -91,7 +91,7 @@ rules (§3), and whoever buys the label.
 Rule on **order tags / CustomFields — never on Item SKU** (SKU rules silently ignore multi-item orders):
 - [ ] `if order includes the cold-chain product tag` → refrigerated service + insulated box **+ upgrade to a next-day service** (this is how frozen products get expedited, overriding the requested tier — the app itself never expedites).
 - [ ] `if CustomField2 = custom-request` → route to **manual review** (no auto-fulfil).
-- [ ] `if CustomField1 = rush` → whatever the team needs: a `rush` tag, priority assignment, and — if ShipStation's rule actions support it — the notification email. **Verify that they do**; if not, the email has to come from the app (ADR-031).
+- [x] `if CustomField1 = rush` → **team notification email. Built July 28, 2026.** Confirms ShipStation's rule actions can send mail, so no app-side sender is needed. Note it fires on **import**, not on submit — so there is a lag of up to the import interval, and per ADR-027 rules run once on import, so a rush flag added after import will not re-trigger it.
 - [ ] (No service rule needed for speed — the app sends no `ShippingMethod` at all as of ADR-031.)
 
 ## 4. Product tags — cold-chain (co-man owns this) 🚦 LAUNCH-BLOCKING — now live

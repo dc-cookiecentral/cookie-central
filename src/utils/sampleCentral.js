@@ -93,3 +93,14 @@ export const COLLATERAL_SKUS = {
 // 20260728130000 — box choice lives in ShipStation now.)
 export const RUSH_NOTICE = 'Flags the order as urgent and emails the team.';
 
+// Third-party shipping billing. ShipStation's Custom Store XML has no billing
+// fields, so these ride CustomField3 + InternalNotes as text — the co-man keys
+// them in at label purchase. Nothing bills automatically; see ADR-032.
+export const TP_CARRIERS = ['FedEx', 'UPS', 'USPS', 'DHL'];
+export const TP_NOTICE =
+  'The co-man enters these when buying the label — ShipStation cannot bill the account automatically.';
+// All three are needed for the co-man to actually bill the account, so an
+// incomplete set is worse than none: it looks configured but cannot be used.
+export const tpComplete = (h) =>
+  !h.third_party_billing || !!(h.tp_carrier && String(h.tp_account || '').trim() && String(h.tp_postal_code || '').trim());
+

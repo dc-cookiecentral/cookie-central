@@ -360,4 +360,24 @@ Supersedes the interim design in which the salesperson picked from a curated six
 - `SHIPPING_SPEEDS` / `SHIPPING_CARRIER` / `speedServiceCode` / `boxTag` are deleted from both `src/utils/sampleCentral.js` and `supabase/functions/_shared/shipstation.ts`.
 - The checkout shows a Rush checkbox stating that selecting it emails the team.
 
-⚠️ **The notification does not exist yet.** The UI promises an email that nothing currently sends. Either a ShipStation automation rule keyed on `CustomField1 = rush` (verify their rule actions support sending mail — unconfirmed), or an app-side sender. Note our Gmail integration is deliberately **read-only** (`_shared/gmail.ts`: "never send or modify"), so app-side means widening that scope or adding a transactional provider. **Until one exists, the checkout copy is a promise the system does not keep.**
+**The notification is live (July 28, 2026).** Built as a **ShipStation automation rule** keyed on `CustomField1 = rush` — which settles the open question above: ShipStation's rule actions *can* send the email, so no app-side sender was needed and the deliberately read-only Gmail integration stays read-only. The checkout copy ("Flags the order as urgent and emails the team") is therefore accurate.
+
+One consequence worth knowing: the email fires when ShipStation **imports** the order, not when the salesperson submits it. With a scheduled import that is a lag of up to the import interval, and ADR-027's rule-timing gotcha applies — rules run once on import, so flagging an order as rush *after* it has already imported will not re-trigger the email.
+
+## ADR-032: Third-party shipping billing, and status ownership
+**Date:** July 28, 2026
+**Status:** Accepted.
+
+**Third-party billing.** Some accounts want samples billed to *their* carrier account. The checkout gains a "Bill shipping to a third-party account" checkbox that reveals carrier / account number / account postal code, stored as `third_party_billing` + `tp_carrier` / `tp_account` / `tp_postal_code` (migration `20260728140000`).
+
+⚠️ **Informational only.** The Custom Store XML has **no billing elements** — `billToParty` / `billToAccount` / `billToPostalCode` exist in ShipStation's REST API, not the store feed. So the export carries the details as text in **`CustomField3`** (`3P FEDEX 123456789 90210`, capped at the field's 100 chars) with an **`InternalNotes` echo** (`BILL THIRD PARTY: …`). CF3 gives grid visibility and rule matching; the notes echo is for whoever buys the label, since they must select third-party billing and key the account in **by hand**. Nothing bills automatically.
+
+**All three details are required together**, enforced app-side at submit and again in the export helper (which returns `''` on a partial set). A partial set is worse than none: it looks configured but cannot be billed. Enforcement is deliberately *not* a DB CHECK, so a later rule change can't invalidate historical rows.
+
+**CustomField allocation is now full** — CF1 `rush`, CF2 `custom-request`, CF3 third-party billing. Anything further needs `CustomerNotes`/`InternalNotes`, or displacing one of these.
+
+**Status is owned by ShipStation.** The editable status dropdown is removed from Pending Shipments and `updateShipmentStatus` is deleted. `submitted` is set at creation; the `shipnotify` writeback advances it to `shipped`. Nothing in the app writes status, so there is no path for the two systems to disagree — an editable field was exactly that path.
+
+*Consequence:* `processing` and `delivered` are now **unreachable**. Nothing sets `processing` (the Custom Store gives no import acknowledgment — ADR-028 limitation 1), and `delivered` was never wired (ADR-029). The pipeline is effectively **submitted → shipped**, and two of the four stat tiles in Pending Shipments will permanently read zero. Left in place because the four-step pipeline matches the prototype and the values remain valid in the DB CHECK; collapsing the display to the two live states is a reasonable follow-up.
+
+**Pending Shipments detail.** Cards are now click-to-expand (prototype behaviour): status pipeline, ship-to, required-by, collateral, billing, tracking/carrier/service and ship date once shipnotify lands, full item list with custom-line project numbers, and notes.

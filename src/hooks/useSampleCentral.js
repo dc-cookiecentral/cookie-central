@@ -80,10 +80,10 @@ export async function createShipment(header, items, existingShipments) {
   return { shipment: ship };
 }
 
-export async function updateShipmentStatus(id, status) {
-  const { error } = await supabase.from('sample_shipments').update({ status }).eq('id', id);
-  return { error };
-}
+// (updateShipmentStatus removed — status is owned by ShipStation. It is set to
+// 'submitted' at creation and advanced to 'shipped' by the shipnotify writeback;
+// nothing in the app writes it, so there is no path for the two systems to
+// disagree. Re-adding a setter would reintroduce exactly that.)
 
 export async function saveTemplate(fields) {
   const { error } = await supabase.from('sample_templates').insert(fields);
