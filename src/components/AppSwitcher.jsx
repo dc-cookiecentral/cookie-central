@@ -10,7 +10,9 @@ const APPS = [
   { key: 'sample', name: 'Sample Central', tag: 'Cortina sampling', icon: '🍪', bg: '#FDF0F6', to: '/sample-central', internalOnly: false },
 ];
 
-export default function AppSwitcher() {
+// `dark` renders the trigger for the aubergine Sample Central nav (ADR-030);
+// the dropdown itself is light in both cases.
+export default function AppSwitcher({ dark = false }) {
   const { profile } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -22,7 +24,9 @@ export default function AppSwitcher() {
       <button
         onClick={() => setOpen((v) => !v)}
         aria-label="Switch app"
-        className="w-8 h-8 rounded-md border border-lt bg-cd text-gr hover:text-pk flex items-center justify-center text-[15px] leading-none"
+        className={dark
+          ? 'w-[38px] h-[38px] rounded-[9px] border border-white/20 bg-white/10 text-white hover:bg-white/20 flex items-center justify-center text-[17px] leading-none'
+          : 'w-8 h-8 rounded-md border border-lt bg-cd text-gr hover:text-pk flex items-center justify-center text-[15px] leading-none'}
       >
         ▦
       </button>

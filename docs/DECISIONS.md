@@ -311,3 +311,25 @@ Supersedes the interim design in which the salesperson picked from a curated six
 **Operational as-built.** The function is deployed with **`verify_jwt = false`** (ShipStation authenticates with **Basic Auth**, not a Supabase JWT). The Custom Store URL is the **Edge Function URL** (`…supabase.co/functions/v1/shipstation-customstore`), not the app subdomain, and needs **no ShipStation V1/V2 API key** — the Basic-Auth user/pass are self-defined, stored in Vault (`SHIPSTATION_CUSTOMSTORE_USER`/`_PASS`) and entered identically in the Custom Store connection. `getSecret` retries on a transient **"JWT issued at future"** clock-skew that PostgREST occasionally throws validating the service-role token. Each export logs its requested window + match/export counts (the pull model surfaces nothing otherwise).
 
 **Carried forward.** (a) **Launch-blocking** ShipStation config remains Caroline's to set (`SHIPSTATION_SETUP_CHECKLIST.md` §2 serviceCode 1:1 mapping — now just the **three UPS codes**, §3 automation rules incl. cold-chain→next-day, §4 cold-chain product tags) — orders import without them, but the automations don't fire. (b) ~~Confirm `carrierCode = ups`~~ — **done July 28, 2026**: UPS + USPS connected; the tier map stays all-UPS by design. (c) ~~Frontend deploy~~ — **done July 28, 2026**; migration applied, Edge Function redeployed, `main` deployed, and a submit verified against the live schema. (d) `delivered` is not wired — the pipeline ends at **shipped** (no carrier delivery polling).
+
+## ADR-030: Sample Central adopts the prototype's shell (own chrome, 3 tabs, builder drawer)
+**Date:** July 28, 2026
+**Status:** Accepted. Realizes the visual design in `prototype/sample_central_prototype.html` (deployed at `samplecentral-1.vercel.app`), which had been the reference for Phase 2 but was only loosely followed by the React build.
+
+**Decision.** Sample Central is routed **outside the shared `Layout`** and carries the prototype's own chrome instead of the app sidebar:
+- **Aubergine top nav** (60px, sticky, `--aubergine` = `dk`) with the pink brand dot, `Sample Central / DIRTY COOKIE`, the waffle app-switcher, and a wide pink **Build Shipment** button carrying a cart-count badge.
+- **Three tabs** — Order Samples · **Pending Shipments** · Address Book — down from five. "Mission Control" is renamed to the prototype's label.
+- **The shipment builder is a slide-out drawer**, not a tab: 460px from the right, dimmed overlay, pinned Submit footer.
+- **Quick Start moves into that drawer**, positioned directly below the ship-to block, as compact chips (saved assortments, save-current-cart, recent shipments to duplicate). It is **relocated, not removed** — `sample_templates` and duplicate-past-shipment both survive.
+- **Type scale realigned** to the prototype's (10–13.5px component range on a 26px `h1`), replacing a 7–12px scale that had drifted much smaller.
+- **Page background** is the prototype's warm cream `#FAF7F3`, applied page-locally rather than changing the global `bg` token.
+
+**Why outside `Layout`.** The aubergine nav and the left sidebar are alternative shells, not layers — keeping both would show a sidebar *and* a purple bar, which is not the design. Routing Sample Central on its own also matches the product: the role gate (ADR-026) already sends Cortina users here and nowhere else, so a sidebar listing internal apps is noise for the people the app is built for. Internal users navigate back via the waffle, which is why `AppSwitcher` gained a `dark` variant for the trigger.
+
+**Trade-off accepted:** internal users lose the sidebar while on this page.
+
+**Catalog opened to the full spine (migration `20260728120000`).** Sample Central reads `products WHERE sample_eligible = true`, and only 8 of 27 rows carried the flag — all of them Baked — so the catalog's Raw band rendered empty and no cold-chain sample could be ordered. `products` already held exactly the prototype's 27 items (18 Baked + 9 Raw); only the flag differed. All 27 are now sample-eligible.
+
+⚠️ **This makes cold-chain live.** `derivedTemp` marks any cart containing a Raw line as Cold, so a frozen shipment is now orderable. That flips checklist **§4 (cold-chain product tags) from "not blocking today" to LAUNCH-BLOCKING**: without the tags plus the §3 automation rule, a frozen sample imports as an ordinary ambient order and ships unrefrigerated — silently, since the pull model surfaces no error.
+
+**Emoji removed** from the per-product catalog rows (the `familyEmoji` helper is deleted) and from the temp badges, per direct feedback. The prep-band storage labels (`ships frozen` / `ships ambient`) still carry theirs — they come from `groupCatalog` in the shared utils.

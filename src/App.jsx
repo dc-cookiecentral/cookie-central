@@ -41,6 +41,18 @@ export default function App() {
           <BrowserRouter>
             <Routes>
               <Route path="/login" element={<Login />} />
+              {/* Sample Central — all authenticated roles, and OUTSIDE Layout:
+                  it carries the prototype's own aubergine nav instead of the
+                  shared sidebar (ADR-030). The waffle in that nav is how internal
+                  users get back to Cookie Central. */}
+              <Route
+                path="/sample-central"
+                element={
+                  <ProtectedRoute>
+                    <SampleCentral />
+                  </ProtectedRoute>
+                }
+              />
               <Route
                 element={
                   <ProtectedRoute>
@@ -49,8 +61,6 @@ export default function App() {
                 }
               >
                 <Route index element={<HomeRedirect />} />
-                {/* Sample Central — accessible to all authenticated roles */}
-                <Route path="sample-central" element={<SampleCentral />} />
                 {/* Internal-only routes — Cortina role is redirected to Sample Central */}
                 <Route element={<InternalOnly />}>
                   <Route path="orders" element={<ProductOrders />} />
