@@ -12,17 +12,13 @@
 import { assert, assertEquals, assertFalse, assertStringIncludes } from 'jsr:@std/assert@1';
 import {
   buildOrderXml,
-  boxTag,
+  rushFlag,
   cdata,
   checkBasicAuth,
-  DEFAULT_SHIPPING_SPEED,
   fmtDate,
   internalNotes,
   ordersDocument,
   parseSSDate,
-  SHIPPING_CARRIER,
-  SPEED_SERVICE_CODES,
-  speedServiceCode,
   ssStatus,
   tagValue,
   validState,
@@ -40,8 +36,7 @@ function shipment(overrides: Partial<Shipment> = {}): Shipment {
     shipment_no: 'SMP-1044',
     status: 'submitted',
     account: 'Kroger Co.',
-    shipping_speed: 'ground',
-    box_spec: 'Dirty Cookie',
+    rush: false,
     temp: 'Ambient',
     temp_override: null,
     required_by: '2026-08-01',
@@ -193,48 +188,14 @@ Deno.test('ssStatus: defaults null and undefined to submitted', () => {
   assertEquals(ssStatus(undefined), 'submitted');
 });
 
-// ── speedServiceCode (the 3-tier map) ───────────────────────────────────────
-Deno.test('speedServiceCode: ground maps to ups_ground', () => {
-  assertEquals(speedServiceCode('ground'), 'ups_ground');
+// ── rushFlag (CustomField1) ─────────────────────────────────────────────────
+Deno.test('rushFlag: true becomes the literal CustomField1 token', () => {
+  assertEquals(rushFlag(true), 'rush');
 });
-Deno.test('speedServiceCode: 2day maps to ups_2nd_day_air', () => {
-  assertEquals(speedServiceCode('2day'), 'ups_2nd_day_air');
-});
-Deno.test('speedServiceCode: overnight maps to ups_next_day_air', () => {
-  assertEquals(speedServiceCode('overnight'), 'ups_next_day_air');
-});
-Deno.test('speedServiceCode: falls back to ground rather than emitting an empty method', () => {
-  // A blank <ShippingMethod> is a silent mis-ship under the pull model.
-  for (const bad of [null, undefined, '', 'bogus', 'ups_ground']) {
-    assertEquals(speedServiceCode(bad), 'ups_ground');
-  }
-});
-Deno.test('speedServiceCode: covers exactly the three tiers in the shipping_speed CHECK', () => {
-  assertEquals(Object.keys(SPEED_SERVICE_CODES).sort(), ['2day', 'ground', 'overnight']);
-});
-Deno.test('speedServiceCode: every code belongs to the configured carrier', () => {
-  for (const code of Object.values(SPEED_SERVICE_CODES)) {
-    assertStringIncludes(code, `${SHIPPING_CARRIER}_`);
-  }
-});
-Deno.test('speedServiceCode: the default tier is a known tier', () => {
-  assert(DEFAULT_SHIPPING_SPEED in SPEED_SERVICE_CODES);
-});
-
-// ── boxTag ──────────────────────────────────────────────────────────────────
-Deno.test('boxTag: standard box maps to dc-box', () => {
-  assertEquals(boxTag('Dirty Cookie'), 'dc-box');
-});
-Deno.test('boxTag: custom/branded maps to custom-box', () => {
-  assertEquals(boxTag('Custom / Branded'), 'custom-box');
-});
-Deno.test('boxTag: matches "branded" case-insensitively', () => {
-  assertEquals(boxTag('BRANDED mailer'), 'custom-box');
-});
-Deno.test('boxTag: returns empty string when unset', () => {
-  assertEquals(boxTag(null), '');
-  assertEquals(boxTag(undefined), '');
-  assertEquals(boxTag(''), '');
+Deno.test('rushFlag: false, null and undefined produce an empty field', () => {
+  assertEquals(rushFlag(false), '');
+  assertEquals(rushFlag(null), '');
+  assertEquals(rushFlag(undefined), '');
 });
 
 // ── validState / validZip ───────────────────────────────────────────────────
@@ -320,13 +281,8 @@ Deno.test('internalNotes: truncates at the 1000-char ShipStation limit', () => {
 });
 
 // ── buildOrderXml ───────────────────────────────────────────────────────────
-Deno.test('buildOrderXml: sends the tier as a UPS serviceCode in ShippingMethod', () => {
-  assertEquals(el(buildOrderXml(shipment({ shipping_speed: 'ground' })), 'ShippingMethod'), 'ups_ground');
-  assertEquals(el(buildOrderXml(shipment({ shipping_speed: '2day' })), 'ShippingMethod'), 'ups_2nd_day_air');
-  assertEquals(el(buildOrderXml(shipment({ shipping_speed: 'overnight' })), 'ShippingMethod'), 'ups_next_day_air');
-});
-Deno.test('buildOrderXml: never emits an empty ShippingMethod', () => {
-  assertEquals(el(buildOrderXml(shipment({ shipping_speed: null })), 'ShippingMethod'), 'ups_ground');
+Deno.test('buildOrderXml: omits ShippingMethod entirely — ShipStation owns service choice', () => {
+  assertFalse(buildOrderXml(shipment()).includes('<ShippingMethod'));
 });
 Deno.test('buildOrderXml: includes Country US, required by the XSD (StringExactly2)', () => {
   assertEquals(el(buildOrderXml(shipment()), 'Country'), 'US');
@@ -345,9 +301,9 @@ Deno.test('buildOrderXml: uses created_at for OrderDate and updated_at for LastM
   assertEquals(el(xml, 'OrderDate'), '07/27/2026 10:05');
   assertEquals(el(xml, 'LastModified'), '07/27/2026 11:30');
 });
-Deno.test('buildOrderXml: puts the box tag in CustomField1', () => {
-  assertEquals(el(buildOrderXml(shipment()), 'CustomField1'), 'dc-box');
-  assertEquals(el(buildOrderXml(shipment({ box_spec: 'Custom / Branded' })), 'CustomField1'), 'custom-box');
+Deno.test('buildOrderXml: puts the rush flag in CustomField1', () => {
+  assertEquals(el(buildOrderXml(shipment({ rush: true })), 'CustomField1'), 'rush');
+  assertEquals(el(buildOrderXml(shipment({ rush: false })), 'CustomField1'), '');
 });
 Deno.test('buildOrderXml: flags custom-request in CustomField2 only when a custom line exists', () => {
   assertEquals(el(buildOrderXml(shipment()), 'CustomField2'), '');
@@ -360,7 +316,7 @@ Deno.test('buildOrderXml: flags custom-request in CustomField2 only when a custo
   assertEquals(el(buildOrderXml(withCustom), 'CustomField2'), 'custom-request');
 });
 Deno.test('buildOrderXml: leaves CustomField3 free — speed consumes no CustomField', () => {
-  assertEquals(el(buildOrderXml(shipment({ shipping_speed: 'overnight' })), 'CustomField3'), '');
+  assertEquals(el(buildOrderXml(shipment({ rush: true })), 'CustomField3'), '');
 });
 Deno.test('buildOrderXml: emits real product lines as Items with UnitPrice 0.00', () => {
   const xml = buildOrderXml(shipment());

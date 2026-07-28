@@ -6,8 +6,7 @@ import {
 } from '../hooks/useSampleCentral';
 import {
   flavorFamily, derivedTemp, effectiveTemp, groupCatalog,
-  SHIP_STATUSES, COLLATERAL_OPTIONS, BOX_OPTIONS,
-  SHIPPING_SPEEDS, DEFAULT_SHIPPING_SPEED, speedLabel, isExpeditedSpeed,
+  SHIP_STATUSES, COLLATERAL_OPTIONS, RUSH_NOTICE,
   TEST_MODE, SHIPMENT_PREFIX,
 } from '../utils/sampleCentral';
 
@@ -23,7 +22,7 @@ const TABS = [
 
 const EMPTY_HEADER = {
   salesperson_user_id: '', account: '', address_id: '', temp_override: '',
-  required_by: '', shipping_speed: DEFAULT_SHIPPING_SPEED, box_spec: 'Dirty Cookie', collateral: [], notes: '',
+  required_by: '', rush: false, collateral: [], notes: '',
 };
 
 const TempBadge = ({ temp, overridden }) => (
@@ -75,8 +74,8 @@ export default function SampleCentral() {
     ];
     const h = {
       salesperson_user_id: header.salesperson_user_id, account: header.account || null, address_id: header.address_id,
-      temp, temp_override: header.temp_override || null, required_by: header.required_by || null, shipping_speed: header.shipping_speed,
-      box_spec: header.box_spec, collateral: header.collateral, notes: header.notes || null, status: 'submitted',
+      temp, temp_override: header.temp_override || null, required_by: header.required_by || null, rush: !!header.rush,
+      collateral: header.collateral, notes: header.notes || null, status: 'submitted',
     };
     const { error: e, shipment } = await createShipment(h, items, data.shipments);
     if (e) return setToast({ err: e.message });
@@ -315,20 +314,17 @@ function CartDrawer({
                 <option value="Cold">Cold</option>
               </select>
             </Labeled>
-            <div className="grid grid-cols-2 gap-2 mt-2">
+            <div className="mt-2">
               <Labeled label="Required by"><input type="date" value={header.required_by} onChange={(e) => set('required_by', e.target.value)} className="w-full px-2 py-1 rounded border border-lt text-[12.5px]" /></Labeled>
-              <Labeled label="Shipping speed">
-                <select value={header.shipping_speed} onChange={(e) => set('shipping_speed', e.target.value)} className="w-full px-2 py-1 rounded border border-lt text-[12.5px] bg-bg">
-                  {SHIPPING_SPEEDS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                </select>
-              </Labeled>
             </div>
-            <div className="text-[10.5px] text-gr mt-1">Carrier is set in ShipStation, not here. Cold-chain orders are auto-upgraded to next-day.</div>
-            <Labeled label="Box spec (intent)">
-              <select value={header.box_spec} onChange={(e) => set('box_spec', e.target.value)} className="w-full px-2 py-1 rounded border border-lt text-[12.5px] bg-bg mt-1">
-                {BOX_OPTIONS.map((b) => <option key={b} value={b}>{b}</option>)}
-              </select>
-            </Labeled>
+            <label className={`flex items-start gap-2 mt-2 p-2 rounded-lg border cursor-pointer ${header.rush ? 'border-red-300 bg-red-50' : 'border-lt bg-bg'}`}>
+              <input type="checkbox" checked={!!header.rush} onChange={(e) => set('rush', e.target.checked)} className="mt-0.5" />
+              <span>
+                <span className={`block text-[12.5px] font-bold ${header.rush ? 'text-red-700' : 'text-dk'}`}>Rush order</span>
+                <span className="block text-[10.5px] text-gr">{RUSH_NOTICE}</span>
+              </span>
+            </label>
+            <div className="text-[10.5px] text-gr mt-2">Shipping service and box are chosen in ShipStation. Cold-chain orders are auto-upgraded to next-day there.</div>
           </Section>
 
           <Section title="Collateral">
@@ -484,7 +480,7 @@ function MissionView({ data, refresh, canWrite, setToast }) {
                       <span className="font-mono text-[12.5px] font-bold text-dk">{s.shipment_no}</span>
                       <StatusPill s={s.status} />
                       <TempBadge temp={s.temp} overridden={!!s.temp_override} />
-                      <span className={`text-[10.5px] uppercase ${isExpeditedSpeed(s.shipping_speed) ? 'font-bold text-red-600' : 'font-semibold text-gr'}`}>{speedLabel(s.shipping_speed)}</span>
+                      {s.rush && <span className="text-[10.5px] font-bold uppercase px-1.5 py-px rounded bg-red-600 text-white">Rush</span>}
                       {hasCustom && <span className="text-[10.5px] font-semibold px-1.5 py-px rounded bg-pink-100 text-pk">Custom</span>}
                     </div>
                     <div className="text-[12.5px] text-dk mt-1">{s.account || '—'} · {s.salesperson?.full_name || 'Unknown'}</div>

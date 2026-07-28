@@ -71,32 +71,12 @@ export function ssStatus(status: string | null | undefined): string {
   return status ?? 'submitted';
 }
 
-// shipping_speed tier → ShipStation serviceCode for <ShippingMethod>, resolved
-// 1:1 by the Custom Store service mapping (checklist §2). The salesperson picks a
-// *speed*; the carrier is app config, so the codes below are carrier-specific —
-// switching carriers means rewriting this map, not changing stored order data.
-//
-// MIRRORS SHIPPING_SPEEDS in src/utils/sampleCentral.js. Keep both, the
-// shipping_speed CHECK (migration 20260727120000), and checklist §2 in lockstep.
-export const SHIPPING_CARRIER = 'ups';
-export const SPEED_SERVICE_CODES: Record<string, string> = {
-  ground: 'ups_ground',
-  '2day': 'ups_2nd_day_air',
-  overnight: 'ups_next_day_air',
-};
-export const DEFAULT_SHIPPING_SPEED = 'ground';
-
-// An unknown/null tier falls back to ground rather than emitting an empty
-// <ShippingMethod>: the pull model surfaces no error, so a blank method would be
-// a silent mis-ship. The CHECK constraint makes this unreachable in practice.
-export function speedServiceCode(speed: string | null | undefined): string {
-  return SPEED_SERVICE_CODES[speed ?? ''] ?? SPEED_SERVICE_CODES[DEFAULT_SHIPPING_SPEED];
-}
-
-// box_spec intent → order tag. 'Custom / Branded' → custom-box, else dc-box.
-export function boxTag(boxSpec: string | null | undefined): string {
-  if (!boxSpec) return '';
-  return /custom|brand/i.test(boxSpec) ? 'custom-box' : 'dc-box';
+// rush → CustomField1. An internal urgency flag, not a service: the export no
+// longer sends <ShippingMethod> at all (the XSD marks it minOccurs="0"), so
+// ShipStation owns service selection entirely. CF1 is grid-visible and
+// rule-matchable, which is what makes it usable as a notification trigger.
+export function rushFlag(rush: boolean | null | undefined): string {
+  return rush ? 'rush' : '';
 }
 
 // State must be 2 letters, zip 5 or 5-4; ShipStation silently rejects malformed
@@ -146,10 +126,11 @@ export function buildOrderXml(s: Shipment): string {
     `    <OrderDate>${fmtDate(s.created_at)}</OrderDate>\n` +
     `    <OrderStatus>${ssStatus(s.status)}</OrderStatus>\n` +
     `    <LastModified>${fmtDate(s.updated_at)}</LastModified>\n` +
-    `    <ShippingMethod>${xmlEscape(speedServiceCode(s.shipping_speed))}</ShippingMethod>\n` +
+    // <ShippingMethod> is deliberately omitted (XSD minOccurs="0"): the app no
+    // longer expresses a service preference — ShipStation owns that choice.
     `    <OrderTotal>0.00</OrderTotal>\n` +   // required by ShipStation; samples are free
     `    <InternalNotes>${cdata(internalNotes(s))}</InternalNotes>\n` +
-    `    <CustomField1>${xmlEscape(boxTag(s.box_spec))}</CustomField1>\n` +
+    `    <CustomField1>${xmlEscape(rushFlag(s.rush))}</CustomField1>\n` +
     `    <CustomField2>${hasCustom ? 'custom-request' : ''}</CustomField2>\n` +
     `    <CustomField3></CustomField3>\n` +
     `    <Customer>\n` +
@@ -215,8 +196,7 @@ export interface Shipment {
   shipment_no: string;
   status: string | null;
   account: string | null;
-  shipping_speed: string | null;   // 'ground' | '2day' | 'overnight'
-  box_spec: string | null;
+  rush: boolean | null;
   temp: string | null;
   temp_override: string | null;
   required_by: string | null;

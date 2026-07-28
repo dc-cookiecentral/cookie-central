@@ -14,8 +14,8 @@ app-side prerequisites that live nowhere else. Pairs with
 > than store isolation. Read §8b before letting anyone else use the app.
 
 > Convention: items marked **🚦 LAUNCH-BLOCKING** must exist before the first
-> real order — the shipping-speed mapping and the cold-chain / box behaviours
-> don't happen without them, and the pull model surfaces no error if they're missing.
+> real order — the cold-chain, custom-request and rush behaviours don't happen
+> without them, and the pull model surfaces no error if they're missing.
 
 ## A. App-side prerequisites — users + address book
 
@@ -76,21 +76,23 @@ Set the status fields so our statuses route correctly:
 - [ ] **Shipment Statuses** = `shipped, delivered`
 - [ ] Awaiting Payment / Cancelled / On Hold — leave defaults; the app never emits those.
 
-## 2. Shipping-service mapping 🚦 LAUNCH-BLOCKING
-The app's checkout offers a **3-tier speed selector** (Ground / 2-Day / Overnight). The export resolves the tier to a real UPS **`serviceCode`** and sends it in `<ShippingMethod>`. Map each **1:1** to the matching ShipStation service (source: `docs/Shipstation Shipping Doc/Shipping Services - 07-23.xlsx`, US domestic):
-- [x] **Connected carriers confirmed July 28, 2026: UPS and USPS.** UPS is what matters here — the three codes below are UPS-specific and now known-good. USPS is connected but **deliberately unused by the tier map**: the salesperson picks a speed, not a carrier, so all three tiers resolve to UPS. The co-man can still buy a USPS label at fulfilment if it's cheaper; `ShippingMethod` is a *requested* service, not a mandate. Offering USPS tiers would mean editing `SHIPPING_SPEEDS` in `src/utils/sampleCentral.js` + `supabase/functions/_shared/shipstation.ts` together.
-- [ ] `ups_ground` → UPS Ground *(app default — tier `ground`)*
-- [ ] `ups_2nd_day_air` → UPS 2nd Day Air® *(tier `2day`)*
-- [ ] `ups_next_day_air` → UPS Next Day Air® *(tier `overnight`)*
-- [ ] (These are real serviceCodes, so the mapping is 1:1 — no free-text reverse-mapping. Speed uses the dedicated `ShippingMethod` element, so **no CustomField and no automation rule is involved**. Add a row here if the app ever gains a tier.)
+## 2. Shipping-service mapping — ~~LAUNCH-BLOCKING~~ NO LONGER REQUIRED
+
+**Retired July 28, 2026 (ADR-031).** The app no longer sends `<ShippingMethod>` —
+it expresses no service preference at all, so there is nothing to map 1:1.
+ShipStation owns service selection outright: the store default, your automation
+rules (§3), and whoever buys the label.
+
+- [x] ~~Map ups_ground / ups_2nd_day_air / ups_next_day_air~~ — nothing to map.
+- [ ] Confirm the store's **default shipping service** is sensible for an
+      unspecified-service order, since every sample now arrives that way.
 
 ## 3. Automation rules 🚦 LAUNCH-BLOCKING
-Rule on **order tags / CustomFields / requested method — never on Item SKU** (SKU rules silently ignore multi-item orders):
+Rule on **order tags / CustomFields — never on Item SKU** (SKU rules silently ignore multi-item orders):
 - [ ] `if order includes the cold-chain product tag` → refrigerated service + insulated box **+ upgrade to a next-day service** (this is how frozen products get expedited, overriding the requested tier — the app itself never expedites).
-- [ ] `if CustomField1 = custom-box` → branded mailer package.
-- [ ] `if CustomField1 = dc-box` → standard package.
 - [ ] `if CustomField2 = custom-request` → route to **manual review** (no auto-fulfil).
-- [ ] (**No speed rule needed** — the chosen tier maps 1:1 to a serviceCode in §2, so speed *is* the requested service. Only the cold-chain automation overrides it.)
+- [ ] `if CustomField1 = rush` → whatever the team needs: a `rush` tag, priority assignment, and — if ShipStation's rule actions support it — the notification email. **Verify that they do**; if not, the email has to come from the app (ADR-031).
+- [ ] (No service rule needed for speed — the app sends no `ShippingMethod` at all as of ADR-031.)
 
 ## 4. Product tags — cold-chain (co-man owns this) 🚦 LAUNCH-BLOCKING — now live
 - [ ] Create the product tag **`cold-chain`**.
@@ -98,8 +100,8 @@ Rule on **order tags / CustomFields / requested method — never on Item SKU** (
 - [ ] ⚠️ **This became blocking on July 28, 2026.** Migration `20260728120000` opened the catalog to all 27 products, including the **9 Raw** ones, so a salesperson can now build a frozen shipment (`derivedTemp` marks any cart with a Raw line as Cold). Until the tags and the §3 rule exist, a frozen sample imports as an ordinary ambient order and ships unrefrigerated — silently.
 
 ## 5. Box inventory (packages)
-- [ ] Define each physical box as a ShipStation **package**: insulated box, branded mailer, standard package (at minimum the three the rules above reference).
-- [ ] The app only pushes intent (`dc-box`/`custom-box` in CustomField1, cold-chain via product tag); the co-man owns the physical box mapping.
+- [ ] Define each physical box as a ShipStation **package**: insulated box, branded mailer, standard package.
+- [ ] **The app no longer sends any box intent** (ADR-031 dropped `box_spec`; CustomField1 now carries `rush`). Box choice is entirely the co-man's, driven by the cold-chain tag and their own judgement.
 
 ## 6. Packing slip — collateral + warming instructions
 - [ ] Create a **custom packing-slip template**.
@@ -113,7 +115,7 @@ Copy the sample-mgmt inbox on **all orders, shipments, deliveries** — two plac
 
 ## 8. Verify — mapping test, no label needed
 - [ ] Trigger a **manual store import** in ShipStation.
-- [ ] Confirm a sample order lands in the dashboard with fields mapped: ship-to, items (SKU=product_code), ShippingMethod (**resolves to the picked tier's UPS service — test all three**), CustomField1 (box), CustomField2 (custom-request when present), InternalNotes (collateral/warming/custom specs).
+- [ ] Confirm a sample order lands in the dashboard with fields mapped: ship-to, items (SKU=product_code), **no ShippingMethod** (service falls to the store default), CustomField1 = `rush` when flagged, CustomField2 = `custom-request` when present, InternalNotes (collateral/warming/custom specs).
 - [ ] Confirm an invalid address (bad State/zip) does **not** silently vanish — the export skips+logs it (check the function logs).
 - [ ] (Optional) Test a full ship: mark shipped in ShipStation → confirm `shipnotify` updates `sample_shipments` (tracking #, status → shipped).
 

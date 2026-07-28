@@ -333,3 +333,31 @@ Supersedes the interim design in which the salesperson picked from a curated six
 ⚠️ **This makes cold-chain live.** `derivedTemp` marks any cart containing a Raw line as Cold, so a frozen shipment is now orderable. That flips checklist **§4 (cold-chain product tags) from "not blocking today" to LAUNCH-BLOCKING**: without the tags plus the §3 automation rule, a frozen sample imports as an ordinary ambient order and ships unrefrigerated — silently, since the pull model surfaces no error.
 
 **Emoji removed** from the per-product catalog rows (the `familyEmoji` helper is deleted) and from the temp badges, per direct feedback. The prep-band storage labels (`ships frozen` / `ships ambient`) still carry theirs — they come from `groupCatalog` in the shared utils.
+
+## ADR-031: Rush flag replaces the shipping-speed selector
+**Date:** July 28, 2026
+**Status:** Accepted. Supersedes the 3-tier `shipping_speed` selector (ADR-028 amendment, July 27) — one day old at the time of reversal.
+
+**Decision.** The app no longer expresses a shipping service at all. `shipping_speed` is dropped, `<ShippingMethod>` is **omitted from the export** (the XSD marks it `minOccurs="0"`), and ShipStation owns service selection outright. In its place `sample_shipments.rush boolean` carries an **internal urgency flag**, exported as **`CustomField1`**.
+
+**Why the reversal.** The tier only ever expressed a *preference*: the export sent it, ShipStation's method-mapping resolved it, and the co-man still chose the actual service at label purchase. The app was asking the salesperson to make a decision that bound nothing downstream — and offering a carrier-shaped choice at that. What the salesperson uniquely knows, and nobody downstream can infer, is whether an order is **urgent**. `rush` captures exactly that and nothing else.
+
+**Rush is not speed.** A 2-day order can be urgent and an overnight one routine. `rush` is a signal to the *team* (drives a notification), not an instruction to the *carrier*. This is why re-introducing a `rush` column is not a return to the pre-ADR-028 design: the original `rush` meant "ship fast" and was correctly replaced by an explicit service; this one means "tell the team."
+
+**Column lineage** (all forward-only, all within three days — recorded so the churn reads as intent rather than thrash):
+
+| Migration | Change |
+|---|---|
+| `20260726120000` | `rush` (bool) dropped → superseded by `requested_service` |
+| `20260727120000` | `requested_service` dropped → superseded by `shipping_speed` |
+| `20260728130000` | `shipping_speed` + `box_spec` dropped → `rush` (bool) returns |
+
+**`box_spec` retired** in the same migration: box choice moves to ShipStation entirely, and the field was occupying `CustomField1`, which `rush` now needs.
+
+**Consequences.**
+- Checklist **§2 (serviceCode 1:1 mapping) is no longer needed** — nothing to map, since no `ShippingMethod` is sent. One launch-blocker removed.
+- The UPS/USPS carrier confirmation (ADR-029 carried item b) is moot for the app; it remains relevant to whoever buys labels.
+- `SHIPPING_SPEEDS` / `SHIPPING_CARRIER` / `speedServiceCode` / `boxTag` are deleted from both `src/utils/sampleCentral.js` and `supabase/functions/_shared/shipstation.ts`.
+- The checkout shows a Rush checkbox stating that selecting it emails the team.
+
+⚠️ **The notification does not exist yet.** The UI promises an email that nothing currently sends. Either a ShipStation automation rule keyed on `CustomField1 = rush` (verify their rule actions support sending mail — unconfirmed), or an app-side sender. Note our Gmail integration is deliberately **read-only** (`_shared/gmail.ts`: "never send or modify"), so app-side means widening that scope or adding a transactional provider. **Until one exists, the checkout copy is a promise the system does not keep.**
