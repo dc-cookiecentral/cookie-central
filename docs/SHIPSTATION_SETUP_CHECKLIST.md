@@ -92,10 +92,10 @@ Rule on **order tags / CustomFields / requested method — never on Item SKU** (
 - [ ] `if CustomField2 = custom-request` → route to **manual review** (no auto-fulfil).
 - [ ] (**No speed rule needed** — the chosen tier maps 1:1 to a serviceCode in §2, so speed *is* the requested service. Only the cold-chain automation overrides it.)
 
-## 4. Product tags — cold-chain (co-man owns this) 🚦 LAUNCH-BLOCKING for raw samples
+## 4. Product tags — cold-chain (co-man owns this) 🚦 LAUNCH-BLOCKING — now live
 - [ ] Create the product tag **`cold-chain`**.
 - [ ] Apply `cold-chain` to every **Raw** product record (the SKU→tag map). ShipStation auto-applies it to any imported order containing that product — the two-step indirection. Do **not** write SKU-based rules.
-- [ ] (Not blocking today: the current 8 sample-eligible cookies are all Baked. Becomes blocking the day a raw sample is enabled.)
+- [ ] ⚠️ **This became blocking on July 28, 2026.** Migration `20260728120000` opened the catalog to all 27 products, including the **9 Raw** ones, so a salesperson can now build a frozen shipment (`derivedTemp` marks any cart with a Raw line as Cold). Until the tags and the §3 rule exist, a frozen sample imports as an ordinary ambient order and ships unrefrigerated — silently.
 
 ## 5. Box inventory (packages)
 - [ ] Define each physical box as a ShipStation **package**: insulated box, branded mailer, standard package (at minimum the three the rules above reference).
