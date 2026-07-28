@@ -21,6 +21,7 @@ import {
   buildOrderXml,
   checkBasicAuth,
   ordersDocument,
+  parseAmount,
   parseSSDate,
   tagValue,
   validState,
@@ -131,6 +132,11 @@ Deno.serve(async (req) => {
       const carrier = tagValue(body, 'Carrier') ?? url.searchParams.get('carrier');
       const service = tagValue(body, 'Service');
       const shipDate = parseSSDate(tagValue(body, 'ShipDate'));
+      // <ShipDate> is date-only; <LabelCreateDate> carries the time the label was
+      // actually bought. <ShippingCost> is the only place the real cost of a
+      // (deliberately unpriced) sample shows up anywhere in the system.
+      const labelCreated = parseSSDate(tagValue(body, 'LabelCreateDate'));
+      const shippingCost = parseAmount(tagValue(body, 'ShippingCost'));
 
       if (!orderNumber) {
         console.error('shipstation shipnotify: no OrderNumber in body or query.');
@@ -157,7 +163,9 @@ Deno.serve(async (req) => {
           tracking_number: tracking ?? null,
           carrier: carrier ?? null,
           service: service ?? null,
-          shipped_at: shipDate ?? new Date().toISOString(),
+          shipped_at: shipDate ?? labelCreated ?? new Date().toISOString(),
+          label_created_at: labelCreated,
+          shipping_cost: shippingCost,
           status: 'shipped',
         })
         .eq('id', match.id);

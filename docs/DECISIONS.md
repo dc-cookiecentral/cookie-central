@@ -381,3 +381,28 @@ One consequence worth knowing: the email fires when ShipStation **imports** the 
 *Consequence:* `processing` and `delivered` are now **unreachable**. Nothing sets `processing` (the Custom Store gives no import acknowledgment — ADR-028 limitation 1), and `delivered` was never wired (ADR-029). The pipeline is effectively **submitted → shipped**, and two of the four stat tiles in Pending Shipments will permanently read zero. Left in place because the four-step pipeline matches the prototype and the values remain valid in the DB CHECK; collapsing the display to the two live states is a reasonable follow-up.
 
 **Pending Shipments detail.** Cards are now click-to-expand (prototype behaviour): status pipeline, ship-to, required-by, collateral, billing, tracking/carrier/service and ship date once shipnotify lands, full item list with custom-line project numbers, and notes.
+
+## ADR-033: ShipNotify capture — and the limits of what ShipStation can push back
+**Date:** July 28, 2026
+**Status:** Accepted. Derived from the **Custom Store Development Guide** (POST Call + ShipNotify Field Definitions), reviewed in full.
+
+**The finding that matters: the Custom Store has exactly two actions — `export` (GET) and `shipnotify` (POST).** The guide is explicit that the POST exists to "post shipment information back to your order source **when you ship orders**". There is **no delivery event and no order-status event**. Every occurrence of "deliver" in the document is a carrier name in the API-code table.
+
+**Consequences for the status pipeline:**
+
+| Status | Source | State |
+|---|---|---|
+| `submitted` | set by the app at creation | ✅ |
+| `processing` | **nothing can set it** — the Custom Store gives no import acknowledgment (ADR-028 limitation 1) | ❌ unreachable |
+| `shipped` | `shipnotify` on label creation | ✅ |
+| `delivered` | **not in this contract** | ❌ unreachable |
+
+So "ShipStation pushes status back" is true for exactly one transition. `delivered` requires a **different mechanism** — ShipStation's account-level **Webhooks** are a separate feature (linked from the guide but not documented in it), or carrier tracking polling. Neither is evaluated yet. This is *pending a mechanism*, not pending implementation — a distinction worth preserving on the roadmap so it isn't mistaken for nearly-done work.
+
+**Newly captured from the ShipNotice payload** (migration `20260728150000`):
+- **`label_created_at`** ← `<LabelCreateDate>`. `<ShipDate>` is **date-only** (`10/19/2019`), so `shipped_at` was silently losing time-of-day. LabelCreateDate is a full `MM/dd/yyyy HH:mm`.
+- **`shipping_cost`** ← `<ShippingCost>`. Samples are unpriced by design (`UnitPrice 0.00`, `OrderTotal 0.00`), so **this is the only place the real cost of the sampling programme appears anywhere in the system.**
+
+`parseAmount` tolerates currency symbols, thousands separators and blanks, returning `null` rather than `NaN` — a malformed cost must never poison a writeback that also carries the tracking number.
+
+**Still unused from the payload:** `NotifyCustomer`, `NotesToCustomer`, `Recipient`, `Items`, and the `CustomField1–3` echo. None currently earn their keep.

@@ -19,6 +19,7 @@ import {
   fmtDate,
   internalNotes,
   ordersDocument,
+  parseAmount,
   parseSSDate,
   ssStatus,
   tagValue,
@@ -182,6 +183,30 @@ Deno.test('parseSSDate: returns null for null, undefined and empty input', () =>
 });
 Deno.test('parseSSDate: returns null for a non-matching format', () => {
   assertEquals(parseSSDate('2026-07-27'), null);
+});
+
+// ── parseAmount (ShippingCost) ──────────────────────────────────────────────
+Deno.test('parseAmount: parses a plain decimal', () => {
+  assertEquals(parseAmount('4.95'), 4.95);
+});
+Deno.test('parseAmount: strips currency symbols and thousands separators', () => {
+  assertEquals(parseAmount('$4.95'), 4.95);
+  assertEquals(parseAmount('1,234.56'), 1234.56);
+});
+Deno.test('parseAmount: handles zero and negative values', () => {
+  assertEquals(parseAmount('0.00'), 0);
+  assertEquals(parseAmount('-3.50'), -3.5);
+});
+Deno.test('parseAmount: returns null for blank, null and undefined', () => {
+  assertEquals(parseAmount(''), null);
+  assertEquals(parseAmount('   '), null);
+  assertEquals(parseAmount(null), null);
+  assertEquals(parseAmount(undefined), null);
+});
+Deno.test('parseAmount: returns null rather than NaN for junk', () => {
+  // A bad cost must not poison a writeback that also carries the tracking number.
+  assertEquals(parseAmount('N/A'), null);
+  assertEquals(parseAmount('$'), null);
 });
 
 // ── ssStatus ────────────────────────────────────────────────────────────────

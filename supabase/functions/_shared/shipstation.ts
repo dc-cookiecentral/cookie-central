@@ -192,6 +192,18 @@ export function tagValue(xml: string, tag: string): string | null {
   return v || null;
 }
 
+// <ShippingCost> is xs:decimal, but it arrives as free text and may be blank,
+// currency-prefixed or comma-grouped depending on locale. Return null rather than
+// NaN on anything unparseable — a bad cost must not poison the whole writeback,
+// which also carries the tracking number.
+export function parseAmount(s: string | null | undefined): number | null {
+  if (s == null) return null;
+  const cleaned = String(s).replace(/[^0-9.-]/g, '');
+  if (!cleaned || !/\d/.test(cleaned)) return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
+
 // ── Types (loose; the service-role query returns joined rows) ────────────────
 export interface ShipmentItem {
   product_code: string | null;

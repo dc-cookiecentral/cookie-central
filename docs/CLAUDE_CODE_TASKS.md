@@ -55,7 +55,7 @@ Branch: `feat/sample-central` (off updated `main` after Phase 1 merges).
 Sample Central catalog reading `products WHERE sample_eligible = true`, grouped Prep→Tier→Size, UOM "1 cookie · EA", full descriptions.
 
 ### Task 2.4 — Shipment builder
-Salesperson + account first; address book w/ inline add; derived-temp badge + deprioritized override; required-by + shipping speed; box_spec (intent); collateral checklist incl. Warming instructions; custom request lines with project #.
+Salesperson + account first; address book w/ inline add; derived-temp badge + deprioritized override; required-by + rush *(as-built; the brief said shipping speed — ADR-031)*; collateral checklist incl. Warming instructions; custom request lines with project #.
 
 ### Task 2.5 — Mission control
 Pending shipments list, stat tiles, salesperson filter, status pipeline, custom-item badges + project #.
@@ -70,7 +70,14 @@ App switcher between Spec Sheet and Sample Central. Role-aware per existing auth
 
 ---
 
-## Phase 3 — ShipStation via Custom Store (see SHIPSTATION_INTEGRATION.md + ADR-028) — ✅ Completed July 27, 2026 (ADR-029)
+## Phase 3 — ShipStation via Custom Store (see SHIPSTATION_INTEGRATION.md + ADR-028) — ✅ Built July 27, 2026 (ADR-029); refined July 28 (ADR-030→033)
+
+> ⚠️ **The task descriptions below are the original brief and are partly SUPERSEDED.**
+> They are kept as a record of what was asked, not of what exists. For the
+> as-built state and the current next steps, read **`docs/SAMPLE_CENTRAL_STATUS.md`**.
+> Headline reversals: the 3-tier shipping-speed selector (3.2b/3.2c) was replaced
+> by a `rush` flag and no `ShippingMethod` is sent (ADR-031); `box_spec` was
+> dropped (ADR-031); status is read-only (ADR-032).
 Branch: `feat/shipstation`. **Custom Store pattern** — NOT the V1 order-push (superseded, ADR-027) and NOT the V2 Sales Orders API (beta, not sandbox-testable).
 
 ### Task 3.1 — Custom Store contract + ADR ✅ (done in planning)
@@ -87,13 +94,13 @@ ADR-028 records the Custom Store decision (GET export + POST shipnotify, Basic A
 `*_sample_shipment_shipping_speed.sql`: add `shipping_speed text NOT NULL DEFAULT 'ground'` with a CHECK on `ground|2day|overnight`; backfill from `requested_service`; **drop** `requested_service`. Forward-only, manual apply.
 
 ### Task 3.3 — `shipstation-customstore` Edge Function
-One module, two actions by `action` query param. `action=export` (GET): query `sample_shipments` + items + address for the `start_date`/`end_date` window, emit Custom Store **Orders XML** per the mapping (paging via `page`/`pages`; CDATA free-text; validate State 2-char + PostalCode or skip+log). `action=shipnotify` (POST): parse `ShipNotice`, update the matching `sample_shipments` (tracking/carrier/service/shipped_at, status→shipped); unmatched OrderNumber → log, don't drop. Basic Auth via Vault (`SHIPSTATION_CUSTOMSTORE_USER`/`_PASS`, `get_secret`); reject non-match 401. Mirror `gmail-*` conventions (Deno, injected client). Pure helpers live in `_shared/shipstation.ts` and are unit-tested in `_shared/shipstation_test.ts` (`deno test`) — keep the tier→serviceCode cases green whenever the speed map changes.
+One module, two actions by `action` query param. `action=export` (GET): query `sample_shipments` + items + address for the `start_date`/`end_date` window, emit Custom Store **Orders XML** per the mapping (paging via `page`/`pages`; CDATA free-text; validate State 2-char + PostalCode or skip+log). `action=shipnotify` (POST): parse `ShipNotice`, update the matching `sample_shipments` (tracking/carrier/service/shipped_at, status→shipped); unmatched OrderNumber → log, don't drop. Basic Auth via Vault (`SHIPSTATION_CUSTOMSTORE_USER`/`_PASS`, `get_secret`); reject non-match 401. Mirror `gmail-*` conventions (Deno, injected client). Pure helpers live in `_shared/shipstation.ts` and are unit-tested in `_shared/shipstation_test.ts` (`deno test`) — the suite is now 87 cases covering auth, dates, field mapping, order XML and ShipNotice parsing.
 
 ### Task 3.4 — Account-side config doc ✅ (done in planning)
 `docs/SHIPSTATION_SETUP_CHECKLIST.md`: connect Custom Store (endpoint URL + Basic Auth → Vault), status mapping, **launch-blocking** shipping-service mapping (serviceCode 1:1) + automation rules (incl. cold-chain → next-day), cold-chain product tags (co-man), box packages, packing-slip token, email BCC, mapping test via manual import (no label needed), plus test-mode guidance for the internal stress test (§8b) and the go-live cleanup (§9).
 
 ### Task 3.5 — Verify, then flip to production. ADR + PR. ✅ (as-built ADR-029)
-Verified end-to-end against the live account: a test order imported into ShipStation's **Awaiting Shipment** queue with fields mapped, and a `shipnotify` POST wrote tracking back + advanced `status → shipped`. As-built recorded in **ADR-029** (incl. the XSD corrections: `<Country>US</Country>` + `<OrderTotal>` are required, status exported verbatim, PostgREST `table!fk` embeds). **Remaining (Caroline):** launch-blocking §2–§4 config (map the three UPS serviceCodes; automation rules; cold-chain tags). **Done Jul 28 2026:** carrier confirmed (UPS + USPS connected, tier map stays all-UPS), migration applied, Edge Function redeployed, frontend on `main`. Soft launch is DC-internal, so Cortina user seeding (§A.1) is deferred, not skipped. Note: `delivered` not wired (pipeline ends at shipped).
+Verified end-to-end against the live account: a test order imported into ShipStation's **Awaiting Shipment** queue with fields mapped, and a `shipnotify` POST wrote tracking back + advanced `status → shipped`. As-built recorded in **ADR-029** (incl. the XSD corrections: `<Country>US</Country>` + `<OrderTotal>` are required, status exported verbatim, PostgREST `table!fk` embeds). **Current state and next steps: `docs/SAMPLE_CENTRAL_STATUS.md`** — that file is authoritative; this one is history. In brief, as of Jul 28 2026: schema/function/frontend all deployed and verified, rush notification rule built, test mode live. Remaining blockers are §3 automation rules and §4 cold-chain tags (the latter now genuinely blocking, since the catalog opened to Raw products). `delivered` and `processing` are **unreachable** — the Custom Store has no such events (ADR-033).
 
 ---
 
