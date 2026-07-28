@@ -5,9 +5,16 @@
 -- across the original Cookie Central modules can be deleted. Data re-enters via
 -- the existing upload/agent pipelines, so this is reversible by re-import.
 --
--- *** NOT part of the Phase-1 apply sequence. *** Apply this only when you're
--- ready to clear the demo/historical data — AFTER the spine migrations + seed
--- are applied and /spec-sheet is verified. Review the PRESERVE/WIPE lists first.
+-- *** NOT a migration. *** This lived at
+-- `supabase/migrations/20260715150000_purge_non_cookulator_data.sql` until it was
+-- moved here on July 27, 2026. It was never applied, and the remote migration
+-- ledger has no record of it — which made it a live hazard: `supabase db push`
+-- trusts the ledger, so a single push would have executed this TRUNCATE against
+-- production. It is out of `migrations/` so no sweep command can reach it.
+--
+-- Apply this only when you're ready to clear the demo/historical data — AFTER the
+-- spine migrations + seed are applied and /spec-sheet is verified. Review the
+-- PRESERVE/WIPE lists first, then paste it into the Supabase SQL editor by hand.
 --
 -- PRESERVED (12):
 --   Cookulator spine  : products, eaches, inners, master_cases, stuffings,
@@ -28,7 +35,8 @@
 --   * gmail_sync_state — PRESERVED so you don't have to re-OAuth the agent.
 --                      Move to WIPE (and re-connect Gmail) for a full reset.
 --
--- Forward-only; applied manually via the Supabase SQL editor.
+-- Destructive and one-time; run by hand in the Supabase SQL editor, never via
+-- `db push`.
 
 TRUNCATE TABLE
   -- Orders / payments
