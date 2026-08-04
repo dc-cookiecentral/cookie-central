@@ -490,3 +490,32 @@ And `InternalNotes` is reduced to **the site note plus third-party billing instr
 **Verified.** 95 `Deno.test` cases pass (5 new, 6 rewritten — several had been asserting the superseded contract). `deno check` clean. Generated XML inspected by hand: `CF1 Alex Morgan`, `CF2 Kroger Co.`, `CF3 rush`, `InternalNotes` = billing + note only. Deployed.
 
 **Not verified.** No order has imported since the deploy — the grid columns and the re-pointed rule are both unproven in ShipStation itself.
+
+## ADR-037: Final field contract — RUSH in notes, billing in Notes from Buyer, temp override in CF3 (supersedes ADR-036)
+
+**Date:** August 4, 2026
+**Status:** Built, tested (100 cases), **deployed**. Branch `feat/shipstation`.
+
+**The contract, settled:**
+
+| Field | Carries |
+|---|---|
+| `<Items>` | catalog products + `CUSTOM` line + one `COLLATERAL-*` per piece (ADR-035) |
+| Deliver By (native) | `required_by`, stamped by the 15-min sweep (ADR-034) |
+| `InternalNotes` | **`RUSH`** (leading, when flagged) + the site note |
+| `CustomerNotes` | third-party billing instructions |
+| `CustomField1` | salesperson |
+| `CustomField2` | account |
+| `CustomField3` | **manual temp override** |
+
+**Why RUSH moved into the notes.** It had been CF1, then CF3, and each move broke the July 28 notification rule. Putting it in InternalNotes frees all three CustomFields for values worth *sorting* the grid by, and costs nothing in rule-matchability: ShipStation's **Automation Rules Criteria and Actions** (fetched 2026-05-05 revision) lists **Internal Notes** among available criteria with *"Data can equal, contain, start with, end with, or be blank"*. So `Internal Notes contains RUSH` is a supported trigger. The token leads the field, so it is also the first thing a human reads. Caroline owns the rule edit.
+
+**Why billing moved to `<CustomerNotes>`.** It is an instruction to whoever buys the label, not an internal aside, and it deserves its own line rather than sharing InternalNotes with the rush flag and free text. **Notes from Buyer** is likewise documented rule criteria, so it stays matchable.
+
+**Why CF3 is the override, not the temp.** Normal cold-chain routing rides the §4 product tag and needs no help from the export. What the co-man genuinely cannot otherwise see is a **human deliberately overriding** the derived temp. CF3 is therefore **blank unless someone overrode**, which makes `Custom Field 3 is not blank` a precise trigger for "a person made a judgement call here." Emitting the effective temp on every order would have buried that signal in noise. This also closes the gap ADR-036 opened when `Handling: Cold (override)` was dropped from the notes.
+
+**Resolves ADR-036's open item.** The `custom-request` signal is gone from the CustomFields for good. Custom work is visible as a `CUSTOM` line item, and the same article confirms the hazard in ShipStation's own words: *"Automation Rules using Item SKU as criteria will not apply to orders that have more than one line item."* So a SKU rule remains unsafe. If custom requests need to trigger manual review, the route is an **Order Tag** — still unbuilt.
+
+**Verified.** 100 `Deno.test` cases pass (7 new, 4 rewritten). `deno check` clean. Generated XML inspected: `CF1 Alex Morgan`, `CF2 Kroger Co.`, `CF3 Cold`, `InternalNotes RUSH | Notes: Handle with care`, `CustomerNotes BILL THIRD PARTY: FedEx acct 123456789 (zip 90210)`. Deployed.
+
+**Not verified.** No order has imported since; the grid columns, the `contains RUSH` rule and the override flag are all unproven in ShipStation itself.

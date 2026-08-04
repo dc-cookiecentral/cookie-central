@@ -18,6 +18,7 @@ import {
   checkBasicAuth,
   fmtDate,
   internalNotes,
+  customerNotes,
   ordersDocument,
   parseAmount,
   parseSSDate,
@@ -219,8 +220,8 @@ Deno.test('ssStatus: defaults null and undefined to submitted', () => {
 });
 
 // ── rushFlag (CustomField1) ─────────────────────────────────────────────────
-Deno.test('rushFlag: true becomes the literal CustomField1 token', () => {
-  assertEquals(rushFlag(true), 'rush');
+Deno.test('rushFlag: true becomes the literal RUSH token used in InternalNotes', () => {
+  assertEquals(rushFlag(true), 'RUSH');
 });
 Deno.test('rushFlag: false, null and undefined produce an empty field', () => {
   assertEquals(rushFlag(false), '');
@@ -309,10 +310,22 @@ Deno.test('internalNotes: omits custom specs — they are <Item> Names now', () 
   assertFalse(out.includes('Custom:'));
   assertFalse(out.includes('Heart-shaped'));
 });
-Deno.test('internalNotes: keeps third-party billing, ahead of the note', () => {
-  const out = internalNotes(shipment(TP));
-  assertStringIncludes(out, 'BILL THIRD PARTY: FedEx acct 123456789 (zip 90210)');
-  assertEquals(out.indexOf('BILL THIRD PARTY') < out.indexOf('Notes:'), true);
+Deno.test('internalNotes: leads with RUSH so a contains-rule and a human both catch it', () => {
+  const out = internalNotes(shipment({ rush: true }));
+  assertEquals(out.startsWith('RUSH'), true);
+  assertStringIncludes(out, 'Notes: First meeting, keep it classic.');
+});
+Deno.test('internalNotes: no RUSH token when the order is not rushed', () => {
+  assertFalse(internalNotes(shipment({ rush: false })).includes('RUSH'));
+});
+Deno.test('internalNotes: third-party billing is NOT here — it is CustomerNotes now', () => {
+  assertFalse(internalNotes(shipment(TP)).includes('BILL THIRD PARTY'));
+});
+Deno.test('customerNotes: carries third-party billing verbatim', () => {
+  assertEquals(customerNotes(shipment(TP)), 'BILL THIRD PARTY: FedEx acct 123456789 (zip 90210)');
+});
+Deno.test('customerNotes: empty when billing is not third-party', () => {
+  assertEquals(customerNotes(shipment()), '');
 });
 Deno.test('internalNotes: ignores non-custom lines', () => {
   assertFalse(internalNotes(shipment()).includes('Custom:'));
@@ -359,9 +372,10 @@ Deno.test('buildOrderXml: CustomField1 falls back to the email when there is no 
 Deno.test('buildOrderXml: CustomField2 is the account', () => {
   assertEquals(el(buildOrderXml(shipment({ account: 'Kroger' })), 'CustomField2'), 'Kroger');
 });
-Deno.test('buildOrderXml: CustomField3 carries the rush flag', () => {
-  assertEquals(el(buildOrderXml(shipment({ rush: true })), 'CustomField3'), 'rush');
-  assertEquals(el(buildOrderXml(shipment({ rush: false })), 'CustomField3'), '');
+Deno.test('buildOrderXml: CustomField3 carries a manual temp override, and only that', () => {
+  assertEquals(el(buildOrderXml(shipment({ temp: 'Cold', temp_override: 'Cold' })), 'CustomField3'), 'Cold');
+  // Derived-Cold with no human override must stay blank, so a rule can match non-blank.
+  assertEquals(el(buildOrderXml(shipment({ temp: 'Cold', temp_override: null })), 'CustomField3'), '');
 });
 Deno.test('buildOrderXml: CustomFields truncate at 100 chars rather than silently overflowing', () => {
   const long = 'A'.repeat(150);
@@ -371,9 +385,14 @@ Deno.test('buildOrderXml: CustomField3 stays free even with third-party billing 
   assertEquals(el(buildOrderXml(shipment()), 'CustomField3'), '');
   assertEquals(el(buildOrderXml(shipment(TP)), 'CustomField3'), '');
 });
-Deno.test('buildOrderXml: echoes third-party billing into InternalNotes for the label buyer', () => {
-  const notes = el(buildOrderXml(shipment(TP)), 'InternalNotes') ?? '';
-  assertStringIncludes(notes, 'BILL THIRD PARTY: FedEx acct 123456789 (zip 90210)');
+Deno.test('buildOrderXml: third-party billing goes to CustomerNotes (Notes from Buyer)', () => {
+  const xml = buildOrderXml(shipment(TP));
+  assertStringIncludes(el(xml, 'CustomerNotes') ?? '', 'BILL THIRD PARTY: FedEx acct 123456789 (zip 90210)');
+  assertFalse((el(xml, 'InternalNotes') ?? '').includes('BILL THIRD PARTY'));
+});
+Deno.test('buildOrderXml: CustomerNotes is present but empty for normal billing', () => {
+  assertStringIncludes(buildOrderXml(shipment()), '<CustomerNotes>');
+  assertEquals(el(buildOrderXml(shipment()), 'CustomerNotes'), '<![CDATA[]]>');
 });
 Deno.test('buildOrderXml: emits real product lines as Items with UnitPrice 0.00', () => {
   const xml = buildOrderXml(shipment());

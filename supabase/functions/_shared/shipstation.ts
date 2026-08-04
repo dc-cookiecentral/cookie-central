@@ -71,22 +71,22 @@ export function ssStatus(status: string | null | undefined): string {
   return status ?? 'submitted';
 }
 
-// rush → CustomField3 (was CustomField1 until Aug 4 2026 — ADR-036). An internal
-// urgency flag, not a service: the export no longer sends <ShippingMethod> at all
-// (the XSD marks it minOccurs="0"), so ShipStation owns service selection
-// entirely. The CustomFields are grid-visible and rule-matchable, which is what
-// makes this usable as a notification trigger.
+// rush → the FIRST token of InternalNotes (ADR-037; was CustomField1, then CF3).
+// An internal urgency flag, not a service: the export sends no <ShippingMethod>
+// at all, so ShipStation owns service selection entirely.
 //
-// ⚠️ The value stays lowercase `rush` so the existing rule's comparison text is
-// unchanged — only the FIELD it reads has to move, from CF1 to CF3.
+// Notes are legitimate rule criteria — ShipStation's "Automation Rules Criteria
+// and Actions" lists Internal Notes with "equal, contain, start with, end with,
+// or be blank" — so `Internal Notes contains RUSH` is a supported trigger. It
+// leads the field so it is also the first thing a human reads.
 export function rushFlag(rush: boolean | null | undefined): string {
-  return rush ? 'rush' : '';
+  return rush ? 'RUSH' : '';
 }
 
-// Third-party billing rides InternalNotes ONLY — see internalNotes() below.
-// It deliberately does not consume a CustomField: the co-man reads the notes when
-// buying the label, and the 100-char CustomFields buy nothing extra for a value
-// no automation rule acts on.
+// Third-party billing rides <CustomerNotes> — ShipStation's "Notes from Buyer"
+// (ADR-037). It gets its own field rather than sharing InternalNotes so the
+// label buyer sees billing instructions on their own line, and so a rule can
+// match on it independently ("Notes from Buyer" is documented rule criteria).
 //
 // Returns '' unless all three details are present, since a partial set looks
 // configured but cannot actually be billed.
@@ -104,20 +104,26 @@ export function thirdPartyBilling(s: Shipment): string {
 export const validState = (s: string | null | undefined) => !!s && /^[A-Za-z]{2}$/.test(s.trim());
 export const validZip = (z: string | null | undefined) => !!z && /^\d{5}(-\d{4})?$/.test(z.trim());
 
-// InternalNotes carries ONLY the salesperson's free-text note and third-party
-// billing instructions (ADR-036). Everything else that used to live here now has
-// a first-class home, so repeating it as prose is pure noise on the packing slip:
+// InternalNotes = the RUSH flag (leading, rule-matchable) + the site note.
+// Everything else has a first-class home, so repeating it here is pure noise:
 //   collateral + custom specs → real <Item> lines (ADR-035)
 //   deliver-by               → the native Deliver By field (ADR-034)
-//   handling/temp            → the cold-chain product tag drives the packing rule
-//   salesperson / account / rush → CustomField1 / 2 / 3
+//   third-party billing      → <CustomerNotes> / "Notes from Buyer" (ADR-037)
+//   salesperson / account / temp override → CustomField1 / 2 / 3
 // 1000-char field; never use the 100-char CustomFields for free text.
 export function internalNotes(s: Shipment): string {
   const parts: string[] = [];
-  const tp = thirdPartyBilling(s);
-  if (tp) parts.push(tp);
+  const rush = rushFlag(s.rush);
+  if (rush) parts.push(rush);
   if (s.notes) parts.push(`Notes: ${s.notes}`);
   return parts.join(' | ').slice(0, 1000);
+}
+
+// <CustomerNotes> is ShipStation's "Notes from Buyer". Third-party billing is
+// the only thing that belongs there — it is an instruction to whoever buys the
+// label, not an internal aside.
+export function customerNotes(s: Shipment): string {
+  return thirdPartyBilling(s).slice(0, 1000);
 }
 
 // CustomFields are grid-visible, sortable and rule-matchable — and silently
@@ -134,6 +140,14 @@ export function salespersonField(s: Shipment): string {
 // CF2 = which account it's for.
 export function accountField(s: Shipment): string {
   return customField(s.account);
+}
+
+// CF3 = a MANUAL handling override, and only that. Normal cold-chain routing
+// rides the §4 product tag, which needs no help from us; what the co-man cannot
+// otherwise see is a human deliberately overriding the derived temp. Empty when
+// nobody overrode anything, so a rule can match on it being non-blank.
+export function tempOverrideField(s: Shipment): string {
+  return customField(s.temp_override);
 }
 
 // ── Order XML ───────────────────────────────────────────────────────────────
@@ -200,10 +214,11 @@ export function buildOrderXml(s: Shipment): string {
     // <ShippingMethod> is deliberately omitted (XSD minOccurs="0"): the app no
     // longer expresses a service preference — ShipStation owns that choice.
     `    <OrderTotal>0.00</OrderTotal>\n` +   // required by ShipStation; samples are free
+    `    <CustomerNotes>${cdata(customerNotes(s))}</CustomerNotes>\n` +
     `    <InternalNotes>${cdata(internalNotes(s))}</InternalNotes>\n` +
     `    <CustomField1>${xmlEscape(salespersonField(s))}</CustomField1>\n` +
     `    <CustomField2>${xmlEscape(accountField(s))}</CustomField2>\n` +
-    `    <CustomField3>${xmlEscape(rushFlag(s.rush))}</CustomField3>\n` +
+    `    <CustomField3>${xmlEscape(tempOverrideField(s))}</CustomField3>\n` +
     `    <Customer>\n` +
     `      <CustomerCode>${xmlEscape(s.salesperson?.email ?? '')}</CustomerCode>\n` +
     `      <BillTo>\n` +
