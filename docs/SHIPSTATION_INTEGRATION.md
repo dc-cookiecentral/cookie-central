@@ -62,8 +62,8 @@ Basic HTTP Auth on both actions. Expected creds read from Vault via `get_secret`
     <CustomField1>{rush ? 'rush' : ''}</CustomField1>
     <CustomField2>{any custom line ? 'custom-request' : ''}</CustomField2>
     <CustomField3></CustomField3>                        <!-- reserved / unused -->
-    <InternalNotes><![CDATA[ collateral · Warming instructions · notes ·
-        required-by · handling(temp) · custom lines (spec + project #) ]]></InternalNotes>
+    <InternalNotes><![CDATA[ notes · deliver-by · handling(temp) ·
+        custom lines (spec + project #) ]]></InternalNotes>
     <Customer>
       <CustomerCode>{salesperson email}</CustomerCode>
       <BillTo><Name><![CDATA[{account}]]></Name></BillTo>
@@ -89,7 +89,8 @@ Basic HTTP Auth on both actions. Expected creds read from Vault via `get_secret`
 </Orders>
 ```
 - **`<Country>` = `US`** — required by ShipStation's `ShipTo` schema; a missing Country makes ShipStation reject the whole import batch. Samples are US-only.
-- **Custom lines** (`custom = true`, no `product_code`) are **not** emitted as `<Item>` (no SKU). They ride `InternalNotes` (spec + `project_no`) **and** flag `CustomField2 = custom-request`.
+- **Custom lines** (`custom = true`, no `product_code`) **are** emitted as `<Item>` under the stable synthetic SKU **`CUSTOM`**, with the spec + `project_no` as the `<Name>`. They *also* ride `InternalNotes` and flag `CustomField2 = custom-request` (the manual-review rule keys on that). *(Changed Aug 4 2026 — ADR-035; previously excluded for lacking a SKU.)*
+- **Collateral** is emitted as one `<Item>` per piece under `COLLATERAL-<SLUG>`, quantity 1, and is **no longer written to `InternalNotes`** — it would otherwise print twice on the packing slip.
 
 ### ShipNotify (POST body)
 
@@ -141,7 +142,7 @@ Columns are the **real** ADR-026 names.
 | `CustomField1` | `rush` | `rush` when flagged, else empty. Internal urgency signal — **not** a speed instruction; drives the team notification |
 | `CustomField2` | any `sample_shipment_items.custom` | `custom-request` (grid-visible + rule-matchable) |
 | `CustomField3` | — | reserved |
-| `InternalNotes` | `collateral[]` + `notes` + `required_by` + `temp` + custom `custom_spec`/`project_no` | 1000-char field; lists go here, not CustomFields |
+| `InternalNotes` | `notes` + `required_by` + `temp` + custom `custom_spec`/`project_no` | 1000-char field. **No `collateral[]`** — it ships as `<Item>` lines (ADR-035) |
 | `CustomerCode` | `salesperson_user_id` → `user_profiles.email` | |
 | `BillTo/Name` | `account` | |
 | `ShipTo/*` | `addresses` `contact_name`/`company`/`street`/`city`/`state`/`zip` | **State 2-char + PostalCode validated** or skip+log |
@@ -158,7 +159,7 @@ Columns are the **real** ADR-026 names.
   ⚠️ The checkout tells the salesperson that ticking Rush emails the team. **Nothing sends that email yet** — see ADR-031.
 
 - **custom-request** → `CustomField2` → automation rule → **manual review** (no auto-fulfil). Kept on a CustomField so it shows in the Orders grid and matches rules — **not** buried in notes.
-- **collateral incl. Warming instructions** → `InternalNotes`, printed via a packing-slip **Field-Replacement** token (bind the token to the Notes field). Watch the 100-char CustomField limit — lists go in the 1000-char `InternalNotes`.
+- **collateral incl. Warming instructions** → real `<Item>` lines (`COLLATERAL-<SLUG>`, qty 1), so they appear on the order page and the pick list natively — no packing-slip token needed for them. Free-text that remains in `InternalNotes` still needs the token. Never use CustomFields for lists (100-char silent truncation).
 
 ## Status mapping
 

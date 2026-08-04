@@ -285,15 +285,16 @@ Deno.test('validZip: rejects empty, null and undefined', () => {
 });
 
 // ── internalNotes ───────────────────────────────────────────────────────────
-Deno.test('internalNotes: joins collateral, handling, deliver-by and notes in order', () => {
+Deno.test('internalNotes: joins handling, deliver-by and notes in order', () => {
   assertEquals(
     internalNotes(shipment()),
-    'Collateral: Line sheet | Handling: Ambient | Deliver by: 2026-08-01 | Notes: First meeting, keep it classic.',
+    'Handling: Ambient | Deliver by: 2026-08-01 | Notes: First meeting, keep it classic.',
   );
 });
-Deno.test('internalNotes: joins multiple collateral items with commas', () => {
+Deno.test('internalNotes: omits collateral entirely — it ships as <Item> lines', () => {
   const out = internalNotes(shipment({ collateral: ['Line sheet', 'Warming instructions'] }));
-  assertStringIncludes(out, 'Collateral: Line sheet, Warming instructions');
+  assertFalse(out.includes('Collateral'));
+  assertFalse(out.includes('Line sheet'));
 });
 Deno.test('internalNotes: flags an overridden handling temp', () => {
   const out = internalNotes(shipment({ temp: 'Cold', temp_override: 'Cold' }));
@@ -379,14 +380,55 @@ Deno.test('buildOrderXml: emits real product lines as Items with UnitPrice 0.00'
   assertEquals(el(xml, 'Quantity'), '12');
   assertEquals(el(xml, 'UnitPrice'), '0.00');
 });
-Deno.test('buildOrderXml: excludes custom lines from Items (they have no SKU)', () => {
+Deno.test('buildOrderXml: emits custom lines as Items under the stable CUSTOM sku', () => {
   const xml = buildOrderXml(shipment({
+    collateral: [],
     sample_shipment_items: [
       { product_code: null, custom: true, custom_spec: 'Bespoke', project_no: 'P-9', qty: 3, description: null },
     ],
   }));
-  assertFalse(xml.includes('<SKU>'));
+  assertStringIncludes(xml, '<SKU>CUSTOM</SKU>');
+  assertStringIncludes(xml, 'Bespoke (proj P-9)');
+  assertStringIncludes(xml, '<Quantity>3</Quantity>');
+  // Still carried in notes + CustomField2 — the manual-review rule keys on that.
   assertStringIncludes(el(xml, 'InternalNotes') ?? '', 'Custom: Bespoke (proj P-9)');
+  assertEquals(el(xml, 'CustomField2'), 'custom-request');
+});
+Deno.test('buildOrderXml: a custom line with no spec still gets a usable Name', () => {
+  const xml = buildOrderXml(shipment({
+    collateral: [],
+    sample_shipment_items: [
+      { product_code: null, custom: true, custom_spec: null, project_no: null, qty: 1, description: null },
+    ],
+  }));
+  assertStringIncludes(xml, 'Custom item');
+});
+Deno.test('buildOrderXml: emits each collateral piece as an Item, quantity 1', () => {
+  const xml = buildOrderXml(shipment({
+    collateral: ['Line sheet', 'Warming instructions'],
+    sample_shipment_items: [],
+  }));
+  assertStringIncludes(xml, '<SKU>COLLATERAL-LINE-SHEET</SKU>');
+  assertStringIncludes(xml, '<SKU>COLLATERAL-WARMING-INSTRUCTIONS</SKU>');
+  assertStringIncludes(xml, '<Name><![CDATA[Line sheet]]></Name>');
+  assertFalse(xml.includes('<Quantity>0</Quantity>'));
+});
+Deno.test('buildOrderXml: collateral SKUs are stable and punctuation-safe', () => {
+  const xml = buildOrderXml(shipment({
+    collateral: ["Rep's one-pager / v2"],
+    sample_shipment_items: [],
+  }));
+  assertStringIncludes(xml, '<SKU>COLLATERAL-REP-S-ONE-PAGER-V2</SKU>');
+});
+Deno.test('buildOrderXml: products, custom lines and collateral all coexist as Items', () => {
+  const xml = buildOrderXml(shipment({
+    collateral: ['Line sheet'],
+    sample_shipment_items: [
+      { product_code: 'CC-2OZ-BAK-G', custom: false, custom_spec: null, project_no: null, qty: 2, description: 'Gourmet CC' },
+      { product_code: null, custom: true, custom_spec: 'Bespoke', project_no: null, qty: 1, description: null },
+    ],
+  }));
+  assertEquals((xml.match(/<Item>/g) ?? []).length, 3);
 });
 Deno.test('buildOrderXml: defaults a missing quantity to 1', () => {
   const xml = buildOrderXml(shipment({

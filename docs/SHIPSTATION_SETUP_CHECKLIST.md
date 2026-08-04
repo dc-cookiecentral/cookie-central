@@ -104,9 +104,20 @@ Rule on **order tags / CustomFields — never on Item SKU** (SKU rules silently 
 - [ ] **The app no longer sends any box intent** (ADR-031 dropped `box_spec`; CustomField1 now carries `rush`). Box choice is entirely the co-man's, driven by the cold-chain tag and their own judgement.
 
 ## 6. Packing slip — collateral + warming instructions
-- [ ] Create a **custom packing-slip template**.
-- [ ] Add a **Field-Replacement** token bound to the order **Notes / InternalNotes** field (where the app writes the collateral checklist incl. **Warming instructions**, plus custom-item specs + project #s).
-- [ ] Do **not** use CustomFields for the collateral list — 100-char silent truncation. The app already puts lists in the 1000-char InternalNotes.
+
+> **Changed Aug 4, 2026 (ADR-035).** Collateral and custom lines are now real
+> **line items** on the order, so they appear on the order page and the standard
+> pick list with no template work. Collateral was **removed** from InternalNotes
+> to avoid printing twice.
+
+- [ ] ⚠️ **Expect new product records.** ShipStation auto-creates one for every
+      unknown SKU it imports, so `CUSTOM` and one `COLLATERAL-<SLUG>` per piece
+      will appear in the product catalog on first import. Harmless, but don't
+      tag them cold-chain (§4).
+- [ ] (Optional) Custom packing-slip template with a **Field-Replacement** token
+      bound to **Notes / InternalNotes** — still worth it for what remains there:
+      handling, deliver-by, custom specs, third-party billing.
+- [ ] Do **not** use CustomFields for lists — 100-char silent truncation.
 
 ## 7. Email / CC — copy `samplesmngmt@cortinafoods.com`
 Copy the sample-mgmt inbox on **all orders, shipments, deliveries** — two places:

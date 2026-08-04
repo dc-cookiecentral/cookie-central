@@ -100,11 +100,16 @@ export function thirdPartyBilling(s: Shipment): string {
 export const validState = (s: string | null | undefined) => !!s && /^[A-Za-z]{2}$/.test(s.trim());
 export const validZip = (z: string | null | undefined) => !!z && /^\d{5}(-\d{4})?$/.test(z.trim());
 
-// Collateral + notes + deliver-by + handling snapshot + custom-line specs, all
-// into the 1000-char InternalNotes (never the 100-char CustomFields).
+// Notes + deliver-by + handling snapshot + custom-line specs, all into the
+// 1000-char InternalNotes (never the 100-char CustomFields).
+//
+// Collateral is deliberately NOT here: it is emitted as real <Item> lines by
+// buildOrderXml, so repeating it as prose would print it twice on a packing
+// slip whose template binds a field-replacement token to InternalNotes
+// (SHIPSTATION_SETUP_CHECKLIST §6). Custom specs stay — they annotate a line
+// item rather than replacing it, and the manual-review rule reads them.
 export function internalNotes(s: Shipment): string {
   const parts: string[] = [];
-  if (s.collateral?.length) parts.push(`Collateral: ${s.collateral.join(', ')}`);
   if (s.temp) parts.push(`Handling: ${s.temp}${s.temp_override ? ' (override)' : ''}`);
   if (s.required_by) parts.push(`Deliver by: ${s.required_by}`);
   const tp = thirdPartyBilling(s);
@@ -117,25 +122,59 @@ export function internalNotes(s: Shipment): string {
 }
 
 // ── Order XML ───────────────────────────────────────────────────────────────
+
+// Synthetic SKUs for the two kinds of line that aren't catalog products.
+// They are deliberately STABLE rather than per-order: ShipStation auto-creates
+// a product record for every unknown SKU it imports, so `CUSTOM-<project_no>`
+// or a hashed spec would silently fill the co-man's catalog with one-off junk.
+// One row per collateral type, one row for all custom work, is the tradeoff —
+// the per-order detail lives in <Name>, which is what prints on the pick list.
+const CUSTOM_SKU = 'CUSTOM';
+const collateralSku = (name: string) =>
+  `COLLATERAL-${name.toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
+
+function itemXml(sku: string, name: string, qty: number): string {
+  return (
+    `      <Item>\n` +
+    `        <SKU>${xmlEscape(sku)}</SKU>\n` +
+    `        <Name>${cdata(name)}</Name>\n` +
+    `        <Quantity>${qty}</Quantity>\n` +
+    `        <UnitPrice>0.00</UnitPrice>\n` +
+    `      </Item>`
+  );
+}
+
 // One <Order>. Assumes the caller has already validated ship-to State/zip.
-// Real product lines only (custom lines have no SKU — they ride InternalNotes
-// + CustomField2). Country is not exported (US-only; store default). Samples
-// are unpriced (UnitPrice 0.00).
+// <Items> carries everything the co-man physically puts in the box: catalog
+// products, custom-made lines, and collateral — each as a real line item so it
+// appears on the order page and the pick list, not just as notes prose.
+// Country is not exported (US-only; store default). Samples are unpriced.
 export function buildOrderXml(s: Shipment): string {
   const addr = s.address ?? {};
-  const items = (s.sample_shipment_items ?? []).filter((i) => i.product_code);
-  const hasCustom = (s.sample_shipment_items ?? []).some((i) => i.custom);
-  const itemsXml = items
-    .map(
-      (i) =>
-        `      <Item>\n` +
-        `        <SKU>${xmlEscape(i.product_code)}</SKU>\n` +
-        `        <Name>${cdata(i.description ?? i.product_code)}</Name>\n` +
-        `        <Quantity>${Number(i.qty) || 1}</Quantity>\n` +
-        `        <UnitPrice>0.00</UnitPrice>\n` +
-        `      </Item>`,
-    )
-    .join('\n');
+  const all = s.sample_shipment_items ?? [];
+  const hasCustom = all.some((i) => i.custom);
+
+  const lines: string[] = [];
+
+  // 1. Catalog products — the only lines whose SKU ShipStation can match to a
+  //    product record (and therefore to the cold-chain tag).
+  for (const i of all.filter((i) => i.product_code)) {
+    lines.push(itemXml(i.product_code as string, i.description ?? (i.product_code as string), Number(i.qty) || 1));
+  }
+
+  // 2. Custom-made lines. No catalog SKU exists by definition; the spec and
+  //    project number are what the co-man needs to read.
+  for (const i of all.filter((i) => i.custom)) {
+    const spec = i.custom_spec ?? 'Custom item';
+    lines.push(itemXml(CUSTOM_SKU, i.project_no ? `${spec} (proj ${i.project_no})` : spec, Number(i.qty) || 1));
+  }
+
+  // 3. Collateral — a checklist, so quantity is always 1 per type.
+  for (const c of s.collateral ?? []) {
+    lines.push(itemXml(collateralSku(c), c, 1));
+  }
+
+  const itemsXml = lines.join('\n');
 
   return (
     `  <Order>\n` +

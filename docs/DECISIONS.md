@@ -439,3 +439,25 @@ So "ShipStation pushes status back" is true for exactly one transition. `deliver
 (d) **`delivered` is still not wired**, and V2 shipment status cannot supply it (see above). The remaining routes are a ShipStation **webhook** (the webhook endpoint *is* reachable on this plan, unlike tracking) or **BCC'ing the Delivered customer-notification email** into the existing Gmail pipeline. Undecided.
 (e) **`on_hold` and `cancelled` are newly observable** and currently invisible to the site — `sample_shipments.status` has no such values (CHECK allows `submitted|processing|shipped|delivered`). Reflecting them would need a migration.
 (f) **`verify_jwt = true` is satisfied by the public anon key**, not only by an admin or the cron service-role bearer — so the sweep is triggerable by anyone holding the key that ships in the frontend bundle. This matches the existing `gmail-poll` posture rather than introducing a new one, and the blast radius is small (it writes only dates already in our own DB, onto orders that already match), but it is **not** a role check. Worth a `user_profiles` role guard if the endpoint ever does more.
+
+## ADR-035: Collateral and custom lines ship as real `<Item>` lines (amends ADR-029, ADR-032)
+
+**Date:** August 4, 2026
+**Status:** Built, tested (91 cases), **deployed**. Branch `feat/shipstation`.
+
+**Decision.** `<Items>` now carries **everything that physically goes in the box**: catalog products, custom-made lines, and collateral — each as a real line item, so all three appear on the ShipStation order page and the standard pick list. Collateral is **removed** from `InternalNotes`.
+
+**Why.** Previously only catalog products were `<Item>`s. Custom lines were deliberately excluded for lacking a SKU (ADR-029) and collateral was prose inside `InternalNotes`. Both were therefore invisible as things to *pick* — a packer reading the item list would not see the line sheet or the bespoke cookies at all, only a notes blob they had to parse by eye. Line items are what the fulfilment UI is built around.
+
+**Synthetic SKUs are stable, not per-order.** All custom work shares **`CUSTOM`**; each collateral piece gets **`COLLATERAL-<SLUG>`** (uppercased, non-alphanumerics collapsed to `-`). Per-order SKUs (`CUSTOM-P-77`) were rejected because **ShipStation auto-creates a product record for every unknown SKU it imports** — that would accumulate one junk catalog row per custom request, forever. The per-order detail lives in `<Name>`, which is what prints. Collateral quantity is always 1 (it is a checklist, not a count).
+
+**Consequences.**
+- ⚠️ **New product records appear in the co-man's catalog** on first import — `CUSTOM` plus one per collateral type. Harmless, but it is *their* production catalog and §4 has them managing product tags there. **Do not tag these cold-chain.** Tell them before the first import rather than letting rows appear unannounced.
+- Only catalog SKUs match ShipStation product records, so **the cold-chain tag path is unaffected** — synthetic SKUs simply carry no tags.
+- **Collateral is no longer in `InternalNotes`.** Custom specs *stay* there (they annotate a line rather than replacing it, and the manual-review rule reads them), as do handling, deliver-by and third-party billing. `CustomField2 = custom-request` is unchanged.
+- **Checklist §6 is largely retired** — collateral no longer needs a packing-slip Field-Replacement token, since it prints as line items. A token is still worth it for what remains in notes.
+- This **reverses** ADR-029's "custom lines … never a null-SKU `<Item>`". The original reasoning (no SKU exists) was sound; the fix is a synthetic SKU, which wasn't considered at the time.
+
+**Verified.** 91 `Deno.test` cases pass (4 new, 3 rewritten — two of which had been asserting the old exclusion). `deno check` clean on the helper and the export function. Generated XML inspected by hand for a mixed order (2 products + 1 custom + 2 collateral → 5 `<Item>` elements, correct SKUs and quantities). `shipstation-customstore` redeployed; the endpoint answers and is still Basic-Auth guarded.
+
+**Not verified.** No order has been imported through ShipStation since the deploy, so **nobody has seen the new lines land in the real order page** — the next scheduled store import is the proof.
