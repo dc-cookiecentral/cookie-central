@@ -4,7 +4,7 @@ Everything that has to be true before Cortina can place real sample orders.
 Mostly ShipStation-dashboard config for the **Custom Store** integration
 (ADR-028) — the settings the app can't set via the API — plus **§A**, the
 app-side prerequisites that live nowhere else. Pairs with
-`docs/SHIPSTATION_INTEGRATION.md`.
+`SHIPSTATION_INTEGRATION.md`.
 
 > **No sandbox — this is the production store.** The sandbox path was tried and
 > abandoned: most of what needed testing (real carrier services, the connected

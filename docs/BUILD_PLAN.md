@@ -5,7 +5,7 @@
 - **Start:** Wednesday May 21, 2026
 - **Phase 1 demo:** delivered June 2026 (Marc + David) ✅
 - **Phase 1 ship:** largely live. AI email reader (Day 10) ✅ and lot-traceability chain UI (Day 11) ✅ done. Remaining: Cortina NetSuite real-file reconciliation (waiting on Harshita's sample); DOT/QBO real-file reconciliation non-blocking.
-- **Extension track — Spec Sheet → Sample Central → ShipStation** (separate from the Operations/Financials phases below): built July 2026. Phase 1 Cookulator product spine (ADR-025) ✅, Phase 2 Sample Central (ADR-026) ✅, Phase 3 ShipStation Custom Store (ADR-028/029) ✅ **verified end-to-end July 27, 2026**; refined July 28 (ADR-030→033: prototype-aligned shell, rush flag replaces the shipping-speed selector, third-party billing, read-only status, shipnotify cost/label capture). Schema, Edge Function and frontend all deployed. **Current state + next steps: `docs/SAMPLE_CENTRAL_STATUS.md`.**
+- **Extension track — Spec Sheet → Sample Central → ShipStation** (separate from the Operations/Financials phases below): built July 2026. Phase 1 Cookulator product spine (ADR-025) ✅, Phase 2 Sample Central (ADR-026) ✅, Phase 3 ShipStation Custom Store (ADR-028/029) ✅ **verified end-to-end July 27, 2026**; refined July 28 (ADR-030→033: prototype-aligned shell, rush flag replaces the shipping-speed selector, third-party billing, read-only status, shipnotify cost/label capture). Schema, Edge Function and frontend all deployed. **Current state + next steps: `sample-site/docs/SAMPLE_CENTRAL_STATUS.md`.**
 - **Phase 2 — Operations:** upcoming (weeks following Phase 1 ship).
 - **Phase 3 — Financials + Rollout:** late summer 2026.
 

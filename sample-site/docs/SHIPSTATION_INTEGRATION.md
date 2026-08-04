@@ -196,7 +196,7 @@ status fields route each value (samples are free — no "paid"). Configure:
 - Basic-Auth creds (`SHIPSTATION_CUSTOMSTORE_USER` / `_PASS`) in Supabase Vault via `set_secret`; reuse the `get_secret`/`set_secret` RPCs (ADR-021). Never in `VITE_*`.
 
 ## Account-side setup
-See **`docs/SHIPSTATION_SETUP_CHECKLIST.md`** — connect the Custom Store, set the endpoint URL + Basic-Auth creds, map statuses + shipping methods, have the co-man tag Raw SKUs `cold-chain`, set the automation rules (launch-blocking), the email BCC, and the packing-slip token.
+See **`SHIPSTATION_SETUP_CHECKLIST.md`** — connect the Custom Store, set the endpoint URL + Basic-Auth creds, map statuses + shipping methods, have the co-man tag Raw SKUs `cold-chain`, set the automation rules (launch-blocking), the email BCC, and the packing-slip token.
 
 ## Build order (Phase 3)
 1. ~~Sandbox/duplicate ShipStation store first.~~ **Abandoned** — the behaviours needing test aren't available in a sandbox store. Work runs against production, with app-side **test mode** (`VITE_SAMPLE_TEST_MODE`) as the safety net. See ADR-029 and checklist §8b.

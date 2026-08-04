@@ -1,4 +1,4 @@
-// ShipStation Custom Store helpers (ADR-028, SHIPSTATION_INTEGRATION.md).
+// ShipStation Custom Store helpers (ADR-028, sample-site/docs/SHIPSTATION_INTEGRATION.md).
 //
 // The app speaks ShipStation's Custom Store XML: a GET `action=export` emits an
 // <Orders> document; a POST `action=shipnotify` carries a <ShipNotice> we parse
