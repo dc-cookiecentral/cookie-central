@@ -12,3 +12,4 @@ dist/
 
 # Supabase CLI local state (project linkage, pooler URL, etc.) — machine-local
 supabase/.temp/
+dc-packaging/

@@ -285,37 +285,34 @@ Deno.test('validZip: rejects empty, null and undefined', () => {
 });
 
 // ── internalNotes ───────────────────────────────────────────────────────────
-Deno.test('internalNotes: joins handling, deliver-by and notes in order', () => {
-  assertEquals(
-    internalNotes(shipment()),
-    'Handling: Ambient | Deliver by: 2026-08-01 | Notes: First meeting, keep it classic.',
-  );
+Deno.test('internalNotes: carries only the site note', () => {
+  assertEquals(internalNotes(shipment()), 'Notes: First meeting, keep it classic.');
 });
 Deno.test('internalNotes: omits collateral entirely — it ships as <Item> lines', () => {
   const out = internalNotes(shipment({ collateral: ['Line sheet', 'Warming instructions'] }));
   assertFalse(out.includes('Collateral'));
   assertFalse(out.includes('Line sheet'));
 });
-Deno.test('internalNotes: flags an overridden handling temp', () => {
+Deno.test('internalNotes: omits handling/temp — the cold-chain tag drives packing', () => {
   const out = internalNotes(shipment({ temp: 'Cold', temp_override: 'Cold' }));
-  assertStringIncludes(out, 'Handling: Cold (override)');
+  assertFalse(out.includes('Handling'));
 });
-Deno.test('internalNotes: appends custom lines with their project number', () => {
+Deno.test('internalNotes: omits deliver-by — it has a native ShipStation field', () => {
+  assertFalse(internalNotes(shipment({ required_by: '2026-08-21' })).includes('Deliver by'));
+});
+Deno.test('internalNotes: omits custom specs — they are <Item> Names now', () => {
   const out = internalNotes(shipment({
     sample_shipment_items: [
       { product_code: null, custom: true, custom_spec: 'Heart-shaped cookie', project_no: 'P-77', qty: 1, description: null },
     ],
   }));
-  assertStringIncludes(out, 'Custom: Heart-shaped cookie (proj P-77)');
+  assertFalse(out.includes('Custom:'));
+  assertFalse(out.includes('Heart-shaped'));
 });
-Deno.test('internalNotes: omits the project suffix when there is no project number', () => {
-  const out = internalNotes(shipment({
-    sample_shipment_items: [
-      { product_code: null, custom: true, custom_spec: 'Heart-shaped cookie', project_no: null, qty: 1, description: null },
-    ],
-  }));
-  assertStringIncludes(out, 'Custom: Heart-shaped cookie');
-  assertFalse(out.includes('(proj'));
+Deno.test('internalNotes: keeps third-party billing, ahead of the note', () => {
+  const out = internalNotes(shipment(TP));
+  assertStringIncludes(out, 'BILL THIRD PARTY: FedEx acct 123456789 (zip 90210)');
+  assertEquals(out.indexOf('BILL THIRD PARTY') < out.indexOf('Notes:'), true);
 });
 Deno.test('internalNotes: ignores non-custom lines', () => {
   assertFalse(internalNotes(shipment()).includes('Custom:'));
@@ -352,19 +349,23 @@ Deno.test('buildOrderXml: uses created_at for OrderDate and updated_at for LastM
   assertEquals(el(xml, 'OrderDate'), '07/27/2026 10:05');
   assertEquals(el(xml, 'LastModified'), '07/27/2026 11:30');
 });
-Deno.test('buildOrderXml: puts the rush flag in CustomField1', () => {
-  assertEquals(el(buildOrderXml(shipment({ rush: true })), 'CustomField1'), 'rush');
-  assertEquals(el(buildOrderXml(shipment({ rush: false })), 'CustomField1'), '');
+Deno.test('buildOrderXml: CustomField1 is the salesperson', () => {
+  assertEquals(el(buildOrderXml(shipment()), 'CustomField1'), 'Alex Morgan');
 });
-Deno.test('buildOrderXml: flags custom-request in CustomField2 only when a custom line exists', () => {
-  assertEquals(el(buildOrderXml(shipment()), 'CustomField2'), '');
-  const withCustom = shipment({
-    sample_shipment_items: [
-      { product_code: 'CC-2OZ-BAK-G', custom: false, custom_spec: null, project_no: null, qty: 2, description: 'Gourmet CC' },
-      { product_code: null, custom: true, custom_spec: 'Bespoke', project_no: 'P-9', qty: 1, description: null },
-    ],
-  });
-  assertEquals(el(buildOrderXml(withCustom), 'CustomField2'), 'custom-request');
+Deno.test('buildOrderXml: CustomField1 falls back to the email when there is no name', () => {
+  const s = shipment({ salesperson: { email: 'alex@cortinafoods.com', full_name: null } });
+  assertEquals(el(buildOrderXml(s), 'CustomField1'), 'alex@cortinafoods.com');
+});
+Deno.test('buildOrderXml: CustomField2 is the account', () => {
+  assertEquals(el(buildOrderXml(shipment({ account: 'Kroger' })), 'CustomField2'), 'Kroger');
+});
+Deno.test('buildOrderXml: CustomField3 carries the rush flag', () => {
+  assertEquals(el(buildOrderXml(shipment({ rush: true })), 'CustomField3'), 'rush');
+  assertEquals(el(buildOrderXml(shipment({ rush: false })), 'CustomField3'), '');
+});
+Deno.test('buildOrderXml: CustomFields truncate at 100 chars rather than silently overflowing', () => {
+  const long = 'A'.repeat(150);
+  assertEquals((el(buildOrderXml(shipment({ account: long })), 'CustomField2') ?? '').length, 100);
 });
 Deno.test('buildOrderXml: CustomField3 stays free even with third-party billing set', () => {
   assertEquals(el(buildOrderXml(shipment()), 'CustomField3'), '');
@@ -390,9 +391,8 @@ Deno.test('buildOrderXml: emits custom lines as Items under the stable CUSTOM sk
   assertStringIncludes(xml, '<SKU>CUSTOM</SKU>');
   assertStringIncludes(xml, 'Bespoke (proj P-9)');
   assertStringIncludes(xml, '<Quantity>3</Quantity>');
-  // Still carried in notes + CustomField2 — the manual-review rule keys on that.
-  assertStringIncludes(el(xml, 'InternalNotes') ?? '', 'Custom: Bespoke (proj P-9)');
-  assertEquals(el(xml, 'CustomField2'), 'custom-request');
+  // The spec now lives ONLY on the line item — no longer echoed into notes.
+  assertFalse((el(xml, 'InternalNotes') ?? '').includes('Bespoke'));
 });
 Deno.test('buildOrderXml: a custom line with no spec still gets a usable Name', () => {
   const xml = buildOrderXml(shipment({

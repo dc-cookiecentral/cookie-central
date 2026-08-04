@@ -142,7 +142,10 @@ Columns are the **real** ADR-026 names.
 | `CustomField1` | `rush` | `rush` when flagged, else empty. Internal urgency signal — **not** a speed instruction; drives the team notification |
 | `CustomField2` | any `sample_shipment_items.custom` | `custom-request` (grid-visible + rule-matchable) |
 | `CustomField3` | — | reserved |
-| `InternalNotes` | `notes` + `required_by` + `temp` + custom `custom_spec`/`project_no` | 1000-char field. **No `collateral[]`** — it ships as `<Item>` lines (ADR-035) |
+| `InternalNotes` | `notes` + third-party billing **only** | 1000-char field. Collateral/custom specs are `<Item>` lines (ADR-035); deliver-by is native (ADR-034); salesperson/account/rush are CustomFields (ADR-036) |
+| `CustomField1` | `salesperson.full_name` (falls back to email) | 100-char, truncated |
+| `CustomField2` | `account` | 100-char, truncated |
+| `CustomField3` | `rush` → `'rush'` \| `''` | ⚠️ moved from CF1 — **re-point the automation rule** |
 | `CustomerCode` | `salesperson_user_id` → `user_profiles.email` | |
 | `BillTo/Name` | `account` | |
 | `ShipTo/*` | `addresses` `contact_name`/`company`/`street`/`city`/`state`/`zip` | **State 2-char + PostalCode validated** or skip+log |

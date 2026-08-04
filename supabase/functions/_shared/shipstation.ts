@@ -71,10 +71,14 @@ export function ssStatus(status: string | null | undefined): string {
   return status ?? 'submitted';
 }
 
-// rush → CustomField1. An internal urgency flag, not a service: the export no
-// longer sends <ShippingMethod> at all (the XSD marks it minOccurs="0"), so
-// ShipStation owns service selection entirely. CF1 is grid-visible and
-// rule-matchable, which is what makes it usable as a notification trigger.
+// rush → CustomField3 (was CustomField1 until Aug 4 2026 — ADR-036). An internal
+// urgency flag, not a service: the export no longer sends <ShippingMethod> at all
+// (the XSD marks it minOccurs="0"), so ShipStation owns service selection
+// entirely. The CustomFields are grid-visible and rule-matchable, which is what
+// makes this usable as a notification trigger.
+//
+// ⚠️ The value stays lowercase `rush` so the existing rule's comparison text is
+// unchanged — only the FIELD it reads has to move, from CF1 to CF3.
 export function rushFlag(rush: boolean | null | undefined): string {
   return rush ? 'rush' : '';
 }
@@ -82,7 +86,7 @@ export function rushFlag(rush: boolean | null | undefined): string {
 // Third-party billing rides InternalNotes ONLY — see internalNotes() below.
 // It deliberately does not consume a CustomField: the co-man reads the notes when
 // buying the label, and the 100-char CustomFields buy nothing extra for a value
-// no automation rule acts on. CustomField3 stays free.
+// no automation rule acts on.
 //
 // Returns '' unless all three details are present, since a partial set looks
 // configured but cannot actually be billed.
@@ -100,25 +104,36 @@ export function thirdPartyBilling(s: Shipment): string {
 export const validState = (s: string | null | undefined) => !!s && /^[A-Za-z]{2}$/.test(s.trim());
 export const validZip = (z: string | null | undefined) => !!z && /^\d{5}(-\d{4})?$/.test(z.trim());
 
-// Notes + deliver-by + handling snapshot + custom-line specs, all into the
-// 1000-char InternalNotes (never the 100-char CustomFields).
-//
-// Collateral is deliberately NOT here: it is emitted as real <Item> lines by
-// buildOrderXml, so repeating it as prose would print it twice on a packing
-// slip whose template binds a field-replacement token to InternalNotes
-// (SHIPSTATION_SETUP_CHECKLIST §6). Custom specs stay — they annotate a line
-// item rather than replacing it, and the manual-review rule reads them.
+// InternalNotes carries ONLY the salesperson's free-text note and third-party
+// billing instructions (ADR-036). Everything else that used to live here now has
+// a first-class home, so repeating it as prose is pure noise on the packing slip:
+//   collateral + custom specs → real <Item> lines (ADR-035)
+//   deliver-by               → the native Deliver By field (ADR-034)
+//   handling/temp            → the cold-chain product tag drives the packing rule
+//   salesperson / account / rush → CustomField1 / 2 / 3
+// 1000-char field; never use the 100-char CustomFields for free text.
 export function internalNotes(s: Shipment): string {
   const parts: string[] = [];
-  if (s.temp) parts.push(`Handling: ${s.temp}${s.temp_override ? ' (override)' : ''}`);
-  if (s.required_by) parts.push(`Deliver by: ${s.required_by}`);
   const tp = thirdPartyBilling(s);
   if (tp) parts.push(tp);
   if (s.notes) parts.push(`Notes: ${s.notes}`);
-  for (const i of s.sample_shipment_items ?? []) {
-    if (i.custom) parts.push(`Custom: ${i.custom_spec ?? ''}${i.project_no ? ` (proj ${i.project_no})` : ''}`.trim());
-  }
   return parts.join(' | ').slice(0, 1000);
+}
+
+// CustomFields are grid-visible, sortable and rule-matchable — and silently
+// truncate at 100 chars, so only short scalars belong here.
+const CF_MAX = 100;
+const customField = (v: string | null | undefined) => (v ?? '').trim().slice(0, CF_MAX);
+
+// CF1 = who sold it. The full name reads better in the grid than the email,
+// which already travels as <CustomerCode>.
+export function salespersonField(s: Shipment): string {
+  return customField(s.salesperson?.full_name ?? s.salesperson?.email ?? '');
+}
+
+// CF2 = which account it's for.
+export function accountField(s: Shipment): string {
+  return customField(s.account);
 }
 
 // ── Order XML ───────────────────────────────────────────────────────────────
@@ -152,7 +167,6 @@ function itemXml(sku: string, name: string, qty: number): string {
 export function buildOrderXml(s: Shipment): string {
   const addr = s.address ?? {};
   const all = s.sample_shipment_items ?? [];
-  const hasCustom = all.some((i) => i.custom);
 
   const lines: string[] = [];
 
@@ -187,9 +201,9 @@ export function buildOrderXml(s: Shipment): string {
     // longer expresses a service preference — ShipStation owns that choice.
     `    <OrderTotal>0.00</OrderTotal>\n` +   // required by ShipStation; samples are free
     `    <InternalNotes>${cdata(internalNotes(s))}</InternalNotes>\n` +
-    `    <CustomField1>${xmlEscape(rushFlag(s.rush))}</CustomField1>\n` +
-    `    <CustomField2>${hasCustom ? 'custom-request' : ''}</CustomField2>\n` +
-    `    <CustomField3></CustomField3>\n` +   // free/unused — billing rides InternalNotes
+    `    <CustomField1>${xmlEscape(salespersonField(s))}</CustomField1>\n` +
+    `    <CustomField2>${xmlEscape(accountField(s))}</CustomField2>\n` +
+    `    <CustomField3>${xmlEscape(rushFlag(s.rush))}</CustomField3>\n` +
     `    <Customer>\n` +
     `      <CustomerCode>${xmlEscape(s.salesperson?.email ?? '')}</CustomerCode>\n` +
     `      <BillTo>\n` +

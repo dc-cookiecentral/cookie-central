@@ -461,3 +461,32 @@ So "ShipStation pushes status back" is true for exactly one transition. `deliver
 **Verified.** 91 `Deno.test` cases pass (4 new, 3 rewritten — two of which had been asserting the old exclusion). `deno check` clean on the helper and the export function. Generated XML inspected by hand for a mixed order (2 products + 1 custom + 2 collateral → 5 `<Item>` elements, correct SKUs and quantities). `shipstation-customstore` redeployed; the endpoint answers and is still Basic-Auth guarded.
 
 **Not verified.** No order has been imported through ShipStation since the deploy, so **nobody has seen the new lines land in the real order page** — the next scheduled store import is the proof.
+
+## ADR-036: CustomField reallocation — salesperson / account / rush (supersedes ADR-031, ADR-032)
+
+**Date:** August 4, 2026
+**Status:** Built, tested (95 cases), **deployed**. Branch `feat/shipstation`.
+
+**Decision.** The three CustomFields now carry the three things worth sorting and filtering the Orders grid by:
+
+| | Was | Now |
+|---|---|---|
+| `CustomField1` | `rush` | **salesperson** (`full_name`, falling back to email) |
+| `CustomField2` | `custom-request` | **account** |
+| `CustomField3` | *(free)* | **`rush`** |
+
+And `InternalNotes` is reduced to **the site note plus third-party billing instructions, nothing else.**
+
+**Why.** Everything previously crammed into `InternalNotes` now has a first-class home — collateral and custom specs became `<Item>` lines (ADR-035), deliver-by became the native field (ADR-034), handling is driven by the cold-chain product tag. Repeating any of it as prose was noise on the packing slip. Salesperson and account, meanwhile, were only reachable by reading `<CustomerCode>` or the BillTo name — neither sortable in the grid. CustomFields are grid-visible, sortable and rule-matchable, which is exactly what those two need to be.
+
+**🚨 This breaks the built rush-notification rule.** ADR-031 built `if CustomField1 = rush → team notification email` on July 28. CF1 now holds a person's name, so **the rule matches nothing and rush orders notify no one — silently, with no error anywhere.** It must be re-pointed to `CustomField3 = rush` in the ShipStation dashboard; the comparison value is deliberately unchanged (still lowercase `rush`) so only the field reference moves. This is app-side done, dashboard-side **outstanding** — checklist §3.
+
+**⚠️ `custom-request` lost its rule-matchable home.** CF2 carried it for the planned manual-review rule (§3, never built). Custom work is still *visible* as a `CUSTOM` line item, but §3's own standing warning — *never rule on Item SKU; SKU rules silently ignore multi-item orders* — means a SKU rule is not a safe substitute. Remaining options are an Order Tag or reclaiming a CustomField. **Unresolved, and it should be resolved before custom requests flow at volume.**
+
+**Also lost:** the `Handling: Cold (override)` line. Cold-chain routing depends on the §4 product tag, which is still launch-blocking; a **manual temp override** is now invisible to the co-man. If overrides matter operationally, they need somewhere to live.
+
+**Mechanics.** `customField()` trims and hard-truncates at **100 chars** — CustomFields truncate silently in ShipStation, so the cut is explicit and tested. Values use `xmlEscape`, not CDATA, matching the other coded fields. `<CustomerCode>` still carries the salesperson **email**, so CF1 using the display name is complementary rather than redundant.
+
+**Verified.** 95 `Deno.test` cases pass (5 new, 6 rewritten — several had been asserting the superseded contract). `deno check` clean. Generated XML inspected by hand: `CF1 Alex Morgan`, `CF2 Kroger Co.`, `CF3 rush`, `InternalNotes` = billing + note only. Deployed.
+
+**Not verified.** No order has imported since the deploy — the grid columns and the re-pointed rule are both unproven in ShipStation itself.

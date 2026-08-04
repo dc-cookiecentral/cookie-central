@@ -90,8 +90,9 @@ rules (§3), and whoever buys the label.
 ## 3. Automation rules 🚦 LAUNCH-BLOCKING
 Rule on **order tags / CustomFields — never on Item SKU** (SKU rules silently ignore multi-item orders):
 - [ ] `if order includes the cold-chain product tag` → refrigerated service + insulated box **+ upgrade to a next-day service** (this is how frozen products get expedited, overriding the requested tier — the app itself never expedites).
-- [ ] `if CustomField2 = custom-request` → route to **manual review** (no auto-fulfil).
-- [x] `if CustomField1 = rush` → **team notification email. Built July 28, 2026.** Confirms ShipStation's rule actions can send mail, so no app-side sender is needed. Note it fires on **import**, not on submit — so there is a lag of up to the import interval, and per ADR-027 rules run once on import, so a rush flag added after import will not re-trigger it.
+- [ ] 🚨 **RE-POINT THE RUSH RULE — it is broken as of Aug 4, 2026 (ADR-036).** The CustomFields were reallocated: **CF1 = salesperson, CF2 = account, CF3 = rush**. The existing rule reads `CustomField1 = rush`, which now holds a person's name, so **it matches nothing and rush orders notify no one — silently.** Edit it to `if CustomField3 = rush`. The comparison value is unchanged; only the field moves.
+- [ ] ⚠️ **`custom-request` no longer has a rule-matchable home.** CF2 used to carry it; it now carries the account. Custom lines are still visible as a `CUSTOM` **line item**, but §3's own warning applies — *never rule on Item SKU, it silently ignores multi-item orders* — so a SKU rule is not a safe substitute. Options: an Order Tag, or reclaim a CustomField. **Unresolved.**
+- [x] ~~`if CustomField1 = rush` → team notification email~~ **Built July 28, 2026 — now mis-pointed, see above.** Confirms ShipStation's rule actions can send mail, so no app-side sender is needed. Note it fires on **import**, not on submit — so there is a lag of up to the import interval, and per ADR-027 rules run once on import, so a rush flag added after import will not re-trigger it.
 - [ ] (No service rule needed for speed — the app sends no `ShippingMethod` at all as of ADR-031.)
 
 ## 4. Product tags — cold-chain (co-man owns this) 🚦 LAUNCH-BLOCKING — now live
@@ -126,7 +127,7 @@ Copy the sample-mgmt inbox on **all orders, shipments, deliveries** — two plac
 
 ## 8. Verify — mapping test, no label needed
 - [ ] Trigger a **manual store import** in ShipStation.
-- [ ] Confirm a sample order lands in the dashboard with fields mapped: ship-to, items (SKU=product_code), **no ShippingMethod** (service falls to the store default), CustomField1 = `rush` when flagged, CustomField2 = `custom-request` when present, InternalNotes (collateral/warming/custom specs).
+- [ ] Confirm a sample order lands in the dashboard with fields mapped: ship-to, **items (catalog SKUs + `CUSTOM` + `COLLATERAL-*`)**, **no ShippingMethod** (service falls to the store default), **CustomField1 = salesperson**, **CustomField2 = account**, **CustomField3 = `rush` when flagged**, InternalNotes (site note + third-party billing only).
 - [ ] Confirm an invalid address (bad State/zip) does **not** silently vanish — the export skips+logs it (check the function logs).
 - [ ] (Optional) Test a full ship: mark shipped in ShipStation → confirm `shipnotify` updates `sample_shipments` (tracking #, status → shipped).
 
