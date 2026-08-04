@@ -112,10 +112,10 @@ Rule on **order tags / CustomFields — never on Item SKU** (SKU rules silently 
 > pick list with no template work. Collateral was **removed** from InternalNotes
 > to avoid printing twice.
 
-- [ ] ⚠️ **Expect new product records.** ShipStation auto-creates one for every
-      unknown SKU it imports, so `CUSTOM` and one `COLLATERAL-<SLUG>` per piece
-      will appear in the product catalog on first import. Harmless, but don't
-      tag them cold-chain (§4).
+- [x] ~~Expect new product records~~ — **no longer applies (ADR-038).** Custom
+      and collateral lines are emitted with an **empty SKU**, so ShipStation has
+      nothing to auto-create a product record from. Only real catalog SKUs
+      import as products.
 - [ ] (Optional) Custom packing-slip template with a **Field-Replacement** token
       bound to **Notes / InternalNotes** — still worth it for what remains there:
       handling, deliver-by, custom specs, third-party billing.

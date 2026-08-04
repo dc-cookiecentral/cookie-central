@@ -89,8 +89,10 @@ Basic HTTP Auth on both actions. Expected creds read from Vault via `get_secret`
 </Orders>
 ```
 - **`<Country>` = `US`** — required by ShipStation's `ShipTo` schema; a missing Country makes ShipStation reject the whole import batch. Samples are US-only.
-- **Custom lines** (`custom = true`, no `product_code`) **are** emitted as `<Item>` under the stable synthetic SKU **`CUSTOM`**, with the spec + `project_no` as the `<Name>`. They *also* ride `InternalNotes` and flag `CustomField2 = custom-request` (the manual-review rule keys on that). *(Changed Aug 4 2026 — ADR-035; previously excluded for lacking a SKU.)*
-- **Collateral** is emitted as one `<Item>` per piece under `COLLATERAL-<SLUG>`, quantity 1, and is **no longer written to `InternalNotes`** — it would otherwise print twice on the packing slip.
+- **Custom lines** (`custom = true`, no `product_code`) **are** emitted as `<Item>` with an **empty `<SKU></SKU>`**; the spec + `project_no` carry in `<Name>`. *(ADR-035, revised by ADR-038.)*
+- **Collateral** is one `<Item>` per piece, quantity 1, also **SKU-less**, and is **not** written to `InternalNotes`.
+- ⚠️ **The `<SKU>` element is always emitted, empty for non-products.** ShipStation's Custom Store Development Guide shows exactly this shape (`<Item><SKU></SKU><Name><![CDATA[$10 OFF]]></Name>…`). Do **not** omit the element — a missing required field rejects the **whole batch**, silently.
+- Only **catalog SKUs** reach ShipStation, so the cold-chain product-tag match is unaffected and no junk product records are created.
 
 ### ShipNotify (POST body)
 

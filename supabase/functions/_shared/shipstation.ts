@@ -152,16 +152,16 @@ export function tempOverrideField(s: Shipment): string {
 
 // ── Order XML ───────────────────────────────────────────────────────────────
 
-// Synthetic SKUs for the two kinds of line that aren't catalog products.
-// They are deliberately STABLE rather than per-order: ShipStation auto-creates
-// a product record for every unknown SKU it imports, so `CUSTOM-<project_no>`
-// or a hashed spec would silently fill the co-man's catalog with one-off junk.
-// One row per collateral type, one row for all custom work, is the tradeoff —
-// the per-order detail lives in <Name>, which is what prints on the pick list.
-const CUSTOM_SKU = 'CUSTOM';
-const collateralSku = (name: string) =>
-  `COLLATERAL-${name.toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
-
+// Custom lines and collateral carry NO SKU (ADR-038). They are not catalog
+// products, and a synthetic SKU would make ShipStation auto-create a product
+// record for each one, cluttering the co-man's catalog with rows nobody
+// maintains.
+//
+// The <SKU> element is still EMITTED, empty — ShipStation's own Custom Store
+// Development Guide shows exactly this shape for a non-product line
+// (`<Item><SKU></SKU><Name><![CDATA[$10 OFF]]></Name>…`), so an empty SKU is
+// supported. Omitting the element entirely is the riskier bet: a missing
+// required field rejects the WHOLE batch silently (ADR-029).
 function itemXml(sku: string, name: string, qty: number): string {
   return (
     `      <Item>\n` +
@@ -190,16 +190,16 @@ export function buildOrderXml(s: Shipment): string {
     lines.push(itemXml(i.product_code as string, i.description ?? (i.product_code as string), Number(i.qty) || 1));
   }
 
-  // 2. Custom-made lines. No catalog SKU exists by definition; the spec and
-  //    project number are what the co-man needs to read.
+  // 2. Custom-made lines — no SKU. The spec and project number are what the
+  //    co-man needs to read, and they carry in <Name>.
   for (const i of all.filter((i) => i.custom)) {
     const spec = i.custom_spec ?? 'Custom item';
-    lines.push(itemXml(CUSTOM_SKU, i.project_no ? `${spec} (proj ${i.project_no})` : spec, Number(i.qty) || 1));
+    lines.push(itemXml('', i.project_no ? `${spec} (proj ${i.project_no})` : spec, Number(i.qty) || 1));
   }
 
-  // 3. Collateral — a checklist, so quantity is always 1 per type.
+  // 3. Collateral — no SKU, and a checklist, so quantity is always 1 per type.
   for (const c of s.collateral ?? []) {
-    lines.push(itemXml(collateralSku(c), c, 1));
+    lines.push(itemXml('', c, 1));
   }
 
   const itemsXml = lines.join('\n');

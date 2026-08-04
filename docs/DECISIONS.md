@@ -519,3 +519,22 @@ And `InternalNotes` is reduced to **the site note plus third-party billing instr
 **Verified.** 100 `Deno.test` cases pass (7 new, 4 rewritten). `deno check` clean. Generated XML inspected: `CF1 Alex Morgan`, `CF2 Kroger Co.`, `CF3 Cold`, `InternalNotes RUSH | Notes: Handle with care`, `CustomerNotes BILL THIRD PARTY: FedEx acct 123456789 (zip 90210)`. Deployed.
 
 **Not verified.** No order has imported since; the grid columns, the `contains RUSH` rule and the override flag are all unproven in ShipStation itself.
+
+## ADR-038: Custom and collateral lines carry no SKU (revises ADR-035)
+
+**Date:** August 4, 2026
+**Status:** Built, tested (100 cases), **deployed**. Branch `feat/shipstation`.
+
+**Decision.** Custom lines and collateral are emitted with an **empty `<SKU></SKU>`** rather than the synthetic `CUSTOM` / `COLLATERAL-<SLUG>` values ADR-035 introduced. Only real catalog products carry a SKU.
+
+**Why.** Synthetic SKUs made ShipStation auto-create a product record for each one, cluttering the co-man's catalog with rows nobody maintains — a cost ADR-035 accepted and flagged. Removing them is strictly better: these lines are not products, nothing needs to match them, and their meaning lives in `<Name>`, which is what prints on the pick list.
+
+**The element is still emitted, empty — not omitted.** That distinction matters more than it looks. A missing required field rejects the **entire batch silently** (ADR-029), and our XSD record documents required fields for `Order` and `ShipTo` but says nothing about `Item` internals, so omission was an unverified bet. ShipStation's **Custom Store Development Guide** (2026-07-29 revision) settles it by example — its own sample payload contains a non-product line shaped exactly this way:
+
+```xml
+<Item><SKU></SKU><Name><![CDATA[$10 OFF]]></Name><Quantity>1</Quantity><UnitPrice>-10.00</UnitPrice></Item>
+```
+
+**Consequences.** The cold-chain product-tag path is untouched — it keys on real catalog SKUs, which still travel. No junk product records are created, retiring the warning ADR-035 added to checklist §6. Custom work remains identifiable to a human by its `<Name>`, but it is now **doubly unavailable as automation-rule criteria**: it has no CustomField (ADR-036) *and* no SKU. Given ShipStation's own warning that Item SKU rules silently ignore multi-item orders, a SKU rule was never viable anyway — an **Order Tag** remains the only safe route, still unbuilt.
+
+**Verified.** 100 `Deno.test` cases pass (1 new, 3 rewritten), including an assertion that no synthetic SKU survives anywhere in the document while the real catalog SKU still does. Generated XML inspected by hand. Deployed.

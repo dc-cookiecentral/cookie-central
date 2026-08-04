@@ -400,14 +400,17 @@ Deno.test('buildOrderXml: emits real product lines as Items with UnitPrice 0.00'
   assertEquals(el(xml, 'Quantity'), '12');
   assertEquals(el(xml, 'UnitPrice'), '0.00');
 });
-Deno.test('buildOrderXml: emits custom lines as Items under the stable CUSTOM sku', () => {
+Deno.test('buildOrderXml: emits custom lines as Items with an EMPTY sku', () => {
   const xml = buildOrderXml(shipment({
     collateral: [],
     sample_shipment_items: [
       { product_code: null, custom: true, custom_spec: 'Bespoke', project_no: 'P-9', qty: 3, description: null },
     ],
   }));
-  assertStringIncludes(xml, '<SKU>CUSTOM</SKU>');
+  // The element is present but empty — ShipStation's own guide shows this shape
+  // for non-product lines; omitting it risks a whole-batch rejection.
+  assertStringIncludes(xml, '<SKU></SKU>');
+  assertFalse(xml.includes('<SKU>CUSTOM</SKU>'));
   assertStringIncludes(xml, 'Bespoke (proj P-9)');
   assertStringIncludes(xml, '<Quantity>3</Quantity>');
   // The spec now lives ONLY on the line item — no longer echoed into notes.
@@ -422,22 +425,28 @@ Deno.test('buildOrderXml: a custom line with no spec still gets a usable Name', 
   }));
   assertStringIncludes(xml, 'Custom item');
 });
-Deno.test('buildOrderXml: emits each collateral piece as an Item, quantity 1', () => {
+Deno.test('buildOrderXml: emits each collateral piece as a SKU-less Item, quantity 1', () => {
   const xml = buildOrderXml(shipment({
     collateral: ['Line sheet', 'Warming instructions'],
     sample_shipment_items: [],
   }));
-  assertStringIncludes(xml, '<SKU>COLLATERAL-LINE-SHEET</SKU>');
-  assertStringIncludes(xml, '<SKU>COLLATERAL-WARMING-INSTRUCTIONS</SKU>');
   assertStringIncludes(xml, '<Name><![CDATA[Line sheet]]></Name>');
+  assertStringIncludes(xml, '<Name><![CDATA[Warming instructions]]></Name>');
+  assertEquals((xml.match(/<SKU><\/SKU>/g) ?? []).length, 2);
   assertFalse(xml.includes('<Quantity>0</Quantity>'));
 });
-Deno.test('buildOrderXml: collateral SKUs are stable and punctuation-safe', () => {
+Deno.test('buildOrderXml: no synthetic SKU survives anywhere in the document', () => {
   const xml = buildOrderXml(shipment({
     collateral: ["Rep's one-pager / v2"],
-    sample_shipment_items: [],
+    sample_shipment_items: [
+      { product_code: 'CC-2OZ-BAK-G', custom: false, custom_spec: null, project_no: null, qty: 1, description: 'Gourmet CC' },
+      { product_code: null, custom: true, custom_spec: 'Bespoke', project_no: null, qty: 1, description: null },
+    ],
   }));
-  assertStringIncludes(xml, '<SKU>COLLATERAL-REP-S-ONE-PAGER-V2</SKU>');
+  assertFalse(xml.includes('COLLATERAL-'));
+  assertFalse(xml.includes('<SKU>CUSTOM</SKU>'));
+  // The one real catalog SKU still travels — that is what the cold-chain tag needs.
+  assertStringIncludes(xml, '<SKU>CC-2OZ-BAK-G</SKU>');
 });
 Deno.test('buildOrderXml: products, custom lines and collateral all coexist as Items', () => {
   const xml = buildOrderXml(shipment({
