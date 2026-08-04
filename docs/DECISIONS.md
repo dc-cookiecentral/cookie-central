@@ -406,3 +406,36 @@ So "ShipStation pushes status back" is true for exactly one transition. `deliver
 `parseAmount` tolerates currency symbols, thousands separators and blanks, returning `null` rather than `NaN` — a malformed cost must never poison a writeback that also carries the tracking number.
 
 **Still unused from the payload:** `NotifyCustomer`, `NotesToCustomer`, `Recipient`, `Items`, and the `CustomField1–3` echo. None currently earn their keep.
+
+## ADR-034: Deliver By is written to ShipStation's native field by an outbound V2 sweep (amends ADR-029)
+
+**Date:** August 4, 2026
+**Status:** Built, **not yet deployed or verified end-to-end.** Branch `feat/shipstation`.
+
+**Decision.** The sample's deliver-by date is written to ShipStation's **native Deliver By field** via `PUT /v2/shipments/{shipment_id}`, by a **15-minute outbound sweep** (`shipstation-deliverby` + pg_cron `*/15 * * * *`). The Custom Store pull is unchanged; nothing about the XML export or the automation rules moves.
+
+**Why a separate sweep and not the export.** The Custom Store is a *pull*: ShipStation fetches on its own schedule, and the V2 shipment row we write to **does not exist until after that import lands**. There is nothing to PUT to at submit time. The sweep closes the gap after the fact, which also makes it self-healing — it re-runs every 15 minutes and fixes anything that missed.
+
+**This reverses a documented belief.** ADR-029 recorded the integration as needing **no ShipStation V1/V2 API key**, and prior research concluded the native Deliver By field was unreachable for Custom-Store orders — on the grounds that such orders are immutable V2 *Sales Orders* with no shipment until shipping. **That was wrong**, and it came from unverified search snippets rather than the live account. Tested against production on August 4, 2026: imported orders appear immediately as V2 shipments in `pending`, and `PUT` on `deliver_by_date` returns 200 and persists. The API-key statement in ADR-029 is now **superseded** — a V2 key is required, in Vault as `SHIPSTATION_V2_API_KEY`.
+
+**API facts verified against the live account (all cost time to find):**
+- Our `SMP-####` lives in **`shipment_number`**, *not* `order_number` — that key is absent entirely and `external_order_id` is null. It appears only in the **list** response, never the single-shipment GET, so the number→id mapping must go through the list.
+- The update is a **read-modify-write**: GET the shipment, set the one field, PUT the whole object. Verified to preserve line items, `ship_to`, `internal_notes`, `service_code` and warehouse. Strip `shipment_id`/`created_at`/`modified_at`/`shipment_status` — server-owned.
+- **`shipment_status` is a label-lifecycle enum, not a delivery one**: `pending`, `processing`, `label_purchased`, `on_hold`, `cancelled`. **`shipped` and `delivered` are rejected with 400.** So V2 shipment status cannot answer "has it arrived" — see *Carried forward*.
+- Cancel is `PUT /v2/shipments/{id}/cancel` **with a body**; `DELETE` → 405, empty body → 411.
+- `GET /v2/sales_orders` and `GET /v2/stores` do not exist (404). `GET /v2/tracking` exists but is **gated behind a billing-plan upgrade** on this account (401).
+- Two UPS carriers are connected; `ups_ground` exists on **`se-1015304`** only. Pin `carrier_id` when a service is specified programmatically.
+
+**Idempotent by comparison, not bookkeeping.** The sweep reads ShipStation's current `deliver_by_date` and skips anything already matching, so there is no local "pushed" flag to drift. Proven: a second consecutive run wrote nothing (`updated: 0, already_correct: 6`).
+
+⚠️ **The site is the source of truth, and that has a consequence.** An earlier draft of this ADR claimed a date set by hand in the ShipStation UI would be *respected*. **That is wrong.** The first live sweep overwrote `SMP-TEST-1045`'s hand-entered `2026-07-28` because it differed from the app's value. Any manual Deliver By edit the co-man makes is reverted within 15 minutes unless the change is also made in Sample Central. That is the correct behaviour for a derived field, but it must be told to whoever works the queue — silently reverting someone's edit is worse than not supporting the edit at all.
+
+**Naming.** The site's UI label and the ShipStation `InternalNotes` line both now read **"Deliver by"**. The database column, TypeScript field and all identifiers **remain `required_by`** — renaming them means a migration plus touching the Edge Function, shape types and insert path, for a cosmetic gain. Accepted cost: a permanent vocabulary split between code (`required_by`) and everything a human sees ("Deliver by").
+
+**Carried forward.**
+(a) **Not deployed.** Needs `npx supabase functions deploy shipstation-deliverby`, `select public.set_secret('SHIPSTATION_V2_API_KEY', …)`, then the cron migration applied last.
+(b) ~~Rotate the test key~~ — **done August 4, 2026.** The plaintext test key was revoked (the old value now returns `Access denied`), a fresh key was written to Vault via `set_secret`, and the stale line was removed from `.env.local`. Nothing in the repo or the browser bundle holds a ShipStation key.
+(c) ~~Unverified~~ — **VERIFIED end-to-end August 4, 2026.** Deployed, type-checks (`deno check`, which caught a real `TS7053` a runtime-only deploy would have shipped), 87-case `_shared` suite passes, and **two live sweeps ran against production**: the first updated all 6 open orders (`failed: []`), the second wrote nothing and reported all 6 already correct. Remaining gap: **nobody has confirmed the dates render in the dashboard's Deliver By column** — the API is authoritative that the field is set, but the grid is what the co-man actually sorts by.
+(d) **`delivered` is still not wired**, and V2 shipment status cannot supply it (see above). The remaining routes are a ShipStation **webhook** (the webhook endpoint *is* reachable on this plan, unlike tracking) or **BCC'ing the Delivered customer-notification email** into the existing Gmail pipeline. Undecided.
+(e) **`on_hold` and `cancelled` are newly observable** and currently invisible to the site — `sample_shipments.status` has no such values (CHECK allows `submitted|processing|shipped|delivered`). Reflecting them would need a migration.
+(f) **`verify_jwt = true` is satisfied by the public anon key**, not only by an admin or the cron service-role bearer — so the sweep is triggerable by anyone holding the key that ships in the frontend bundle. This matches the existing `gmail-poll` posture rather than introducing a new one, and the blast radius is small (it writes only dates already in our own DB, onto orders that already match), but it is **not** a role check. Worth a `user_profiles` role guard if the endpoint ever does more.

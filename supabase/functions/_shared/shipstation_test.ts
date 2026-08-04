@@ -285,10 +285,10 @@ Deno.test('validZip: rejects empty, null and undefined', () => {
 });
 
 // ── internalNotes ───────────────────────────────────────────────────────────
-Deno.test('internalNotes: joins collateral, handling, required-by and notes in order', () => {
+Deno.test('internalNotes: joins collateral, handling, deliver-by and notes in order', () => {
   assertEquals(
     internalNotes(shipment()),
-    'Collateral: Line sheet | Handling: Ambient | Required by: 2026-08-01 | Notes: First meeting, keep it classic.',
+    'Collateral: Line sheet | Handling: Ambient | Deliver by: 2026-08-01 | Notes: First meeting, keep it classic.',
   );
 });
 Deno.test('internalNotes: joins multiple collateral items with commas', () => {

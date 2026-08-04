@@ -100,13 +100,13 @@ export function thirdPartyBilling(s: Shipment): string {
 export const validState = (s: string | null | undefined) => !!s && /^[A-Za-z]{2}$/.test(s.trim());
 export const validZip = (z: string | null | undefined) => !!z && /^\d{5}(-\d{4})?$/.test(z.trim());
 
-// Collateral + notes + required-by + handling snapshot + custom-line specs, all
+// Collateral + notes + deliver-by + handling snapshot + custom-line specs, all
 // into the 1000-char InternalNotes (never the 100-char CustomFields).
 export function internalNotes(s: Shipment): string {
   const parts: string[] = [];
   if (s.collateral?.length) parts.push(`Collateral: ${s.collateral.join(', ')}`);
   if (s.temp) parts.push(`Handling: ${s.temp}${s.temp_override ? ' (override)' : ''}`);
-  if (s.required_by) parts.push(`Required by: ${s.required_by}`);
+  if (s.required_by) parts.push(`Deliver by: ${s.required_by}`);
   const tp = thirdPartyBilling(s);
   if (tp) parts.push(tp);
   if (s.notes) parts.push(`Notes: ${s.notes}`);

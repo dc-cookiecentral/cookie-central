@@ -27,3 +27,10 @@ import_map = "./functions/import_map.json"
 [functions.shipstation-customstore]
 verify_jwt = false
 import_map = "./functions/import_map.json"
+
+# shipstation-deliverby is outbound-only (we call ShipStation, nobody calls us).
+# Protected like gmail-poll: the cron service-role bearer satisfies it. Note the
+# public anon key ALSO satisfies verify_jwt — see ADR-034 (e).
+[functions.shipstation-deliverby]
+verify_jwt = true
+import_map = "./functions/import_map.json"
