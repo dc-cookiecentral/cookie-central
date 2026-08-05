@@ -62,13 +62,37 @@ export function parseSSDate(s: string | null | undefined): string | null {
 }
 
 // ── Field mapping ───────────────────────────────────────────────────────────
-// Export the app's own status verbatim; ShipStation's Marketplace status mapping
-// (checklist §1) routes it: submitted/processing -> Awaiting Shipment (the
-// co-man's work queue), shipped/delivered -> Shipped. Samples are free, so there
-// is no "paid" concept -- the app status IS the routing token. Defaults to
-// 'submitted' if unset.
+// Translate the app's status into the token the store's Marketplace status
+// mapping expects. The store is on ShipStation's DEFAULT mapping — Awaiting
+// Payment = `unpaid`, Awaiting Shipment = `paid`, Shipped = `shipped` — which
+// checklist §1 always intended to change and never did. Until Aug 5 2026 the
+// export sent the app status verbatim, so `submitted` matched **nothing** and
+// orders reached Awaiting Shipment only via ShipStation's fallback for
+// unrecognised statuses. Working by accident, not design.
+//
+// ⚠️ DO NOT map `submitted` to `unpaid`. Tried Aug 5 2026 as a holding state —
+// park the order in Awaiting Payment, set Deliver By, then promote. It fails,
+// and it fails destructively:
+//   1. An Awaiting Payment order has **NO V2 shipment record at all** (absent
+//      from every bucket), so there is nothing for the sweep to PUT
+//      `deliver_by_date` onto. The design's own step 2 is impossible.
+//   2. Re-import DOES update the status of existing orders — so flipping the
+//      mapping swept every already-imported order out of Awaiting Shipment and
+//      destroyed its shipment record along with it.
+// Both learned the hard way. See ADR-039.
+//
+// `delivered` maps to `shipped`: this store's mapping has no delivered bucket,
+// and leaving it unmapped would drop the order back into the fallback (Awaiting
+// Shipment) — resurrecting a finished order into the work queue.
+const SS_STATUS: Record<string, string> = {
+  submitted: 'paid',      // Awaiting Shipment — the co-man's work queue
+  processing: 'paid',     // same queue; kept distinct app-side only
+  shipped: 'shipped',
+  delivered: 'shipped',
+};
+
 export function ssStatus(status: string | null | undefined): string {
-  return status ?? 'submitted';
+  return SS_STATUS[status ?? 'submitted'] ?? 'paid';
 }
 
 // rush → the FIRST token of InternalNotes (ADR-037; was CustomField1, then CF3).

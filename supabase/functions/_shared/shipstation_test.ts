@@ -211,12 +211,26 @@ Deno.test('parseAmount: returns null rather than NaN for junk', () => {
 });
 
 // ── ssStatus ────────────────────────────────────────────────────────────────
-Deno.test('ssStatus: exports the app status verbatim, never mapped to Paid', () => {
-  for (const s of ['submitted', 'processing', 'shipped', 'delivered']) assertEquals(ssStatus(s), s);
+Deno.test('ssStatus: submitted reaches the work queue (paid), NEVER unpaid', () => {
+  // unpaid parks it in Awaiting Payment, where it has no shipment record and
+  // the Deliver By sweep cannot reach it. See ADR-039.
+  assertEquals(ssStatus('submitted'), 'paid');
 });
-Deno.test('ssStatus: defaults null and undefined to submitted', () => {
-  assertEquals(ssStatus(null), 'submitted');
-  assertEquals(ssStatus(undefined), 'submitted');
+Deno.test('ssStatus: processing also maps to the work queue', () => {
+  assertEquals(ssStatus('processing'), 'paid');
+});
+Deno.test('ssStatus: shipped and delivered both map to shipped', () => {
+  assertEquals(ssStatus('shipped'), 'shipped');
+  // The store's mapping has no delivered bucket; unmapped would fall back to
+  // Awaiting Shipment and resurrect a finished order into the queue.
+  assertEquals(ssStatus('delivered'), 'shipped');
+});
+Deno.test('ssStatus: defaults null and undefined to the work queue', () => {
+  assertEquals(ssStatus(null), 'paid');
+  assertEquals(ssStatus(undefined), 'paid');
+});
+Deno.test('ssStatus: an unknown status falls back to the work queue, never limbo', () => {
+  assertEquals(ssStatus('something-new'), 'paid');
 });
 
 // ── rushFlag (CustomField1) ─────────────────────────────────────────────────
@@ -354,8 +368,9 @@ Deno.test('buildOrderXml: includes OrderTotal 0.00, required by the XSD; samples
 Deno.test('buildOrderXml: keys the order on shipment_no via OrderNumber', () => {
   assertEquals(el(buildOrderXml(shipment()), 'OrderNumber'), 'SMP-1044');
 });
-Deno.test('buildOrderXml: exports status verbatim', () => {
-  assertEquals(el(buildOrderXml(shipment({ status: 'processing' })), 'OrderStatus'), 'processing');
+Deno.test('buildOrderXml: OrderStatus is the mapped token, not the app status', () => {
+  assertEquals(el(buildOrderXml(shipment({ status: 'processing' })), 'OrderStatus'), 'paid');
+  assertEquals(el(buildOrderXml(shipment({ status: 'submitted' })), 'OrderStatus'), 'paid');
 });
 Deno.test('buildOrderXml: uses created_at for OrderDate and updated_at for LastModified', () => {
   const xml = buildOrderXml(shipment());
