@@ -23,6 +23,7 @@ import {
   parseAmount,
   parseSSDate,
   ssStatus,
+  syncedStatus,
   tagValue,
   validState,
   validZip,
@@ -231,6 +232,39 @@ Deno.test('ssStatus: defaults null and undefined to the work queue', () => {
 });
 Deno.test('ssStatus: an unknown status falls back to the work queue, never limbo', () => {
   assertEquals(ssStatus('something-new'), 'paid');
+});
+
+// ── syncedStatus ────────────────────────────────────────────────────────────
+Deno.test('syncedStatus: a ShipStation cancel wins over an open order', () => {
+  assertEquals(syncedStatus('cancelled', 'submitted'), 'cancelled');
+  assertEquals(syncedStatus('cancelled', 'processing'), 'cancelled');
+});
+Deno.test('syncedStatus: a hold wins over an open order', () => {
+  assertEquals(syncedStatus('on_hold', 'submitted'), 'on_hold');
+});
+Deno.test('syncedStatus: no write when the app already agrees', () => {
+  assertEquals(syncedStatus('cancelled', 'cancelled'), null);
+  assertEquals(syncedStatus('on_hold', 'on_hold'), null);
+  assertEquals(syncedStatus('pending', 'submitted'), null);
+});
+Deno.test('syncedStatus: NEVER overrides shipped or delivered', () => {
+  // shipnotify owns these; a shipped order can still sit in an active bucket.
+  for (const b of ['cancelled', 'on_hold', 'pending', 'label_purchased']) {
+    assertEquals(syncedStatus(b, 'shipped'), null);
+    assertEquals(syncedStatus(b, 'delivered'), null);
+  }
+});
+Deno.test('syncedStatus: releasing a hold returns the order to the queue', () => {
+  assertEquals(syncedStatus('pending', 'on_hold'), 'submitted');
+  assertEquals(syncedStatus('label_purchased', 'on_hold'), 'submitted');
+});
+Deno.test('syncedStatus: un-cancelling in ShipStation restores the order', () => {
+  assertEquals(syncedStatus('pending', 'cancelled'), 'submitted');
+});
+Deno.test('syncedStatus: an order absent from ShipStation is left alone', () => {
+  // Not yet imported, or purged. Guessing here would fight the export.
+  assertEquals(syncedStatus(null, 'submitted'), null);
+  assertEquals(syncedStatus(null, 'cancelled'), null);
 });
 
 // ── rushFlag (CustomField1) ─────────────────────────────────────────────────

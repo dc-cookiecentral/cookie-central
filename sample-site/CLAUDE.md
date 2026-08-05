@@ -85,6 +85,11 @@ label says **"Deliver by"**. Deliberate — renaming the column wasn't worth the
 - **No sandbox.** This is the production store. `VITE_SAMPLE_TEST_MODE=true`
   prefixes `SMP-TEST-####` but does **not** withhold orders from the co-man's
   real queue.
+- **V2's shipments API does not reflect ORDER status.** `shipment_status` is the
+  label lifecycle (`pending`/`processing`/`label_purchased`/`on_hold`/`cancelled`).
+  An order in **Awaiting Payment** has no shipment record at all (ADR-039); an
+  order **On Hold** still reads `pending` (ADR-040). Anything needing true order
+  status needs a **V1 key** — which the project deliberately does not hold.
 - **NEVER call `POST /v2/shipments`.** It creates a shipment ShipStation files
   under its own pseudo-store ("API Shipments"), separate from the Custom Store —
   orders there bypass `shipnotify` writeback and the status mapping entirely. A
@@ -114,12 +119,16 @@ If a scheduled job ever looks dead, check **`net._http_response`** — not
 billing) and the Deliver By sweep function — both deployed, verified against
 `SMP-TEST-1055`.
 
-**Blocked:**
-1. **The "Deliver by" UI rename is not live.** `feat/shipstation` is pushed but
-   Vercel builds production from `main`, so the site still reads "Required by".
-   Needs a PR merge.
-2. **The rush rule is mis-pointed** — still reads `CustomField1 = rush`. Must
-   become `Internal Notes contains RUSH` or rush orders notify no one.
+**Live and verified:** Deliver By sweep (15-min cron, unattended), the field
+contract, the "Deliver by" UI label, explicit status mapping, and the
+`shipstation-probe` read-only inspector.
+
+**In flight — pick up here:** `cancelled` / `on_hold` sync (ADR-040). Deployed,
+110 tests pass. **`on_hold` does NOT work** — V2's `shipment_status` is the label
+lifecycle, so an order On Hold still reads `pending`. **Whether an order-level
+cancel propagates is untested** — that is the next thing to check: cancel one
+`SMP-TEST-*` order in ShipStation, run the sweep, look at `status_changes`.
+The frontend change is committed but its behaviour is unproven.
 
 **Open, undecided:**
 - `delivered` is unreachable — the Custom Store has no delivery event, and V2's

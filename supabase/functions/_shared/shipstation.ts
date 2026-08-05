@@ -123,6 +123,39 @@ export function thirdPartyBilling(s: Shipment): string {
   return `BILL THIRD PARTY: ${carrier} acct ${account} (zip ${zip})`;
 }
 
+// ── Status sync (ShipStation → app) ─────────────────────────────────────────
+// ShipStation owns fulfilment state, so a cancel or a hold made there is
+// authoritative. Without this the site shows a cancelled order as awaiting
+// fulfilment forever and a salesperson chases a shipment that no longer exists.
+//
+// `bucket` is the V2 shipment_status the order was found in. Returns the app
+// status to write, or **null** for "leave it alone" — the common case, so the
+// sweep stays quiet.
+//
+// Two invariants:
+//  1. `shipped`/`delivered` are NEVER overridden. `shipnotify` owns those, it
+//     fires on label creation, and an order can legitimately sit in a ShipStation
+//     bucket that looks active after it has shipped.
+//  2. The mapping is REVERSIBLE. An order released from hold (or un-cancelled)
+//     in ShipStation returns to an active bucket and goes back to `submitted`,
+//     so the sweep self-heals rather than latching on the first exception.
+export const SS_ACTIVE_BUCKETS = ['pending', 'processing', 'label_purchased'];
+export const SS_SYNCED_BUCKETS = [...SS_ACTIVE_BUCKETS, 'on_hold', 'cancelled'];
+
+export function syncedStatus(
+  bucket: string | null,
+  current: string | null,
+): string | null {
+  if (current === 'shipped' || current === 'delivered') return null;   // invariant 1
+  if (bucket === 'cancelled') return current === 'cancelled' ? null : 'cancelled';
+  if (bucket === 'on_hold') return current === 'on_hold' ? null : 'on_hold';
+  if (bucket && SS_ACTIVE_BUCKETS.includes(bucket)) {
+    // Back in the queue — undo a previous exception. invariant 2
+    return current === 'cancelled' || current === 'on_hold' ? 'submitted' : null;
+  }
+  return null;   // absent from ShipStation entirely: not our business to guess
+}
+
 // State must be 2 letters, zip 5 or 5-4; ShipStation silently rejects malformed
 // values, so the export validates and skips+logs a bad row instead.
 export const validState = (s: string | null | undefined) => !!s && /^[A-Za-z]{2}$/.test(s.trim());

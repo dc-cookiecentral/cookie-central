@@ -6,7 +6,7 @@ import {
 } from '../hooks/useSampleCentral';
 import {
   flavorFamily, derivedTemp, effectiveTemp, groupCatalog,
-  SHIP_STATUSES, COLLATERAL_OPTIONS, RUSH_NOTICE,
+  SHIP_STATUSES, EXCEPTION_STATUSES, COLLATERAL_OPTIONS, RUSH_NOTICE,
   TP_CARRIERS, TP_NOTICE, tpComplete,
   TEST_MODE, SHIPMENT_PREFIX,
 } from '../utils/sampleCentral';
@@ -33,8 +33,13 @@ const TempBadge = ({ temp, overridden }) => (
   </span>
 );
 const StatusPill = ({ s }) => {
-  const map = { submitted: 'bg-gray-100 text-gr', processing: 'bg-blue-100 text-blue-700', shipped: 'bg-violet-100 text-violet-700', delivered: 'bg-green-100 text-green-700' };
-  return <span className={`inline-block px-2 py-0.5 rounded-full text-[11.5px] font-semibold ${map[s] || map.submitted}`}>{s}</span>;
+  const map = {
+    submitted: 'bg-gray-100 text-gr', processing: 'bg-blue-100 text-blue-700',
+    shipped: 'bg-violet-100 text-violet-700', delivered: 'bg-green-100 text-green-700',
+    // Exceptions read as warnings, not stages — they need to catch the eye.
+    on_hold: 'bg-amber-100 text-amber-800', cancelled: 'bg-red-100 text-red-700',
+  };
+  return <span className={`inline-block px-2 py-0.5 rounded-full text-[11.5px] font-semibold ${map[s] || map.submitted}`}>{s === 'on_hold' ? 'on hold' : s}</span>;
 };
 
 export default function SampleCentral() {
@@ -491,6 +496,20 @@ function MissionView({ data }) {
           </div>
         ))}
       </div>
+      {/* Exceptions surface only when they exist — a permanent pair of zeroes
+          would train everyone to ignore them. */}
+      {EXCEPTION_STATUSES.some((s) => stat(s) > 0) && (
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          {EXCEPTION_STATUSES.filter((s) => stat(s) > 0).map((s) => (
+            <div key={s} className={`rounded-xl p-3 border ${s === 'cancelled' ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}`}>
+              <div className={`text-[26px] font-extrabold tracking-[-0.5px] ${s === 'cancelled' ? 'text-red-700' : 'text-amber-800'}`}>{stat(s)}</div>
+              <div className={`text-[11.5px] uppercase font-semibold tracking-[.4px] ${s === 'cancelled' ? 'text-red-700' : 'text-amber-800'}`}>
+                {s === 'on_hold' ? 'on hold' : s} · set in ShipStation
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="flex items-center gap-2 mb-3">
         <span className="text-[11.5px] text-gr uppercase">Salesperson</span>
         <select value={sp} onChange={(e) => setSp(e.target.value)} className="px-2 py-1 rounded border border-lt text-[12.5px] bg-cd">
@@ -539,6 +558,17 @@ function ShipmentCard({ s, open, onToggle }) {
 
       {open && (
         <div className="border-t border-lt px-3 py-3">
+          {/* An exception is not a stage. Rendering the stepper for a cancelled
+              order greys every dot (indexOf → -1) and reads as "stuck at the
+              start", which is worse than saying plainly what happened. */}
+          {EXCEPTION_STATUSES.includes(s.status) ? (
+            <div className={`mb-3 px-2.5 py-2 rounded-lg border text-[12px] ${s.status === 'cancelled' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
+              <span className="font-bold">{s.status === 'cancelled' ? 'Cancelled' : 'On hold'} in ShipStation.</span>{' '}
+              {s.status === 'cancelled'
+                ? 'This shipment will not go out. Raise a new request if it is still needed.'
+                : 'Fulfilment is paused. It returns to the queue when the co-man releases it.'}
+            </div>
+          ) : (
           <div className="flex items-center gap-1 mb-3">
             {SHIP_STATUSES.map((p, i) => (
               <div key={p} className="flex items-center gap-1">
@@ -548,6 +578,7 @@ function ShipmentCard({ s, open, onToggle }) {
               </div>
             ))}
           </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <KV label="Ship to">

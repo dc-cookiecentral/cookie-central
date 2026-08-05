@@ -72,7 +72,16 @@ export function nextShipmentNo(existing) {
   return `${SHIPMENT_PREFIX}${max + 1}`;
 }
 
+// The linear pipeline. Order matters — the shipment card renders it as a
+// progress stepper and indexes into it.
 export const SHIP_STATUSES = ['submitted', 'processing', 'shipped', 'delivered'];
+
+// Off-pipeline states ShipStation can put an order into. They are NOT stages:
+// an order does not progress *through* on_hold, it sits outside the flow until
+// released. Keep them out of SHIP_STATUSES or the stepper renders them as
+// steps and `indexOf` on a cancelled order returns -1, greying every dot.
+// Written by the shipstation-deliverby sweep; reversible.
+export const EXCEPTION_STATUSES = ['on_hold', 'cancelled'];
 // Collateral the co-man can actually pack. Each maps to a synthetic SKU so it
 // exports as a real <Item> line and prints on the ShipStation packing slip,
 // rather than riding InternalNotes as free text. Keep COLLATERAL_SKUS in
