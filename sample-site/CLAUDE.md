@@ -123,12 +123,19 @@ billing) and the Deliver By sweep function — both deployed, verified against
 contract, the "Deliver by" UI label, explicit status mapping, and the
 `shipstation-probe` read-only inspector.
 
-**In flight — pick up here:** `cancelled` / `on_hold` sync (ADR-040). Deployed,
-110 tests pass. **`on_hold` does NOT work** — V2's `shipment_status` is the label
-lifecycle, so an order On Hold still reads `pending`. **Whether an order-level
-cancel propagates is untested** — that is the next thing to check: cancel one
-`SMP-TEST-*` order in ShipStation, run the sweep, look at `status_changes`.
-The frontend change is committed but its behaviour is unproven.
+**`cancelled` sync works — verified end to end** (ADR-040). Cancelling
+`SMP-TEST-1052` in ShipStation flipped the site to `cancelled` on the next sweep,
+and a second run was a no-op. **`on_hold` does NOT work and cannot** — V2's
+`shipment_status` is the label lifecycle, so an order On Hold still reads
+`pending`. Reaching it needs a V1 key.
+
+⚠️ **Known scaling limit — pick up here.** The sweep pages through the `cancelled`
+bucket every run (1,675 shipments and growing) and takes **~17s** against a 30s
+cron timeout. It will eventually breach `MAX_PAGES` (reported in
+`truncated_buckets`, never swallowed) or time out. The real fix is to stop
+scanning: store each order's `shipment_id` on first sight — `sample_shipments.
+shipstation_order_id` exists and is unused — then `GET /v2/shipments/{id}` per
+tracked order. That is ~16 cheap calls instead of paging an unbounded history.
 
 **Open, undecided:**
 - `delivered` is unreachable — the Custom Store has no delivery event, and V2's

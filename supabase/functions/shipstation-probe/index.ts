@@ -81,7 +81,9 @@ Deno.serve(async (req) => {
 
 
     for (const bucket of BUCKETS) {
-      for (let page = 1; page <= 10; page++) {
+      // Buckets like `cancelled` run to thousands; stopping early would report a
+      // false "not found" that reads as authoritative.
+      for (let page = 1; page <= 30; page++) {
         const r = await ss(key, `/v2/shipments?shipment_status=${bucket}&page=${page}&page_size=100`);
         if (!r.ok) break;
         const b = r.body as { shipments?: Array<Record<string, unknown>>; pages?: number };

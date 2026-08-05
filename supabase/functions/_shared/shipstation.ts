@@ -140,7 +140,13 @@ export function thirdPartyBilling(s: Shipment): string {
 //     in ShipStation returns to an active bucket and goes back to `submitted`,
 //     so the sweep self-heals rather than latching on the first exception.
 export const SS_ACTIVE_BUCKETS = ['pending', 'processing', 'label_purchased'];
-export const SS_SYNCED_BUCKETS = [...SS_ACTIVE_BUCKETS, 'on_hold', 'cancelled'];
+
+// Buckets the sweep actually PAGES THROUGH each run. Deliberately NOT all of
+// SS_ACTIVE_BUCKETS: `label_purchased` holds 83k+ shipments on this account and
+// `processing` is transient — scanning either every 15 minutes is minutes of
+// work for nothing. An order with a label bought is already shipnotify's
+// business, and one missing from the scan simply yields no status change.
+export const SS_SCAN_BUCKETS = ['pending', 'on_hold', 'cancelled'];
 
 export function syncedStatus(
   bucket: string | null,

@@ -32,7 +32,7 @@
 import { serviceClient } from '../_shared/supabase.ts';
 import { getSecret } from '../_shared/vault.ts';
 import { handleCors, json } from '../_shared/cors.ts';
-import { SS_ACTIVE_BUCKETS, SS_SYNCED_BUCKETS, syncedStatus } from '../_shared/shipstation.ts';
+import { SS_ACTIVE_BUCKETS, SS_SCAN_BUCKETS, syncedStatus } from '../_shared/shipstation.ts';
 
 const SS = 'https://api.shipstation.com';
 
@@ -77,10 +77,18 @@ async function ss(key: string, method: string, path: string, body?: unknown) {
  */
 type Found = { id: string; deliverBy: string | null; storeId: string | null; bucket: string };
 
-async function shipmentsByNo(key: string) {
+// The cancelled bucket grows without bound (1,675 and counting), so this is a
+// real ceiling, not a formality — breaching it is reported, never swallowed.
+const MAX_PAGES = 30;
+
+async function shipmentsByNo(key: string, truncated: string[]) {
   const map = new Map<string, Found>();
-  for (const bucket of SS_SYNCED_BUCKETS) {
-    for (let page = 1; page <= 20; page++) {
+  for (const bucket of SS_SCAN_BUCKETS) {
+    // ⚠️ The `cancelled` bucket is unbounded and already in the thousands. If we
+    // stop early we silently miss orders and report a clean sweep, so the cap is
+    // generous AND breaching it is surfaced rather than swallowed.
+    let page = 1;
+    for (; page <= MAX_PAGES; page++) {
       const r = await ss(key, 'GET', `/v2/shipments?shipment_status=${bucket}&page=${page}&page_size=100`);
       if (!r.ok) throw new Error(`list ${bucket} p${page}: HTTP ${r.status} ${r.text.slice(0, 300)}`);
       const b = r.body as { shipments?: Array<Record<string, string | null>>; pages?: number };
@@ -96,8 +104,9 @@ async function shipmentsByNo(key: string) {
           bucket,
         });
       }
-      if (page >= (b.pages ?? 1)) break;
+      if (page >= (b.pages ?? 1)) { page = 0; break; }
     }
+    if (page !== 0) truncated.push(bucket);
   }
   return map;
 }
@@ -137,7 +146,12 @@ Deno.serve(async (req) => {
     const rows = (data ?? []) as Row[];
     if (!rows.length) return json({ ok: true, considered: 0, updated: 0, note: 'nothing to track' });
 
-    const pending = await shipmentsByNo(key);
+    const truncated: string[] = [];
+    const pending = await shipmentsByNo(key, truncated);
+    if (truncated.length) {
+      // Loud on purpose: a truncated scan makes "no status changes" a lie.
+      console.error(`shipstation-deliverby: TRUNCATED scan of ${truncated.join(', ')} — results incomplete`);
+    }
 
     const updated: string[] = [];
     const statusChanges: Array<{ shipment_no: string; from: string; to: string }> = [];
@@ -203,6 +217,7 @@ Deno.serve(async (req) => {
       already_correct: alreadyCorrect,
       not_yet_imported: notYetImported,
       status_changes: statusChanges,
+      truncated_buckets: truncated,
       stores: byStore,
       failed,
     });
