@@ -60,14 +60,18 @@ async function ss(key: string, method: string, path: string, body?: unknown) {
  * not in the single-shipment GET, which is why the mapping happens here.
  */
 async function pendingByShipmentNo(key: string) {
-  const map = new Map<string, { id: string; deliverBy: string | null }>();
+  const map = new Map<string, { id: string; deliverBy: string | null; storeId: string | null }>();
   for (let page = 1; page <= 20; page++) {
     const r = await ss(key, 'GET', `/v2/shipments?shipment_status=pending&page=${page}&page_size=100`);
     if (!r.ok) throw new Error(`list shipments p${page}: HTTP ${r.status} ${r.text.slice(0, 300)}`);
     const b = r.body as { shipments?: Array<Record<string, string | null>>; pages?: number };
     for (const s of b.shipments ?? []) {
       if (s.shipment_number && s.shipment_id) {
-        map.set(s.shipment_number, { id: s.shipment_id, deliverBy: s.deliver_by_date ?? null });
+        map.set(s.shipment_number, {
+          id: s.shipment_id,
+          deliverBy: s.deliver_by_date ?? null,
+          storeId: s.store_id ?? null,
+        });
       }
     }
     if (page >= (b.pages ?? 1)) break;
@@ -135,8 +139,16 @@ Deno.serve(async (req) => {
       }
     }
 
+    const byStore: Record<string, number> = {};
+    for (const row of rows) {
+      const m = pending.get(row.shipment_no);
+      if (!m) continue;
+      const k = m.storeId ?? '(none)';
+      byStore[k] = (byStore[k] ?? 0) + 1;
+    }
+
     console.log(
-      `shipstation-deliverby: considered=${rows.length} updated=${updated.length} ` +
+      `shipstation-deliverby: stores=${JSON.stringify(byStore)} considered=${rows.length} updated=${updated.length} ` +
       `already=${alreadyCorrect} not-yet-imported=${notYetImported} failed=${failed.length}`,
     );
     return json({
@@ -146,6 +158,7 @@ Deno.serve(async (req) => {
       updated_orders: updated,
       already_correct: alreadyCorrect,
       not_yet_imported: notYetImported,
+      stores: byStore,
       failed,
     });
   } catch (e) {

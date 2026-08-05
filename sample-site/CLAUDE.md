@@ -85,6 +85,13 @@ label says **"Deliver by"**. Deliberate — renaming the column wasn't worth the
 - **No sandbox.** This is the production store. `VITE_SAMPLE_TEST_MODE=true`
   prefixes `SMP-TEST-####` but does **not** withhold orders from the co-man's
   real queue.
+- **NEVER call `POST /v2/shipments`.** It creates a shipment ShipStation files
+  under its own pseudo-store ("API Shipments"), separate from the Custom Store —
+  orders there bypass `shipnotify` writeback and the status mapping entirely. A
+  one-off probe on Aug 4 2026 created that store and it had to be cleaned up by
+  hand. The sweep only ever GETs and PUTs; keep it that way. The sweep's response
+  includes a `stores` map as a standing guard — it should always show **one**
+  store id for all orders.
 - **`cron.job_run_details.status = 'succeeded'` does NOT mean the job worked.**
   `net.http_post` is fire-and-forget; it only means the request was queued. The
   real outcome is in `net._http_response`. This masked a dead cron for hours.
