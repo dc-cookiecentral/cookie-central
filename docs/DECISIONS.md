@@ -254,7 +254,7 @@ Secrets live in **Vault**; Edge Functions read/write them via two `SECURITY DEFI
 - **`CustomField3`** — free/unused (reserved).
 - **collateral** (incl. Warming instructions) + `notes` + `required_by` + handling snapshot → **`InternalNotes`** (1000-char limit; use it, not the 100-char CustomFields, for lists).
 
-**Field mapping** is in `docs/SHIPSTATION_INTEGRATION.md` (reconciled against the real `sample_shipments` / `sample_shipment_items` / `addresses` columns — ADR-026 names). `Country` is exported as **`US`** — ShipStation's `ShipTo` schema **requires** it and rejects the whole batch if it's missing (samples are US-only). `UnitPrice` = `0.00` (samples unpriced). `OrderDate` = `created_at`.
+**Field mapping** is in `sample-site/docs/SHIPSTATION_INTEGRATION.md` (reconciled against the real `sample_shipments` / `sample_shipment_items` / `addresses` columns — ADR-026 names). `Country` is exported as **`US`** — ShipStation's `ShipTo` schema **requires** it and rejects the whole batch if it's missing (samples are US-only). `UnitPrice` = `0.00` (samples unpriced). `OrderDate` = `created_at`.
 
 **Schema addition (two migrations).** The `shipnotify` writeback needs landing columns that don't exist yet: `sample_shipments` gains nullable `tracking_number`, `carrier`, `service`, `shipped_at` (migration `20260726120000`, which also dropped the retired `rush` boolean). The speed selector adds `shipping_speed text NOT NULL DEFAULT 'ground'` with a CHECK on `ground|2day|overnight` (migration `20260727120000`, which drops the interim `requested_service` column — see the amendment below). Forward-only migrations, manual apply. `shipstation_order_id` (added for the superseded V1 push) is **unused** under Custom Store — orders key on `OrderNumber` = `shipment_no`.
 
@@ -406,3 +406,135 @@ So "ShipStation pushes status back" is true for exactly one transition. `deliver
 `parseAmount` tolerates currency symbols, thousands separators and blanks, returning `null` rather than `NaN` — a malformed cost must never poison a writeback that also carries the tracking number.
 
 **Still unused from the payload:** `NotifyCustomer`, `NotesToCustomer`, `Recipient`, `Items`, and the `CustomField1–3` echo. None currently earn their keep.
+
+## ADR-034: Deliver By is written to ShipStation's native field by an outbound V2 sweep (amends ADR-029)
+
+**Date:** August 4, 2026
+**Status:** Built, **not yet deployed or verified end-to-end.** Branch `feat/shipstation`.
+
+**Decision.** The sample's deliver-by date is written to ShipStation's **native Deliver By field** via `PUT /v2/shipments/{shipment_id}`, by a **15-minute outbound sweep** (`shipstation-deliverby` + pg_cron `*/15 * * * *`). The Custom Store pull is unchanged; nothing about the XML export or the automation rules moves.
+
+**Why a separate sweep and not the export.** The Custom Store is a *pull*: ShipStation fetches on its own schedule, and the V2 shipment row we write to **does not exist until after that import lands**. There is nothing to PUT to at submit time. The sweep closes the gap after the fact, which also makes it self-healing — it re-runs every 15 minutes and fixes anything that missed.
+
+**This reverses a documented belief.** ADR-029 recorded the integration as needing **no ShipStation V1/V2 API key**, and prior research concluded the native Deliver By field was unreachable for Custom-Store orders — on the grounds that such orders are immutable V2 *Sales Orders* with no shipment until shipping. **That was wrong**, and it came from unverified search snippets rather than the live account. Tested against production on August 4, 2026: imported orders appear immediately as V2 shipments in `pending`, and `PUT` on `deliver_by_date` returns 200 and persists. The API-key statement in ADR-029 is now **superseded** — a V2 key is required, in Vault as `SHIPSTATION_V2_API_KEY`.
+
+**API facts verified against the live account (all cost time to find):**
+- Our `SMP-####` lives in **`shipment_number`**, *not* `order_number` — that key is absent entirely and `external_order_id` is null. It appears only in the **list** response, never the single-shipment GET, so the number→id mapping must go through the list.
+- The update is a **read-modify-write**: GET the shipment, set the one field, PUT the whole object. Verified to preserve line items, `ship_to`, `internal_notes`, `service_code` and warehouse. Strip `shipment_id`/`created_at`/`modified_at`/`shipment_status` — server-owned.
+- **`shipment_status` is a label-lifecycle enum, not a delivery one**: `pending`, `processing`, `label_purchased`, `on_hold`, `cancelled`. **`shipped` and `delivered` are rejected with 400.** So V2 shipment status cannot answer "has it arrived" — see *Carried forward*.
+- Cancel is `PUT /v2/shipments/{id}/cancel` **with a body**; `DELETE` → 405, empty body → 411.
+- `GET /v2/sales_orders` and `GET /v2/stores` do not exist (404). `GET /v2/tracking` exists but is **gated behind a billing-plan upgrade** on this account (401).
+- Two UPS carriers are connected; `ups_ground` exists on **`se-1015304`** only. Pin `carrier_id` when a service is specified programmatically.
+
+**Idempotent by comparison, not bookkeeping.** The sweep reads ShipStation's current `deliver_by_date` and skips anything already matching, so there is no local "pushed" flag to drift. Proven: a second consecutive run wrote nothing (`updated: 0, already_correct: 6`).
+
+⚠️ **The site is the source of truth, and that has a consequence.** An earlier draft of this ADR claimed a date set by hand in the ShipStation UI would be *respected*. **That is wrong.** The first live sweep overwrote `SMP-TEST-1045`'s hand-entered `2026-07-28` because it differed from the app's value. Any manual Deliver By edit the co-man makes is reverted within 15 minutes unless the change is also made in Sample Central. That is the correct behaviour for a derived field, but it must be told to whoever works the queue — silently reverting someone's edit is worse than not supporting the edit at all.
+
+**Naming.** The site's UI label and the ShipStation `InternalNotes` line both now read **"Deliver by"**. The database column, TypeScript field and all identifiers **remain `required_by`** — renaming them means a migration plus touching the Edge Function, shape types and insert path, for a cosmetic gain. Accepted cost: a permanent vocabulary split between code (`required_by`) and everything a human sees ("Deliver by").
+
+**Carried forward.**
+(a) **Not deployed.** Needs `npx supabase functions deploy shipstation-deliverby`, `select public.set_secret('SHIPSTATION_V2_API_KEY', …)`, then the cron migration applied last.
+(b) ~~Rotate the test key~~ — **done August 4, 2026.** The plaintext test key was revoked (the old value now returns `Access denied`), a fresh key was written to Vault via `set_secret`, and the stale line was removed from `.env.local`. Nothing in the repo or the browser bundle holds a ShipStation key.
+(c) ~~Unverified~~ — **VERIFIED end-to-end August 4, 2026.** Deployed, type-checks (`deno check`, which caught a real `TS7053` a runtime-only deploy would have shipped), 87-case `_shared` suite passes, and **two live sweeps ran against production**: the first updated all 6 open orders (`failed: []`), the second wrote nothing and reported all 6 already correct. Remaining gap: **nobody has confirmed the dates render in the dashboard's Deliver By column** — the API is authoritative that the field is set, but the grid is what the co-man actually sorts by.
+(d) **`delivered` is still not wired**, and V2 shipment status cannot supply it (see above). The remaining routes are a ShipStation **webhook** (the webhook endpoint *is* reachable on this plan, unlike tracking) or **BCC'ing the Delivered customer-notification email** into the existing Gmail pipeline. Undecided.
+(e) **`on_hold` and `cancelled` are newly observable** and currently invisible to the site — `sample_shipments.status` has no such values (CHECK allows `submitted|processing|shipped|delivered`). Reflecting them would need a migration.
+(f) **`verify_jwt = true` is satisfied by the public anon key**, not only by an admin or the cron service-role bearer — so the sweep is triggerable by anyone holding the key that ships in the frontend bundle. This matches the existing `gmail-poll` posture rather than introducing a new one, and the blast radius is small (it writes only dates already in our own DB, onto orders that already match), but it is **not** a role check. Worth a `user_profiles` role guard if the endpoint ever does more.
+
+## ADR-035: Collateral and custom lines ship as real `<Item>` lines (amends ADR-029, ADR-032)
+
+**Date:** August 4, 2026
+**Status:** Built, tested (91 cases), **deployed**. Branch `feat/shipstation`.
+
+**Decision.** `<Items>` now carries **everything that physically goes in the box**: catalog products, custom-made lines, and collateral — each as a real line item, so all three appear on the ShipStation order page and the standard pick list. Collateral is **removed** from `InternalNotes`.
+
+**Why.** Previously only catalog products were `<Item>`s. Custom lines were deliberately excluded for lacking a SKU (ADR-029) and collateral was prose inside `InternalNotes`. Both were therefore invisible as things to *pick* — a packer reading the item list would not see the line sheet or the bespoke cookies at all, only a notes blob they had to parse by eye. Line items are what the fulfilment UI is built around.
+
+**Synthetic SKUs are stable, not per-order.** All custom work shares **`CUSTOM`**; each collateral piece gets **`COLLATERAL-<SLUG>`** (uppercased, non-alphanumerics collapsed to `-`). Per-order SKUs (`CUSTOM-P-77`) were rejected because **ShipStation auto-creates a product record for every unknown SKU it imports** — that would accumulate one junk catalog row per custom request, forever. The per-order detail lives in `<Name>`, which is what prints. Collateral quantity is always 1 (it is a checklist, not a count).
+
+**Consequences.**
+- ⚠️ **New product records appear in the co-man's catalog** on first import — `CUSTOM` plus one per collateral type. Harmless, but it is *their* production catalog and §4 has them managing product tags there. **Do not tag these cold-chain.** Tell them before the first import rather than letting rows appear unannounced.
+- Only catalog SKUs match ShipStation product records, so **the cold-chain tag path is unaffected** — synthetic SKUs simply carry no tags.
+- **Collateral is no longer in `InternalNotes`.** Custom specs *stay* there (they annotate a line rather than replacing it, and the manual-review rule reads them), as do handling, deliver-by and third-party billing. `CustomField2 = custom-request` is unchanged.
+- **Checklist §6 is largely retired** — collateral no longer needs a packing-slip Field-Replacement token, since it prints as line items. A token is still worth it for what remains in notes.
+- This **reverses** ADR-029's "custom lines … never a null-SKU `<Item>`". The original reasoning (no SKU exists) was sound; the fix is a synthetic SKU, which wasn't considered at the time.
+
+**Verified.** 91 `Deno.test` cases pass (4 new, 3 rewritten — two of which had been asserting the old exclusion). `deno check` clean on the helper and the export function. Generated XML inspected by hand for a mixed order (2 products + 1 custom + 2 collateral → 5 `<Item>` elements, correct SKUs and quantities). `shipstation-customstore` redeployed; the endpoint answers and is still Basic-Auth guarded.
+
+**Not verified.** No order has been imported through ShipStation since the deploy, so **nobody has seen the new lines land in the real order page** — the next scheduled store import is the proof.
+
+## ADR-036: CustomField reallocation — salesperson / account / rush (supersedes ADR-031, ADR-032)
+
+**Date:** August 4, 2026
+**Status:** Built, tested (95 cases), **deployed**. Branch `feat/shipstation`.
+
+**Decision.** The three CustomFields now carry the three things worth sorting and filtering the Orders grid by:
+
+| | Was | Now |
+|---|---|---|
+| `CustomField1` | `rush` | **salesperson** (`full_name`, falling back to email) |
+| `CustomField2` | `custom-request` | **account** |
+| `CustomField3` | *(free)* | **`rush`** |
+
+And `InternalNotes` is reduced to **the site note plus third-party billing instructions, nothing else.**
+
+**Why.** Everything previously crammed into `InternalNotes` now has a first-class home — collateral and custom specs became `<Item>` lines (ADR-035), deliver-by became the native field (ADR-034), handling is driven by the cold-chain product tag. Repeating any of it as prose was noise on the packing slip. Salesperson and account, meanwhile, were only reachable by reading `<CustomerCode>` or the BillTo name — neither sortable in the grid. CustomFields are grid-visible, sortable and rule-matchable, which is exactly what those two need to be.
+
+**🚨 This breaks the built rush-notification rule.** ADR-031 built `if CustomField1 = rush → team notification email` on July 28. CF1 now holds a person's name, so **the rule matches nothing and rush orders notify no one — silently, with no error anywhere.** It must be re-pointed to `CustomField3 = rush` in the ShipStation dashboard; the comparison value is deliberately unchanged (still lowercase `rush`) so only the field reference moves. This is app-side done, dashboard-side **outstanding** — checklist §3.
+
+**⚠️ `custom-request` lost its rule-matchable home.** CF2 carried it for the planned manual-review rule (§3, never built). Custom work is still *visible* as a `CUSTOM` line item, but §3's own standing warning — *never rule on Item SKU; SKU rules silently ignore multi-item orders* — means a SKU rule is not a safe substitute. Remaining options are an Order Tag or reclaiming a CustomField. **Unresolved, and it should be resolved before custom requests flow at volume.**
+
+**Also lost:** the `Handling: Cold (override)` line. Cold-chain routing depends on the §4 product tag, which is still launch-blocking; a **manual temp override** is now invisible to the co-man. If overrides matter operationally, they need somewhere to live.
+
+**Mechanics.** `customField()` trims and hard-truncates at **100 chars** — CustomFields truncate silently in ShipStation, so the cut is explicit and tested. Values use `xmlEscape`, not CDATA, matching the other coded fields. `<CustomerCode>` still carries the salesperson **email**, so CF1 using the display name is complementary rather than redundant.
+
+**Verified.** 95 `Deno.test` cases pass (5 new, 6 rewritten — several had been asserting the superseded contract). `deno check` clean. Generated XML inspected by hand: `CF1 Alex Morgan`, `CF2 Kroger Co.`, `CF3 rush`, `InternalNotes` = billing + note only. Deployed.
+
+**Not verified.** No order has imported since the deploy — the grid columns and the re-pointed rule are both unproven in ShipStation itself.
+
+## ADR-037: Final field contract — RUSH in notes, billing in Notes from Buyer, temp override in CF3 (supersedes ADR-036)
+
+**Date:** August 4, 2026
+**Status:** Built, tested (100 cases), **deployed**. Branch `feat/shipstation`.
+
+**The contract, settled:**
+
+| Field | Carries |
+|---|---|
+| `<Items>` | catalog products + `CUSTOM` line + one `COLLATERAL-*` per piece (ADR-035) |
+| Deliver By (native) | `required_by`, stamped by the 15-min sweep (ADR-034) |
+| `InternalNotes` | **`RUSH`** (leading, when flagged) + the site note |
+| `CustomerNotes` | third-party billing instructions |
+| `CustomField1` | salesperson |
+| `CustomField2` | account |
+| `CustomField3` | **manual temp override** |
+
+**Why RUSH moved into the notes.** It had been CF1, then CF3, and each move broke the July 28 notification rule. Putting it in InternalNotes frees all three CustomFields for values worth *sorting* the grid by, and costs nothing in rule-matchability: ShipStation's **Automation Rules Criteria and Actions** (fetched 2026-05-05 revision) lists **Internal Notes** among available criteria with *"Data can equal, contain, start with, end with, or be blank"*. So `Internal Notes contains RUSH` is a supported trigger. The token leads the field, so it is also the first thing a human reads. Caroline owns the rule edit.
+
+**Why billing moved to `<CustomerNotes>`.** It is an instruction to whoever buys the label, not an internal aside, and it deserves its own line rather than sharing InternalNotes with the rush flag and free text. **Notes from Buyer** is likewise documented rule criteria, so it stays matchable.
+
+**Why CF3 is the override, not the temp.** Normal cold-chain routing rides the §4 product tag and needs no help from the export. What the co-man genuinely cannot otherwise see is a **human deliberately overriding** the derived temp. CF3 is therefore **blank unless someone overrode**, which makes `Custom Field 3 is not blank` a precise trigger for "a person made a judgement call here." Emitting the effective temp on every order would have buried that signal in noise. This also closes the gap ADR-036 opened when `Handling: Cold (override)` was dropped from the notes.
+
+**Resolves ADR-036's open item.** The `custom-request` signal is gone from the CustomFields for good. Custom work is visible as a `CUSTOM` line item, and the same article confirms the hazard in ShipStation's own words: *"Automation Rules using Item SKU as criteria will not apply to orders that have more than one line item."* So a SKU rule remains unsafe. If custom requests need to trigger manual review, the route is an **Order Tag** — still unbuilt.
+
+**Verified.** 100 `Deno.test` cases pass (7 new, 4 rewritten). `deno check` clean. Generated XML inspected: `CF1 Alex Morgan`, `CF2 Kroger Co.`, `CF3 Cold`, `InternalNotes RUSH | Notes: Handle with care`, `CustomerNotes BILL THIRD PARTY: FedEx acct 123456789 (zip 90210)`. Deployed.
+
+**Not verified.** No order has imported since; the grid columns, the `contains RUSH` rule and the override flag are all unproven in ShipStation itself.
+
+## ADR-038: Custom and collateral lines carry no SKU (revises ADR-035)
+
+**Date:** August 4, 2026
+**Status:** Built, tested (100 cases), **deployed**. Branch `feat/shipstation`.
+
+**Decision.** Custom lines and collateral are emitted with an **empty `<SKU></SKU>`** rather than the synthetic `CUSTOM` / `COLLATERAL-<SLUG>` values ADR-035 introduced. Only real catalog products carry a SKU.
+
+**Why.** Synthetic SKUs made ShipStation auto-create a product record for each one, cluttering the co-man's catalog with rows nobody maintains — a cost ADR-035 accepted and flagged. Removing them is strictly better: these lines are not products, nothing needs to match them, and their meaning lives in `<Name>`, which is what prints on the pick list.
+
+**The element is still emitted, empty — not omitted.** That distinction matters more than it looks. A missing required field rejects the **entire batch silently** (ADR-029), and our XSD record documents required fields for `Order` and `ShipTo` but says nothing about `Item` internals, so omission was an unverified bet. ShipStation's **Custom Store Development Guide** (2026-07-29 revision) settles it by example — its own sample payload contains a non-product line shaped exactly this way:
+
+```xml
+<Item><SKU></SKU><Name><![CDATA[$10 OFF]]></Name><Quantity>1</Quantity><UnitPrice>-10.00</UnitPrice></Item>
+```
+
+**Consequences.** The cold-chain product-tag path is untouched — it keys on real catalog SKUs, which still travel. No junk product records are created, retiring the warning ADR-035 added to checklist §6. Custom work remains identifiable to a human by its `<Name>`, but it is now **doubly unavailable as automation-rule criteria**: it has no CustomField (ADR-036) *and* no SKU. Given ShipStation's own warning that Item SKU rules silently ignore multi-item orders, a SKU rule was never viable anyway — an **Order Tag** remains the only safe route, still unbuilt.
+
+**Verified.** 100 `Deno.test` cases pass (1 new, 3 rewritten), including an assertion that no synthetic SKU survives anywhere in the document while the real catalog SKU still does. Generated XML inspected by hand. Deployed.

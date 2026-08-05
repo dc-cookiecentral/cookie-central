@@ -322,7 +322,7 @@ function CartDrawer({
               </select>
             </Labeled>
             <div className="mt-2">
-              <Labeled label="Required by"><input type="date" value={header.required_by} onChange={(e) => set('required_by', e.target.value)} className="w-full px-2 py-1 rounded border border-lt text-[12.5px]" /></Labeled>
+              <Labeled label="Deliver by"><input type="date" value={header.required_by} onChange={(e) => set('required_by', e.target.value)} className="w-full px-2 py-1 rounded border border-lt text-[12.5px]" /></Labeled>
             </div>
             <label className={`flex items-start gap-2 mt-2 p-2 rounded-lg border cursor-pointer ${header.rush ? 'border-red-300 bg-red-50' : 'border-lt bg-bg'}`}>
               <input type="checkbox" checked={!!header.rush} onChange={(e) => set('rush', e.target.checked)} className="mt-0.5" />
@@ -554,7 +554,7 @@ function ShipmentCard({ s, open, onToggle }) {
               {addr.contact_name || '—'}{addr.company ? ` · ${addr.company}` : ''}<br />
               {addr.street}, {addr.city}, {addr.state} {addr.zip}
             </KV>
-            <KV label="Required by">{s.required_by || '—'}</KV>
+            <KV label="Deliver by">{s.required_by || '—'}</KV>
             <KV label="Collateral">
               {(s.collateral || []).length ? (s.collateral || []).map((c) => (
                 <span key={c} className="inline-block text-[10.5px] font-semibold px-2 py-px rounded bg-bg border border-lt mr-1 mb-1">{c}</span>

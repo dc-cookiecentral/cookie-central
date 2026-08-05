@@ -62,8 +62,8 @@ Basic HTTP Auth on both actions. Expected creds read from Vault via `get_secret`
     <CustomField1>{rush ? 'rush' : ''}</CustomField1>
     <CustomField2>{any custom line ? 'custom-request' : ''}</CustomField2>
     <CustomField3></CustomField3>                        <!-- reserved / unused -->
-    <InternalNotes><![CDATA[ collateral · Warming instructions · notes ·
-        required-by · handling(temp) · custom lines (spec + project #) ]]></InternalNotes>
+    <InternalNotes><![CDATA[ notes · deliver-by · handling(temp) ·
+        custom lines (spec + project #) ]]></InternalNotes>
     <Customer>
       <CustomerCode>{salesperson email}</CustomerCode>
       <BillTo><Name><![CDATA[{account}]]></Name></BillTo>
@@ -89,7 +89,10 @@ Basic HTTP Auth on both actions. Expected creds read from Vault via `get_secret`
 </Orders>
 ```
 - **`<Country>` = `US`** — required by ShipStation's `ShipTo` schema; a missing Country makes ShipStation reject the whole import batch. Samples are US-only.
-- **Custom lines** (`custom = true`, no `product_code`) are **not** emitted as `<Item>` (no SKU). They ride `InternalNotes` (spec + `project_no`) **and** flag `CustomField2 = custom-request`.
+- **Custom lines** (`custom = true`, no `product_code`) **are** emitted as `<Item>` with an **empty `<SKU></SKU>`**; the spec + `project_no` carry in `<Name>`. *(ADR-035, revised by ADR-038.)*
+- **Collateral** is one `<Item>` per piece, quantity 1, also **SKU-less**, and is **not** written to `InternalNotes`.
+- ⚠️ **The `<SKU>` element is always emitted, empty for non-products.** ShipStation's Custom Store Development Guide shows exactly this shape (`<Item><SKU></SKU><Name><![CDATA[$10 OFF]]></Name>…`). Do **not** omit the element — a missing required field rejects the **whole batch**, silently.
+- Only **catalog SKUs** reach ShipStation, so the cold-chain product-tag match is unaffected and no junk product records are created.
 
 ### ShipNotify (POST body)
 
@@ -141,7 +144,11 @@ Columns are the **real** ADR-026 names.
 | `CustomField1` | `rush` | `rush` when flagged, else empty. Internal urgency signal — **not** a speed instruction; drives the team notification |
 | `CustomField2` | any `sample_shipment_items.custom` | `custom-request` (grid-visible + rule-matchable) |
 | `CustomField3` | — | reserved |
-| `InternalNotes` | `collateral[]` + `notes` + `required_by` + `temp` + custom `custom_spec`/`project_no` | 1000-char field; lists go here, not CustomFields |
+| `InternalNotes` | `RUSH` (leading, when rushed) + `notes` | 1000-char. Rule-matchable: *Internal Notes contains RUSH* (ADR-037) |
+| `CustomerNotes` | third-party billing | ShipStation's **Notes from Buyer**. Also documented rule criteria |
+| `CustomField1` | `salesperson.full_name` (falls back to email) | 100-char, truncated |
+| `CustomField2` | `account` | 100-char, truncated |
+| `CustomField3` | `temp_override` | **Blank unless a human overrode the derived temp** — so a rule can match non-blank |
 | `CustomerCode` | `salesperson_user_id` → `user_profiles.email` | |
 | `BillTo/Name` | `account` | |
 | `ShipTo/*` | `addresses` `contact_name`/`company`/`street`/`city`/`state`/`zip` | **State 2-char + PostalCode validated** or skip+log |
@@ -158,7 +165,7 @@ Columns are the **real** ADR-026 names.
   ⚠️ The checkout tells the salesperson that ticking Rush emails the team. **Nothing sends that email yet** — see ADR-031.
 
 - **custom-request** → `CustomField2` → automation rule → **manual review** (no auto-fulfil). Kept on a CustomField so it shows in the Orders grid and matches rules — **not** buried in notes.
-- **collateral incl. Warming instructions** → `InternalNotes`, printed via a packing-slip **Field-Replacement** token (bind the token to the Notes field). Watch the 100-char CustomField limit — lists go in the 1000-char `InternalNotes`.
+- **collateral incl. Warming instructions** → real `<Item>` lines (`COLLATERAL-<SLUG>`, qty 1), so they appear on the order page and the pick list natively — no packing-slip token needed for them. Free-text that remains in `InternalNotes` still needs the token. Never use CustomFields for lists (100-char silent truncation).
 
 ## Status mapping
 
@@ -189,7 +196,7 @@ status fields route each value (samples are free — no "paid"). Configure:
 - Basic-Auth creds (`SHIPSTATION_CUSTOMSTORE_USER` / `_PASS`) in Supabase Vault via `set_secret`; reuse the `get_secret`/`set_secret` RPCs (ADR-021). Never in `VITE_*`.
 
 ## Account-side setup
-See **`docs/SHIPSTATION_SETUP_CHECKLIST.md`** — connect the Custom Store, set the endpoint URL + Basic-Auth creds, map statuses + shipping methods, have the co-man tag Raw SKUs `cold-chain`, set the automation rules (launch-blocking), the email BCC, and the packing-slip token.
+See **`SHIPSTATION_SETUP_CHECKLIST.md`** — connect the Custom Store, set the endpoint URL + Basic-Auth creds, map statuses + shipping methods, have the co-man tag Raw SKUs `cold-chain`, set the automation rules (launch-blocking), the email BCC, and the packing-slip token.
 
 ## Build order (Phase 3)
 1. ~~Sandbox/duplicate ShipStation store first.~~ **Abandoned** — the behaviours needing test aren't available in a sandbox store. Work runs against production, with app-side **test mode** (`VITE_SAMPLE_TEST_MODE`) as the safety net. See ADR-029 and checklist §8b.

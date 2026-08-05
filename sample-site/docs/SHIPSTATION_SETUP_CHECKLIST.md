@@ -4,7 +4,7 @@ Everything that has to be true before Cortina can place real sample orders.
 Mostly ShipStation-dashboard config for the **Custom Store** integration
 (ADR-028) — the settings the app can't set via the API — plus **§A**, the
 app-side prerequisites that live nowhere else. Pairs with
-`docs/SHIPSTATION_INTEGRATION.md`.
+`SHIPSTATION_INTEGRATION.md`.
 
 > **No sandbox — this is the production store.** The sandbox path was tried and
 > abandoned: most of what needed testing (real carrier services, the connected
@@ -90,8 +90,10 @@ rules (§3), and whoever buys the label.
 ## 3. Automation rules 🚦 LAUNCH-BLOCKING
 Rule on **order tags / CustomFields — never on Item SKU** (SKU rules silently ignore multi-item orders):
 - [ ] `if order includes the cold-chain product tag` → refrigerated service + insulated box **+ upgrade to a next-day service** (this is how frozen products get expedited, overriding the requested tier — the app itself never expedites).
-- [ ] `if CustomField2 = custom-request` → route to **manual review** (no auto-fulfil).
-- [x] `if CustomField1 = rush` → **team notification email. Built July 28, 2026.** Confirms ShipStation's rule actions can send mail, so no app-side sender is needed. Note it fires on **import**, not on submit — so there is a lag of up to the import interval, and per ADR-027 rules run once on import, so a rush flag added after import will not re-trigger it.
+- [ ] 🚨 **RE-POINT THE RUSH RULE (ADR-037).** Final mapping: **CF1 = salesperson, CF2 = account, CF3 = temp override**, and **rush lives in InternalNotes as the literal `RUSH`**. The July 28 rule reads `CustomField1 = rush` and matches nothing — rush orders notify no one, silently. Change it to **`Internal Notes` → `contains` → `RUSH`**. (Confirmed supported: ShipStation's *Automation Rules Criteria and Actions* lists Internal Notes with equal/contain/start/end/blank.) *Caroline owns this edit.*
+- [ ] **Optional new rule — manual temp override.** `CustomField3` is blank unless someone overrode the derived handling temp, so `Custom Field 3` → `is not blank` flags exactly the orders where a human made a judgement call.
+- [ ] ⚠️ **`custom-request` no longer has a rule-matchable home.** CF2 used to carry it; it now carries the account. Custom lines are still visible as a `CUSTOM` **line item**, but §3's own warning applies — *never rule on Item SKU, it silently ignores multi-item orders* — so a SKU rule is not a safe substitute. Options: an Order Tag, or reclaim a CustomField. **Unresolved.**
+- [x] ~~`if CustomField1 = rush` → team notification email~~ **Built July 28, 2026 — now mis-pointed, see above.** Confirms ShipStation's rule actions can send mail, so no app-side sender is needed. Note it fires on **import**, not on submit — so there is a lag of up to the import interval, and per ADR-027 rules run once on import, so a rush flag added after import will not re-trigger it.
 - [ ] (No service rule needed for speed — the app sends no `ShippingMethod` at all as of ADR-031.)
 
 ## 4. Product tags — cold-chain (co-man owns this) 🚦 LAUNCH-BLOCKING — now live
@@ -104,9 +106,20 @@ Rule on **order tags / CustomFields — never on Item SKU** (SKU rules silently 
 - [ ] **The app no longer sends any box intent** (ADR-031 dropped `box_spec`; CustomField1 now carries `rush`). Box choice is entirely the co-man's, driven by the cold-chain tag and their own judgement.
 
 ## 6. Packing slip — collateral + warming instructions
-- [ ] Create a **custom packing-slip template**.
-- [ ] Add a **Field-Replacement** token bound to the order **Notes / InternalNotes** field (where the app writes the collateral checklist incl. **Warming instructions**, plus custom-item specs + project #s).
-- [ ] Do **not** use CustomFields for the collateral list — 100-char silent truncation. The app already puts lists in the 1000-char InternalNotes.
+
+> **Changed Aug 4, 2026 (ADR-035).** Collateral and custom lines are now real
+> **line items** on the order, so they appear on the order page and the standard
+> pick list with no template work. Collateral was **removed** from InternalNotes
+> to avoid printing twice.
+
+- [x] ~~Expect new product records~~ — **no longer applies (ADR-038).** Custom
+      and collateral lines are emitted with an **empty SKU**, so ShipStation has
+      nothing to auto-create a product record from. Only real catalog SKUs
+      import as products.
+- [ ] (Optional) Custom packing-slip template with a **Field-Replacement** token
+      bound to **Notes / InternalNotes** — still worth it for what remains there:
+      handling, deliver-by, custom specs, third-party billing.
+- [ ] Do **not** use CustomFields for lists — 100-char silent truncation.
 
 ## 7. Email / CC — copy `samplesmngmt@cortinafoods.com`
 Copy the sample-mgmt inbox on **all orders, shipments, deliveries** — two places:
@@ -115,7 +128,7 @@ Copy the sample-mgmt inbox on **all orders, shipments, deliveries** — two plac
 
 ## 8. Verify — mapping test, no label needed
 - [ ] Trigger a **manual store import** in ShipStation.
-- [ ] Confirm a sample order lands in the dashboard with fields mapped: ship-to, items (SKU=product_code), **no ShippingMethod** (service falls to the store default), CustomField1 = `rush` when flagged, CustomField2 = `custom-request` when present, InternalNotes (collateral/warming/custom specs).
+- [ ] Confirm a sample order lands in the dashboard with fields mapped: ship-to, **items (catalog SKUs + `CUSTOM` + `COLLATERAL-*`)**, **no ShippingMethod** (service falls to the store default), **CustomField1 = salesperson**, **CustomField2 = account**, **CustomField3 = `rush` when flagged**, InternalNotes (site note + third-party billing only).
 - [ ] Confirm an invalid address (bad State/zip) does **not** silently vanish — the export skips+logs it (check the function logs).
 - [ ] (Optional) Test a full ship: mark shipped in ShipStation → confirm `shipnotify` updates `sample_shipments` (tracking #, status → shipped).
 
