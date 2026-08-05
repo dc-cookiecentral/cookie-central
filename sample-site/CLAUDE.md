@@ -92,14 +92,14 @@ label says **"Deliver by"**. Deliberate — renaming the column wasn't worth the
 ## Shared infrastructure — the one real overlap
 
 `EDGE_CRON_BEARER` (Vault) is the bearer for **every** pg_cron → Edge Function
-call in the repo, this project's and the other project's. It is currently
-**invalid** (26 chars, not a JWT), so every scheduled job returns
-`401 UNAUTHORIZED_INVALID_JWT_FORMAT`. Fixing it is one statement and repairs
-both projects at once:
+call in the repo, this project's and the other project's. It held a 26-char
+placeholder until **Aug 4 2026**, so every scheduled job had been returning
+`401 UNAUTHORIZED_INVALID_JWT_FORMAT` since creation — the Deliver By sweep from
+day one, the other project's Gmail poll for ~2 months. Now set to the real
+service-role key (219 chars, 3 segments) and verified `200`.
 
-```sql
-select public.set_secret('EDGE_CRON_BEARER', '<service_role key>');
-```
+If a scheduled job ever looks dead, check **`net._http_response`** — not
+`cron.job_run_details`.
 
 ## Current state
 
@@ -108,10 +108,11 @@ billing) and the Deliver By sweep function — both deployed, verified against
 `SMP-TEST-1055`.
 
 **Blocked:**
-1. **The sweep never runs on schedule** — the `EDGE_CRON_BEARER` above. It works
-   correctly when invoked by hand.
-2. **The "Deliver by" UI rename is not deployed.** Commits sit unpushed on
-   `feat/shipstation`; Edge Functions bypass git, the frontend does not.
+1. **The "Deliver by" UI rename is not live.** `feat/shipstation` is pushed but
+   Vercel builds production from `main`, so the site still reads "Required by".
+   Needs a PR merge.
+2. **The rush rule is mis-pointed** — still reads `CustomField1 = rush`. Must
+   become `Internal Notes contains RUSH` or rush orders notify no one.
 
 **Open, undecided:**
 - `delivered` is unreachable — the Custom Store has no delivery event, and V2's
