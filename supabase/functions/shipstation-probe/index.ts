@@ -41,7 +41,10 @@ Deno.serve(async (req) => {
   if (pre) return pre;
 
   try {
-    const { shipment_no: shipmentNo, raw, export_hours: exportHours } = await req.json().catch(() => ({}));
+    const {
+      shipment_no: shipmentNo, raw, export_hours: exportHours,
+      capabilities, tracking_number: trackingNumber, carrier_code: carrierCode,
+    } = await req.json().catch(() => ({}));
 
     const supabase = serviceClient();
 
@@ -75,7 +78,73 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (!shipmentNo) return json({ error: 'pass { "shipment_no": "SMP-…" } or { "export_hours": 6 }' }, 400);
+    // capabilities: which V2 surfaces does this account's plan actually expose?
+    // ADR-034 recorded /v2/tracking as 401 "gated behind a billing-plan upgrade",
+    // which is the sole reason `delivered` was written off as unreachable. That
+    // was one observation on one day and it has never been re-tested — and 401 is
+    // an AUTH code, not an entitlement one (403), so the original reading may
+    // simply have been wrong. Everything here is a GET; nothing is created.
+    if (capabilities) {
+      const key = await getSecret(supabase, 'SHIPSTATION_V2_API_KEY');
+      if (!key) return json({ error: 'SHIPSTATION_V2_API_KEY missing from Vault' }, 500);
+
+      // Probe against a REAL tracking number — a synthetic one can 404 for
+      // reasons that have nothing to do with entitlement, which would muddy
+      // exactly the question being asked.
+      let tn = trackingNumber ?? null;
+      let cc = carrierCode ?? null;
+      if (!tn) {
+        const { data } = await supabase
+          .from('sample_shipments')
+          .select('tracking_number, carrier')
+          .not('tracking_number', 'is', null)
+          .order('shipped_at', { ascending: false })
+          .limit(1);
+        if (data?.length) {
+          tn = data[0].tracking_number as string;
+          // ShipNotice sends a display name ("UPS"); tracking wants a code.
+          const c = String(data[0].carrier ?? '').toLowerCase();
+          cc = /usps|stamps|endicia/.test(c) ? 'stamps_com'
+            : /fedex/.test(c) ? 'fedex'
+            : /dhl/.test(c) ? 'dhl_express'
+            : /ups/.test(c) ? 'ups'
+            : null;
+        }
+      }
+
+      const probes: Array<{ what: string; path: string }> = [
+        { what: 'baseline (key works at all)', path: '/v2/carriers' },
+        { what: 'webhook subscriptions', path: '/v2/environment/webhooks' },
+        { what: 'webhook subscriptions (alt path)', path: '/v2/webhooks' },
+      ];
+      if (tn && cc) {
+        probes.push({
+          what: 'tracking — the delivered question',
+          path: `/v2/tracking?carrier_code=${encodeURIComponent(cc)}&tracking_number=${encodeURIComponent(tn)}`,
+        });
+      }
+
+      const results = [];
+      for (const p of probes) {
+        const r = await ss(key, p.path);
+        results.push({
+          what: p.what,
+          path: p.path.replace(/tracking_number=[^&]*/, 'tracking_number=…'),
+          http_status: r.status,
+          ok: r.ok,
+          // The body is where an entitlement message actually explains itself;
+          // the status code alone is what caused the original misreading.
+          body: r.ok
+            ? (Array.isArray((r.body as Record<string, unknown>)?.carriers)
+                ? `ok — ${((r.body as Record<string, unknown>).carriers as unknown[]).length} carriers`
+                : r.body)
+            : ((r.body ?? (r as { text?: string }).text ?? null)),
+        });
+      }
+      return json({ probed_with: { tracking_number: tn ? `${tn.slice(0, 6)}…` : null, carrier_code: cc }, results });
+    }
+
+    if (!shipmentNo) return json({ error: 'pass { "shipment_no": "SMP-…" }, { "export_hours": 6 } or { "capabilities": true }' }, 400);
     const key = await getSecret(supabase, 'SHIPSTATION_V2_API_KEY');
     if (!key) return json({ error: 'SHIPSTATION_V2_API_KEY missing from Vault' }, 500);
 
