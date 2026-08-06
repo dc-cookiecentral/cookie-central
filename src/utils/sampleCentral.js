@@ -113,3 +113,42 @@ export const TP_NOTICE =
 export const tpComplete = (h) =>
   !h.third_party_billing || !!(h.tp_carrier && String(h.tp_account || '').trim() && String(h.tp_postal_code || '').trim());
 
+// ── Carrier tracking links ──────────────────────────────────────────────────
+// `carrier` is written by shipnotify from the ShipNotice's <Carrier> element,
+// which sends a DISPLAY NAME — "UPS", not the carrier code "ups" (verified
+// against SMP-TEST-1060, whose service also came through decorated as
+// "UPS® Ground"). A lookup keyed on ShipStation's API carrier codes would miss
+// every time, and it would miss *silently*: the number would just keep
+// rendering as plain text and look like the feature was never built.
+//
+// So match on a normalised substring rather than an exact key. That also
+// absorbs the variants the same carrier arrives under — USPS labels bought
+// through a reseller report as "Stamps.com" or "Endicia", not "USPS".
+const TRACKING_URLS = [
+  [/usps|stamps|endicia/, (n) => `https://tools.usps.com/go/TrackConfirmAction?tLabels=${n}`],
+  [/fedex/,               (n) => `https://www.fedex.com/fedextrack/?trknbr=${n}`],
+  [/dhl/,                 (n) => `https://www.dhl.com/us-en/home/tracking/tracking-express.html?submit=1&tracking-id=${n}`],
+  [/ups/,                 (n) => `https://www.ups.com/track?loc=en_US&requester=ST&tracknum=${n}`],
+];
+
+// Only UPS and USPS are connected on the account today, but a third-party-billed
+// label rides the customer's own account and can be FedEx or DHL (TP_CARRIERS
+// offers both), so those are worth carrying rather than discovering later.
+//
+// When the carrier is missing or unrecognised, fall back to the number's own
+// shape — but only for the two shapes that are unambiguous. A wrong guess sends
+// a salesperson to a carrier site that reports "not found", which reads as a
+// lost parcel; plain text is the safer failure.
+export function trackingUrl(carrier, trackingNumber) {
+  const n = String(trackingNumber ?? '').trim();
+  if (!n) return null;
+
+  const key = String(carrier ?? '').toLowerCase();
+  const hit = TRACKING_URLS.find(([re]) => re.test(key));
+  if (hit) return hit[1](encodeURIComponent(n));
+
+  if (/^1Z[0-9A-Z]+$/i.test(n)) return TRACKING_URLS[3][1](encodeURIComponent(n));  // UPS
+  if (/^\d{20,22}$/.test(n)) return TRACKING_URLS[0][1](encodeURIComponent(n));     // USPS
+  return null;
+}
+

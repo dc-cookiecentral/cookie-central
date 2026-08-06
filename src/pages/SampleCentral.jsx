@@ -8,7 +8,7 @@ import {
   flavorFamily, derivedTemp, effectiveTemp, groupCatalog,
   SHIP_STATUSES, EXCEPTION_STATUSES, COLLATERAL_OPTIONS, RUSH_NOTICE,
   TP_CARRIERS, TP_NOTICE, tpComplete,
-  TEST_MODE, SHIPMENT_PREFIX,
+  TEST_MODE, SHIPMENT_PREFIX, trackingUrl,
 } from '../utils/sampleCentral';
 
 // Sample Central runs OUTSIDE the shared Layout (App.jsx) so it can carry the
@@ -598,7 +598,7 @@ function ShipmentCard({ s, open, onToggle }) {
             </KV>
             {s.tracking_number && (
               <KV label="Tracking">
-                <span className="font-mono">{s.tracking_number}</span>{s.carrier ? ` · ${s.carrier}` : ''}{s.service ? ` · ${s.service}` : ''}
+                <TrackingLink number={s.tracking_number} carrier={s.carrier} />{s.carrier ? ` · ${s.carrier}` : ''}{s.service ? ` · ${s.service}` : ''}
               </KV>
             )}
             {s.shipped_at && <KV label="Shipped">{new Date(s.shipped_at).toLocaleDateString()}{s.label_created_at ? ` · label ${new Date(s.label_created_at).toLocaleString()}` : ''}</KV>}
@@ -643,6 +643,26 @@ function KV({ label, children }) {
       <div className="text-[10.5px] text-gr uppercase font-bold tracking-wider mb-0.5">{label}</div>
       <div className="text-[12.5px] text-dk">{children}</div>
     </div>
+  );
+}
+
+// The tracking number, linked to the carrier's tracking page when we can work
+// out which carrier it is. Degrades to exactly what it rendered before — plain
+// mono text — rather than a dead link, because a link that lands on "not found"
+// reads to a salesperson as a lost parcel.
+function TrackingLink({ number, carrier }) {
+  const href = trackingUrl(carrier, number);
+  if (!href) return <span className="font-mono">{number}</span>;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      title={`Track this shipment${carrier ? ` with ${carrier}` : ''}`}
+      className="font-mono text-pk font-semibold hover:underline"
+    >
+      {number}
+    </a>
   );
 }
 

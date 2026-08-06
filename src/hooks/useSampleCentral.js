@@ -21,7 +21,13 @@ export function useSampleCentral() {
       supabase.from('addresses').select('*').order('nickname'),
       supabase
         .from('sample_shipments')
-        .select('*, salesperson:salesperson_user_id ( id, full_name, email ), sample_shipment_items ( * )')
+        // `address:addresses!address_id` must use the explicit table!fk form —
+        // the embed was missing entirely, so every card rendered Ship To as
+        // "—" and ", ,". The Edge Function's export query (which has always
+        // carried it) is the reference for this shape; see ADR-029 #4, where
+        // the FK-column short form silently returned null and dropped every
+        // order from the export.
+        .select('*, salesperson:salesperson_user_id ( id, full_name, email ), address:addresses!address_id ( * ), sample_shipment_items ( * )')
         .order('created_at', { ascending: false }),
       supabase.from('sample_templates').select('*').order('name'),
       supabase
