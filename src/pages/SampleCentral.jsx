@@ -17,9 +17,14 @@ import {
 // prototype's own chrome: an aubergine top nav, three tabs, and the shipment
 // builder as a slide-out drawer rather than a tab. See ADR-030.
 const FILTERS = ['All', 'Stuffed', 'Shot', 'Gourmet', 'Classic'];
+// "Pending Shipments" was wrong twice over: the tab has always listed shipped
+// and cancelled orders too, and it now leads with an Ordered section. Every row
+// is a sample_shipments record whatever its status, so the plain noun is the
+// honest label. `key` stays `mission` — it is persisted in component state and
+// renaming it buys nothing.
 const TABS = [
   { key: 'shop', label: 'Order Samples' },
-  { key: 'mission', label: 'Pending Shipments' },
+  { key: 'mission', label: 'Shipments' },
   { key: 'address', label: 'Address Book' },
 ];
 
@@ -478,7 +483,7 @@ function InlineAddress({ onSaved, canWrite, setToast }) {
   );
 }
 
-// ── Pending Shipments ───────────────────────────────────────────────────────
+// ── Shipments ───────────────────────────────────────────────────────────────
 // Status is READ-ONLY: it is owned by ShipStation. `submitted` is set at order
 // creation; the shipnotify POST advances it to `shipped` when the co-man buys a
 // label. Nothing in the app writes it, deliberately — an editable field here
