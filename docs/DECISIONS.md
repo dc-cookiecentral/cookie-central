@@ -538,3 +538,39 @@ And `InternalNotes` is reduced to **the site note plus third-party billing instr
 **Consequences.** The cold-chain product-tag path is untouched — it keys on real catalog SKUs, which still travel. No junk product records are created, retiring the warning ADR-035 added to checklist §6. Custom work remains identifiable to a human by its `<Name>`, but it is now **doubly unavailable as automation-rule criteria**: it has no CustomField (ADR-036) *and* no SKU. Given ShipStation's own warning that Item SKU rules silently ignore multi-item orders, a SKU rule was never viable anyway — an **Order Tag** remains the only safe route, still unbuilt.
 
 **Verified.** 100 `Deno.test` cases pass (1 new, 3 rewritten), including an assertion that no synthetic SKU survives anywhere in the document while the real catalog SKU still does. Generated XML inspected by hand. Deployed.
+
+## ADR-039: Awaiting Payment cannot be a holding state — rejected after live test
+
+**Date:** August 5, 2026
+**Status:** Tested against production and **rejected**. Export mapping reverted; no behaviour change survives.
+
+**The idea.** Import samples as **Awaiting Payment**, let the API set `deliver_by_date`, then promote to Awaiting Shipment — so an order only reaches the co-man's queue once complete, and automation rules (which fire on first move into Awaiting Shipment) would finally see a populated Deliver By.
+
+**Why it cannot work.** An order in Awaiting Payment has **no V2 shipment record at all** — `SMP-TEST-1057` was absent from every bucket (`pending`, `processing`, `label_purchased`, `on_hold`, `cancelled`). The sweep writes `deliver_by_date` via `PUT /v2/shipments/{id}`; with no shipment, **the design's own step 2 is impossible.** This is not a rule-timing or permissions problem — the object does not exist while parked.
+
+**Two corrections to earlier findings, both from this test:**
+1. **Re-import DOES update existing orders**, including status. ADR-034-era testing suggested otherwise, based on `SMP-TEST-1051`'s notes not changing after an import. That was wrong: ShipStation's own import window simply never reached it. Changing the exported status token moved **every** already-imported order in range.
+2. Automation rule **actions cannot change order status** — the documented action list has `Hold Until…` and `Hold the Order for…` but nothing that promotes an order into Awaiting Shipment. The original proposal (a rule watching for a non-null Deliver By) had no mechanism even before the shipment-record problem.
+
+**The blast radius, recorded because it was underestimated.** `ssStatus()` applies to *every* export, not just new orders. Flipping `submitted → 'unpaid'` swept all 7 in-window orders out of Awaiting Shipment and destroyed their shipment records with them. Reverting and re-importing recovered all of them, but the queue was empty for ~15 minutes. **A change to the status mapping is never scoped to new orders.**
+
+**Also found: the store was never configured per checklist §1.** It still runs ShipStation's default mapping (`unpaid` / `paid` / `shipped` / `cancelled` / `on_hold`), while the app was exporting `submitted` / `processing` verbatim — matching **nothing**. Orders reached Awaiting Shipment only via ShipStation's fallback for unrecognised statuses. It was working by accident. The export now maps explicitly (`submitted`/`processing` → `paid`, `shipped`/`delivered` → `shipped`), so it works by design.
+
+⚠️ **`delivered` maps to `shipped` deliberately** — this store's mapping has no delivered bucket, and an unmapped status would take the fallback into *Awaiting Shipment*, resurrecting a finished order into the work queue. Latent today (nothing sets `delivered`) but it is the same class of accident as the above.
+
+**What survives.** The instinct was sound: rules firing at import, before Deliver By exists, is a real limitation. Deliver By *is* valid rule criteria, so a rule can act on it once set — it just cannot gate entry into the queue. Any future attempt needs a mechanism that does not require the order to be invisible while being prepared.
+
+## ADR-040: `cancelled` / `on_hold` sync back from ShipStation — cancels pending, holds blocked
+
+**Date:** August 5, 2026
+**Status:** Built and deployed. **`cancelled` unverified, `on_hold` known not to work.** Branch `feat/shipstation`.
+
+**Why.** ShipStation owns fulfilment state and the site could not represent two states it can set. A cancelled order showed as awaiting fulfilment indefinitely, and a salesperson would chase a shipment that no longer existed.
+
+**What shipped.** Migration `20260805050000` widens `sample_shipments.status` to include `cancelled` and `on_hold`. The 15-minute sweep gained a second, inbound job: read ShipStation's buckets and write the state back. Decision logic is the pure `syncedStatus()` in `_shared/shipstation.ts`, with two tested invariants — it **never** overrides `shipped`/`delivered` (shipnotify owns those), and it is **reversible**, so an order released in ShipStation returns to `submitted` instead of latching on the first exception. The site remains authoritative for the *date*; ShipStation for the *state*.
+
+**UI.** These are **not** pipeline stages. `SHIP_STATUSES` is indexed to render a progress stepper, so adding them would make `indexOf` return `-1` on a cancelled order and grey every dot — reading as "stuck at submitted". They live in a separate `EXCEPTION_STATUSES`, render as amber/red pills, get count tiles **only when non-zero** (a permanent pair of zeroes trains people to ignore them), and replace the stepper with a plain explanation.
+
+**⚠️ `on_hold` does not work, and cannot with the credentials we hold.** Tested live: an order set On Hold in the ShipStation UI stays `shipment_status: pending` — polled for two minutes. **V2's `shipment_status` is the label lifecycle** (`pending` → `label_purchased`), not the order's status. An order on hold has no label, so it is indistinguishable from one awaiting shipment. The `on_hold` bucket that exists in V2 is a *shipment*-level hold, a different concept. This is the same lesson as ADR-039: **the V2 shipments API does not reflect order-level status.**
+
+**Open.** (a) Does an order-level **cancel** propagate to `shipment_status: cancelled`? Untested — a shipment-level cancel does, but they may differ. (b) If holds matter, the only route is a **V1 API key** (key + secret, distinct from the V2 key), whose `/orders` exposes true order status. That means holding a V1 credential the project has so far avoided, against an API ShipStation has said will eventually deprecate.

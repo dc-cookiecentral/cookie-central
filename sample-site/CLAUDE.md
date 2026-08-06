@@ -85,6 +85,11 @@ label says **"Deliver by"**. Deliberate — renaming the column wasn't worth the
 - **No sandbox.** This is the production store. `VITE_SAMPLE_TEST_MODE=true`
   prefixes `SMP-TEST-####` but does **not** withhold orders from the co-man's
   real queue.
+- **V2's shipments API does not reflect ORDER status.** `shipment_status` is the
+  label lifecycle (`pending`/`processing`/`label_purchased`/`on_hold`/`cancelled`).
+  An order in **Awaiting Payment** has no shipment record at all (ADR-039); an
+  order **On Hold** still reads `pending` (ADR-040). Anything needing true order
+  status needs a **V1 key** — which the project deliberately does not hold.
 - **NEVER call `POST /v2/shipments`.** It creates a shipment ShipStation files
   under its own pseudo-store ("API Shipments"), separate from the Custom Store —
   orders there bypass `shipnotify` writeback and the status mapping entirely. A
@@ -114,12 +119,23 @@ If a scheduled job ever looks dead, check **`net._http_response`** — not
 billing) and the Deliver By sweep function — both deployed, verified against
 `SMP-TEST-1055`.
 
-**Blocked:**
-1. **The "Deliver by" UI rename is not live.** `feat/shipstation` is pushed but
-   Vercel builds production from `main`, so the site still reads "Required by".
-   Needs a PR merge.
-2. **The rush rule is mis-pointed** — still reads `CustomField1 = rush`. Must
-   become `Internal Notes contains RUSH` or rush orders notify no one.
+**Live and verified:** Deliver By sweep (15-min cron, unattended), the field
+contract, the "Deliver by" UI label, explicit status mapping, and the
+`shipstation-probe` read-only inspector.
+
+**`cancelled` sync works — verified end to end** (ADR-040). Cancelling
+`SMP-TEST-1052` in ShipStation flipped the site to `cancelled` on the next sweep,
+and a second run was a no-op. **`on_hold` does NOT work and cannot** — V2's
+`shipment_status` is the label lifecycle, so an order On Hold still reads
+`pending`. Reaching it needs a V1 key.
+
+⚠️ **Known scaling limit — pick up here.** The sweep pages through the `cancelled`
+bucket every run (1,675 shipments and growing) and takes **~17s** against a 30s
+cron timeout. It will eventually breach `MAX_PAGES` (reported in
+`truncated_buckets`, never swallowed) or time out. The real fix is to stop
+scanning: store each order's `shipment_id` on first sight — `sample_shipments.
+shipstation_order_id` exists and is unused — then `GET /v2/shipments/{id}` per
+tracked order. That is ~16 cheap calls instead of paging an unbounded history.
 
 **Open, undecided:**
 - `delivered` is unreachable — the Custom Store has no delivery event, and V2's

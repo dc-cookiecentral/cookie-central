@@ -22,7 +22,9 @@ import {
   ordersDocument,
   parseAmount,
   parseSSDate,
+  NO_EXPORT_STATUSES,
   ssStatus,
+  syncedStatus,
   tagValue,
   validState,
   validZip,
@@ -211,12 +213,73 @@ Deno.test('parseAmount: returns null rather than NaN for junk', () => {
 });
 
 // ── ssStatus ────────────────────────────────────────────────────────────────
-Deno.test('ssStatus: exports the app status verbatim, never mapped to Paid', () => {
-  for (const s of ['submitted', 'processing', 'shipped', 'delivered']) assertEquals(ssStatus(s), s);
+Deno.test('ssStatus: submitted reaches the work queue (paid), NEVER unpaid', () => {
+  // unpaid parks it in Awaiting Payment, where it has no shipment record and
+  // the Deliver By sweep cannot reach it. See ADR-039.
+  assertEquals(ssStatus('submitted'), 'paid');
 });
-Deno.test('ssStatus: defaults null and undefined to submitted', () => {
-  assertEquals(ssStatus(null), 'submitted');
-  assertEquals(ssStatus(undefined), 'submitted');
+Deno.test('ssStatus: processing also maps to the work queue', () => {
+  assertEquals(ssStatus('processing'), 'paid');
+});
+Deno.test('ssStatus: shipped and delivered both map to shipped', () => {
+  assertEquals(ssStatus('shipped'), 'shipped');
+  // The store's mapping has no delivered bucket; unmapped would fall back to
+  // Awaiting Shipment and resurrect a finished order into the queue.
+  assertEquals(ssStatus('delivered'), 'shipped');
+});
+Deno.test('ssStatus: cancelled and on_hold map to themselves, NOT to the queue', () => {
+  // Regression. These were absent from the map, so both hit the `paid` fallback
+  // and an exported cancelled order came back as Awaiting Shipment. The tokens
+  // match the store's configured mapping (ShipStation's defaults).
+  assertEquals(ssStatus('cancelled'), 'cancelled');
+  assertEquals(ssStatus('on_hold'), 'on_hold');
+});
+Deno.test('NO_EXPORT_STATUSES: exception statuses are never handed back', () => {
+  // ShipStation owns fulfilment state; the export must not push it back.
+  assertEquals(NO_EXPORT_STATUSES.includes('cancelled'), true);
+  assertEquals(NO_EXPORT_STATUSES.includes('on_hold'), true);
+  assertEquals(NO_EXPORT_STATUSES.includes('submitted'), false);
+  assertEquals(NO_EXPORT_STATUSES.includes('shipped'), false);
+});
+Deno.test('ssStatus: defaults null and undefined to the work queue', () => {
+  assertEquals(ssStatus(null), 'paid');
+  assertEquals(ssStatus(undefined), 'paid');
+});
+Deno.test('ssStatus: an unknown status falls back to the work queue, never limbo', () => {
+  assertEquals(ssStatus('something-new'), 'paid');
+});
+
+// ── syncedStatus ────────────────────────────────────────────────────────────
+Deno.test('syncedStatus: a ShipStation cancel wins over an open order', () => {
+  assertEquals(syncedStatus('cancelled', 'submitted'), 'cancelled');
+  assertEquals(syncedStatus('cancelled', 'processing'), 'cancelled');
+});
+Deno.test('syncedStatus: a hold wins over an open order', () => {
+  assertEquals(syncedStatus('on_hold', 'submitted'), 'on_hold');
+});
+Deno.test('syncedStatus: no write when the app already agrees', () => {
+  assertEquals(syncedStatus('cancelled', 'cancelled'), null);
+  assertEquals(syncedStatus('on_hold', 'on_hold'), null);
+  assertEquals(syncedStatus('pending', 'submitted'), null);
+});
+Deno.test('syncedStatus: NEVER overrides shipped or delivered', () => {
+  // shipnotify owns these; a shipped order can still sit in an active bucket.
+  for (const b of ['cancelled', 'on_hold', 'pending', 'label_purchased']) {
+    assertEquals(syncedStatus(b, 'shipped'), null);
+    assertEquals(syncedStatus(b, 'delivered'), null);
+  }
+});
+Deno.test('syncedStatus: releasing a hold returns the order to the queue', () => {
+  assertEquals(syncedStatus('pending', 'on_hold'), 'submitted');
+  assertEquals(syncedStatus('label_purchased', 'on_hold'), 'submitted');
+});
+Deno.test('syncedStatus: un-cancelling in ShipStation restores the order', () => {
+  assertEquals(syncedStatus('pending', 'cancelled'), 'submitted');
+});
+Deno.test('syncedStatus: an order absent from ShipStation is left alone', () => {
+  // Not yet imported, or purged. Guessing here would fight the export.
+  assertEquals(syncedStatus(null, 'submitted'), null);
+  assertEquals(syncedStatus(null, 'cancelled'), null);
 });
 
 // ── rushFlag (CustomField1) ─────────────────────────────────────────────────
@@ -354,8 +417,9 @@ Deno.test('buildOrderXml: includes OrderTotal 0.00, required by the XSD; samples
 Deno.test('buildOrderXml: keys the order on shipment_no via OrderNumber', () => {
   assertEquals(el(buildOrderXml(shipment()), 'OrderNumber'), 'SMP-1044');
 });
-Deno.test('buildOrderXml: exports status verbatim', () => {
-  assertEquals(el(buildOrderXml(shipment({ status: 'processing' })), 'OrderStatus'), 'processing');
+Deno.test('buildOrderXml: OrderStatus is the mapped token, not the app status', () => {
+  assertEquals(el(buildOrderXml(shipment({ status: 'processing' })), 'OrderStatus'), 'paid');
+  assertEquals(el(buildOrderXml(shipment({ status: 'submitted' })), 'OrderStatus'), 'paid');
 });
 Deno.test('buildOrderXml: uses created_at for OrderDate and updated_at for LastModified', () => {
   const xml = buildOrderXml(shipment());
