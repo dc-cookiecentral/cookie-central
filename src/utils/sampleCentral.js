@@ -74,7 +74,63 @@ export function nextShipmentNo(existing) {
 
 // The linear pipeline. Order matters — the shipment card renders it as a
 // progress stepper and indexes into it.
-export const SHIP_STATUSES = ['submitted', 'processing', 'shipped', 'delivered'];
+//
+// `processing` is deliberately NOT here. Nothing has ever written it — shipnotify
+// jumps submitted → shipped on label purchase, and the sweep only ever writes
+// cancelled/on_hold/submitted. It cannot be honestly sourced either: V2 has a
+// `processing` bucket, but that is the LABEL lifecycle (a brief state while a
+// label request is processed), not "the co-man is picking this order". Rendering
+// it as a stage meant a permanent dead dot AND a lie — the stepper fills every
+// dot below the current index, so a shipped order showed `processing` in green
+// as though something had observed it.
+export const SHIP_STATUSES = ['submitted', 'shipped', 'delivered'];
+
+// Statuses still awaiting fulfilment. `processing` is accepted here because the
+// DB CHECK still permits it and ssStatus() treats it as the same queue as
+// submitted — so a row holding it stays sane rather than falling off the stepper.
+export const OPEN_STATUSES = ['submitted', 'processing'];
+
+// Everything that has physically left. Grouped because the sales team's question
+// is "has it gone out", not "which of the two post-label states is it in" —
+// especially while `delivered` has no source and every shipped order sits in the
+// first of them.
+export const SHIPPED_STATUSES = ['shipped', 'delivered'];
+
+// Default window for both sections. Sample orders are a steady trickle, so the
+// recent handful is the working set; anything older is looked up by number.
+export const RECENT_DAYS = 10;
+
+/** Stepper position. `processing` shares submitted's slot; -1 means off-pipeline. */
+export const pipelineIndex = (status) =>
+  status === 'processing' ? 0 : SHIP_STATUSES.indexOf(status);
+
+// Deadline pressure for an order still awaiting fulfilment. This is the one
+// genuinely informative axis the site has today: nearly every open order carries
+// a required_by, and "will it arrive in time" is the question salespeople
+// actually ask — unlike "which stage is it in", where there are only two answers.
+//
+// Parsed as a LOCAL date. `new Date('2026-08-20')` is UTC midnight, which renders
+// as the 19th anywhere west of Greenwich — an off-by-one on the exact field the
+// whole feature is about.
+export function deliverByState(requiredBy, status) {
+  if (!requiredBy || !OPEN_STATUSES.includes(status)) return null;
+  const [y, m, d] = String(requiredBy).split('-').map(Number);
+  if (!y || !m || !d) return null;
+  const due = new Date(y, m - 1, d);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = Math.round((due - today) / 86400000);
+  return {
+    days,
+    overdue: days < 0,
+    dueSoon: days >= 0 && days <= 2,
+    label: days < 0
+      ? `${-days}d overdue`
+      : days === 0 ? 'due today'
+      : days === 1 ? 'due tomorrow'
+      : `${days}d left`,
+  };
+}
 
 // Off-pipeline states ShipStation can put an order into. They are NOT stages:
 // an order does not progress *through* on_hold, it sits outside the flow until

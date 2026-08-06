@@ -6,7 +6,9 @@ import {
 } from '../hooks/useSampleCentral';
 import {
   flavorFamily, derivedTemp, effectiveTemp, groupCatalog,
-  SHIP_STATUSES, EXCEPTION_STATUSES, COLLATERAL_OPTIONS, RUSH_NOTICE,
+  SHIP_STATUSES, EXCEPTION_STATUSES, OPEN_STATUSES, SHIPPED_STATUSES, RECENT_DAYS,
+  COLLATERAL_OPTIONS, RUSH_NOTICE,
+  pipelineIndex, deliverByState,
   TP_CARRIERS, TP_NOTICE, tpComplete,
   TEST_MODE, SHIPMENT_PREFIX, trackingUrl,
 } from '../utils/sampleCentral';
@@ -481,79 +483,292 @@ function InlineAddress({ onSaved, canWrite, setToast }) {
 // creation; the shipnotify POST advances it to `shipped` when the co-man buys a
 // label. Nothing in the app writes it, deliberately — an editable field here
 // would let the two systems disagree with no way to reconcile.
+// ── Column sets ─────────────────────────────────────────────────────────────
+// Deliberately DIFFERENT per section. Once an order has shipped, its deliver-by
+// deadline and line count stop being the question and "where is it" starts — so
+// the shipped table trades those columns for carrier, tracking and cost. A
+// single shared column set would have to show the union, half of it blank.
+const chip = 'text-[10px] font-bold uppercase px-1.5 py-px rounded whitespace-nowrap';
+
+const colOrder = {
+  label: 'Order',
+  render: ({ s }) => <span className="font-mono text-[12px] font-bold text-dk">{s.shipment_no}</span>,
+};
+const colAccount = {
+  label: 'Account',
+  render: ({ s }) => (
+    <>
+      <div className="text-[12.5px] text-dk truncate">{s.account || '—'}</div>
+      <div className="text-[11px] text-gr truncate">{s.salesperson?.full_name || 'Unknown'}</div>
+    </>
+  ),
+};
+// Only the exceptional gets a mark. Normal is now the ABSENCE of a chip, which
+// is what lets Rush actually stand out — previously it competed with a
+// third-party-billing chip on every second row.
+const colFlags = {
+  label: 'Flags',
+  cls: 'sm:justify-self-end',
+  render: ({ s, hasCustom }) => (
+    <div className="flex flex-wrap gap-1">
+      {s.rush && <span className={`${chip} bg-red-600 text-white`}>Rush</span>}
+      <TempBadge temp={s.temp} overridden={!!s.temp_override} />
+      {hasCustom && <span className={`${chip} bg-pink-100 text-pk`}>Custom</span>}
+      {s.third_party_billing && <span className={`${chip} bg-violet-100 text-violet-700`}>3rd-party</span>}
+    </div>
+  ),
+};
+
+const ORDERED_COLS = {
+  grid: 'sm:grid-cols-[128px_minmax(0,1fr)_64px_132px_minmax(0,auto)_14px]',
+  cells: [
+    colOrder,
+    colAccount,
+    {
+      label: 'Items',
+      render: ({ items }) => (
+        <span className="text-[12px] text-gr whitespace-nowrap">
+          {items.length} · {items.reduce((n, i) => n + (i.qty || 0), 0)}
+        </span>
+      ),
+    },
+    {
+      label: 'Deliver by',
+      render: ({ s, due }) => !s.required_by ? <span className="text-[12px] text-gr">—</span> : (
+        <div className="whitespace-nowrap">
+          <span className="text-[12px] text-dk">{s.required_by}</span>
+          {due && (
+            <span className={`ml-1.5 text-[10.5px] font-bold ${due.overdue ? 'text-red-700' : due.dueSoon ? 'text-amber-700' : 'text-gr'}`}>
+              {due.label}
+            </span>
+          )}
+        </div>
+      ),
+    },
+    colFlags,
+  ],
+};
+
+const SHIPPED_COLS = {
+  grid: 'sm:grid-cols-[128px_minmax(0,1fr)_88px_minmax(0,116px)_minmax(0,166px)_58px_14px]',
+  cells: [
+    colOrder,
+    colAccount,
+    {
+      label: 'Shipped',
+      render: ({ s }) => (
+        <span className="text-[12px] text-dk whitespace-nowrap">
+          {s.shipped_at ? new Date(s.shipped_at).toLocaleDateString() : '—'}
+        </span>
+      ),
+    },
+    {
+      label: 'Carrier',
+      render: ({ s }) => <span className="text-[12px] text-gr truncate block">{s.service || s.carrier || '—'}</span>,
+    },
+    {
+      label: 'Tracking',
+      render: ({ s }) => s.tracking_number
+        ? <span className="text-[11.5px]"><TrackingLink number={s.tracking_number} carrier={s.carrier} /></span>
+        : <span className="text-[12px] text-gr">—</span>,
+    },
+    {
+      label: 'Cost',
+      cls: 'sm:text-right',
+      render: ({ s }) => (
+        <span className="text-[12px] text-dk whitespace-nowrap">
+          {s.shipping_cost != null ? `$${Number(s.shipping_cost).toFixed(2)}` : '—'}
+        </span>
+      ),
+    },
+  ],
+};
+
+const EXCEPTION_COLS = {
+  grid: 'sm:grid-cols-[128px_minmax(0,1fr)_minmax(0,220px)_14px]',
+  cells: [
+    colOrder,
+    colAccount,
+    {
+      label: 'What happened',
+      render: ({ s }) => (
+        <span className={`${chip} ${s.status === 'cancelled' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>
+          {s.status === 'cancelled' ? 'Cancelled' : 'On hold'} · ShipStation
+        </span>
+      ),
+    },
+  ],
+};
+
 function MissionView({ data }) {
   const [sp, setSp] = useState('All');
-  const [openId, setOpenId] = useState(null);
-  const rows = data.shipments.filter((s) => sp === 'All' || s.salesperson?.id === sp);
-  const stat = (st) => data.shipments.filter((s) => s.status === st).length;
+  const [q, setQ] = useState('');
+  const [showAll, setShowAll] = useState(false);
+  const [openIds, setOpenIds] = useState(() => new Set());
+
+  const query = q.trim().toLowerCase();
+  // A search is a deliberate hunt for one order, and the thing you cannot find
+  // is usually the old one — so a search always looks at the whole book. Leaving
+  // the 10-day window on would let it answer "no results" about an order that is
+  // sitting right there, which is worse than no search at all.
+  const windowed = !query && !showAll;
+
+  const visible = data.shipments.filter((s) => {
+    if (sp !== 'All' && s.salesperson?.id !== sp) return false;
+    if (query) return (s.shipment_no || '').toLowerCase().includes(query);
+    return true;
+  });
+
+  // Two sections, because "what have I ordered" and "what has gone out" are
+  // different questions asked at different moments. Each gets its own clock:
+  // an order is recent by when it was PLACED, a shipment by when it SHIPPED.
+  // A missing date shows rather than hides. shipped_at should always be set by
+  // shipnotify, but if it ever is not, dropping the row would report a clean
+  // "nothing shipped" about an order that did ship — the same silent
+  // incompleteness that has cost this project real time elsewhere.
+  const inWindow = (iso) => !windowed || !iso || Date.now() - new Date(iso).getTime() <= RECENT_DAYS * 86400000;
+  const ordered = visible.filter((s) => OPEN_STATUSES.includes(s.status) && inWindow(s.created_at));
+  const shipped = visible.filter((s) => SHIPPED_STATUSES.includes(s.status) && inWindow(s.shipped_at));
+  const exceptions = visible.filter((s) => EXCEPTION_STATUSES.includes(s.status));
+
+  const totalOpen = visible.filter((s) => OPEN_STATUSES.includes(s.status)).length;
+  const totalShipped = visible.filter((s) => SHIPPED_STATUSES.includes(s.status)).length;
+
+  const shown = [...ordered, ...shipped, ...exceptions];
+  const allOpen = shown.length > 0 && shown.every((s) => openIds.has(s.id));
+  const toggleAll = () => setOpenIds(allOpen ? new Set() : new Set(shown.map((s) => s.id)));
+  const toggleOne = (id) => setOpenIds((prev) => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
+  const Section = ({ title, note, rows, total, empty, cols }) => (
+    <div className="mb-5">
+      <div className="flex items-baseline gap-2 mb-2">
+        <h3 className="text-[13px] font-extrabold text-dk uppercase tracking-[.4px]">{title}</h3>
+        <span className="text-[11.5px] text-gr">
+          {rows.length}{windowed && total > rows.length ? ` of ${total}` : ''}
+          {note ? ` · ${note}` : ''}
+        </span>
+      </div>
+      {rows.length === 0 ? (
+        <div className="text-[12.5px] text-gr italic py-4 px-3 bg-cd border border-lt rounded-xl">{empty}</div>
+      ) : (
+        <>
+          {/* Desktop-only header. On mobile the rows stack and label themselves,
+              so a header here would caption columns that are not there. */}
+          <div className={`hidden sm:grid gap-x-3 px-3 pb-1 ${cols.grid}`}>
+            {cols.cells.map((c) => (
+              <div key={c.label} className={`text-[9.5px] text-gr uppercase font-bold tracking-[.5px] ${c.cls || ''}`}>
+                {c.label}
+              </div>
+            ))}
+          </div>
+          <div className="space-y-1.5">
+            {rows.map((s) => (
+              <ShipmentCard key={s.id} s={s} cols={cols} open={openIds.has(s.id)} onToggle={() => toggleOne(s.id)} />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+
   return (
     <div>
-      <div className="grid grid-cols-4 gap-2 mb-4">
-        {SHIP_STATUSES.map((s) => (
-          <div key={s} className="bg-cd border border-lt rounded-xl p-3">
-            <div className="text-[26px] font-extrabold tracking-[-0.5px] text-dk">{stat(s)}</div>
-            <div className="text-[11.5px] text-gr uppercase font-semibold tracking-[.4px]">{s}</div>
-          </div>
-        ))}
-      </div>
-      {/* Exceptions surface only when they exist — a permanent pair of zeroes
-          would train everyone to ignore them. */}
-      {EXCEPTION_STATUSES.some((s) => stat(s) > 0) && (
-        <div className="grid grid-cols-2 gap-2 mb-4">
-          {EXCEPTION_STATUSES.filter((s) => stat(s) > 0).map((s) => (
-            <div key={s} className={`rounded-xl p-3 border ${s === 'cancelled' ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}`}>
-              <div className={`text-[26px] font-extrabold tracking-[-0.5px] ${s === 'cancelled' ? 'text-red-700' : 'text-amber-800'}`}>{stat(s)}</div>
-              <div className={`text-[11.5px] uppercase font-semibold tracking-[.4px] ${s === 'cancelled' ? 'text-red-700' : 'text-amber-800'}`}>
-                {s === 'on_hold' ? 'on hold' : s} · set in ShipStation
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-      <div className="flex items-center gap-2 mb-3">
-        <span className="text-[11.5px] text-gr uppercase">Salesperson</span>
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search order no. (e.g. 1054)"
+          className="px-2.5 py-1.5 rounded-lg border border-lt text-[12.5px] bg-cd w-[210px]"
+        />
+        {q && (
+          <button onClick={() => setQ('')} className="text-[11.5px] text-pk font-semibold">Clear</button>
+        )}
+        <span className="text-[11.5px] text-gr uppercase ml-1">Salesperson</span>
         <select value={sp} onChange={(e) => setSp(e.target.value)} className="px-2 py-1 rounded border border-lt text-[12.5px] bg-cd">
           <option value="All">All</option>
           {data.salespeople.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
         </select>
+        <div className="flex-1" />
+        <button onClick={toggleAll} className="text-[11.5px] font-semibold px-2.5 py-1.5 rounded-lg border border-lt bg-cd text-gr hover:text-pk">
+          {allOpen ? 'Collapse all' : 'Expand all'}
+        </button>
+        <button
+          onClick={() => setShowAll((v) => !v)}
+          className={`text-[11.5px] font-semibold px-2.5 py-1.5 rounded-lg border ${showAll ? 'border-pk bg-pk text-white' : 'border-lt bg-cd text-gr hover:text-pk'}`}
+        >
+          {showAll ? `All time` : `Last ${RECENT_DAYS} days`}
+        </button>
       </div>
-      {rows.length === 0 ? (
-        <div className="text-[13px] text-gr italic py-8 text-center">No shipments yet.</div>
-      ) : (
-        <div className="space-y-2">
-          {rows.map((s) => (
-            <ShipmentCard key={s.id} s={s} open={openId === s.id} onToggle={() => setOpenId(openId === s.id ? null : s.id)} />
-          ))}
+
+      {query && (
+        <div className="text-[11.5px] text-gr mb-3">
+          Searching all orders for “{q.trim()}” — the {RECENT_DAYS}-day window is ignored while searching.
         </div>
+      )}
+
+      <Section
+        title="Ordered"
+        note="awaiting fulfilment"
+        cols={ORDERED_COLS}
+        rows={ordered}
+        total={totalOpen}
+        empty={query ? 'No matching orders awaiting fulfilment.' : `Nothing ordered in the last ${RECENT_DAYS} days.`}
+      />
+      <Section
+        title="Shipped"
+        note="on its way or delivered"
+        cols={SHIPPED_COLS}
+        rows={shipped}
+        total={totalShipped}
+        empty={query ? 'No matching shipped orders.' : `Nothing shipped in the last ${RECENT_DAYS} days.`}
+      />
+      {/* Exceptions are never windowed away — a cancelled order the salesperson
+          has not seen yet is exactly the thing that must not age off the screen. */}
+      {exceptions.length > 0 && (
+        <Section title="Needs attention" note="set in ShipStation" cols={EXCEPTION_COLS} rows={exceptions} total={exceptions.length} empty="" />
       )}
     </div>
   );
 }
 
-// Collapsed summary + expandable detail, mirroring the prototype's shipment card.
-function ShipmentCard({ s, open, onToggle }) {
+// The collapsed row is a GRID, not free-flowing chips. Every cell lands at the
+// same x-position on every row, which is the entire point: you scan a column
+// downward instead of re-reading each card. Below `sm` it falls back to stacked
+// label/value pairs — a six-column table on a phone is unreadable, and making
+// someone scroll sideways to find a tracking number is worse than stacking.
+//
+// No status pill: the section heading already says it, and repeating it on every
+// row was noise carrying no signal.
+function ShipmentCard({ s, cols, open, onToggle }) {
   const items = s.sample_shipment_items || [];
   const hasCustom = items.some((i) => i.custom);
   const addr = s.address || {};
-  const stIdx = SHIP_STATUSES.indexOf(s.status);
+  // pipelineIndex, not indexOf: `processing` is off the stepper but still a legal
+  // DB value, and indexOf would return -1 and grey every dot — reading as "stuck
+  // at the start" on an order that is progressing normally.
+  const stIdx = pipelineIndex(s.status);
+  const due = deliverByState(s.required_by, s.status);
+  const ctx = { s, items, hasCustom, due };
   return (
     <div className="bg-cd border border-lt rounded-xl overflow-hidden">
-      <button onClick={onToggle} aria-expanded={open} className="w-full text-left p-3 hover:bg-pc">
-        <div className="flex justify-between items-start gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-mono text-[12.5px] font-bold text-dk">{s.shipment_no}</span>
-              <StatusPill s={s.status} />
-              <TempBadge temp={s.temp} overridden={!!s.temp_override} />
-              {s.rush && <span className="text-[10.5px] font-bold uppercase px-1.5 py-px rounded bg-red-600 text-white">Rush</span>}
-              {s.third_party_billing && <span className="text-[10.5px] font-semibold px-1.5 py-px rounded bg-violet-100 text-violet-700">3rd-party billing</span>}
-              {hasCustom && <span className="text-[10.5px] font-semibold px-1.5 py-px rounded bg-pink-100 text-pk">Custom</span>}
-            </div>
-            <div className="text-[12.5px] text-dk mt-1">{s.account || '—'} · {s.salesperson?.full_name || 'Unknown'}</div>
-            <div className="text-[11.5px] text-gr truncate">{items.length} line{items.length === 1 ? '' : 's'} · {items.reduce((n, i) => n + (i.qty || 0), 0)} cookies</div>
+      <button
+        onClick={onToggle}
+        aria-expanded={open}
+        className={`w-full text-left px-3 py-2.5 hover:bg-pc grid gap-x-3 gap-y-1.5 items-center ${cols.grid}`}
+      >
+        {cols.cells.map((c) => (
+          <div key={c.label} className={`min-w-0 ${c.cls || ''}`}>
+            {/* The header row is desktop-only, so on mobile each cell carries
+                its own label — otherwise the stacked view is unlabelled values. */}
+            <div className="sm:hidden text-[9.5px] text-gr uppercase font-semibold tracking-[.4px]">{c.label}</div>
+            {c.render(ctx)}
           </div>
-          <span className="text-gr text-[13px] shrink-0">{open ? '▾' : '▸'}</span>
-        </div>
+        ))}
+        <span className="text-gr text-[13px] hidden sm:block justify-self-end">{open ? '▾' : '▸'}</span>
       </button>
 
       {open && (
@@ -569,14 +784,25 @@ function ShipmentCard({ s, open, onToggle }) {
                 : 'Fulfilment is paused. It returns to the queue when the co-man releases it.'}
             </div>
           ) : (
-          <div className="flex items-center gap-1 mb-3">
-            {SHIP_STATUSES.map((p, i) => (
-              <div key={p} className="flex items-center gap-1">
-                <span className={`w-2 h-2 rounded-full ${i < stIdx ? 'bg-green-500' : i === stIdx ? 'bg-pk' : 'bg-lt'}`} />
-                <span className={`text-[10.5px] ${i === stIdx ? 'font-bold text-dk' : 'text-gr'}`}>{p}</span>
-                {i < SHIP_STATUSES.length - 1 && <span className="w-4 h-px bg-lt mx-1" />}
+          <div className="mb-3">
+            <div className="flex items-center gap-1">
+              {SHIP_STATUSES.map((p, i) => (
+                <div key={p} className="flex items-center gap-1">
+                  <span className={`w-2 h-2 rounded-full ${i < stIdx ? 'bg-green-500' : i === stIdx ? 'bg-pk' : 'bg-lt'}`} />
+                  <span className={`text-[10.5px] ${i === stIdx ? 'font-bold text-dk' : 'text-gr'}`}>
+                    {p === 'shipped' ? 'in transit' : p}
+                  </span>
+                  {i < SHIP_STATUSES.length - 1 && <span className="w-4 h-px bg-lt mx-1" />}
+                </div>
+              ))}
+            </div>
+            {/* Nothing writes `delivered` yet, so a shipped order would sit on a
+                grey final dot forever and read as a stuck shipment. Say why. */}
+            {s.status === 'shipped' && (
+              <div className="text-[10.5px] text-gr mt-1">
+                Delivery is not tracked yet — this stays “in transit” until carrier tracking is wired up.
               </div>
-            ))}
+            )}
           </div>
           )}
 
