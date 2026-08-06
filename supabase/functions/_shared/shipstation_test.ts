@@ -22,6 +22,7 @@ import {
   ordersDocument,
   parseAmount,
   parseSSDate,
+  NO_EXPORT_STATUSES,
   ssStatus,
   syncedStatus,
   tagValue,
@@ -225,6 +226,20 @@ Deno.test('ssStatus: shipped and delivered both map to shipped', () => {
   // The store's mapping has no delivered bucket; unmapped would fall back to
   // Awaiting Shipment and resurrect a finished order into the queue.
   assertEquals(ssStatus('delivered'), 'shipped');
+});
+Deno.test('ssStatus: cancelled and on_hold map to themselves, NOT to the queue', () => {
+  // Regression. These were absent from the map, so both hit the `paid` fallback
+  // and an exported cancelled order came back as Awaiting Shipment. The tokens
+  // match the store's configured mapping (ShipStation's defaults).
+  assertEquals(ssStatus('cancelled'), 'cancelled');
+  assertEquals(ssStatus('on_hold'), 'on_hold');
+});
+Deno.test('NO_EXPORT_STATUSES: exception statuses are never handed back', () => {
+  // ShipStation owns fulfilment state; the export must not push it back.
+  assertEquals(NO_EXPORT_STATUSES.includes('cancelled'), true);
+  assertEquals(NO_EXPORT_STATUSES.includes('on_hold'), true);
+  assertEquals(NO_EXPORT_STATUSES.includes('submitted'), false);
+  assertEquals(NO_EXPORT_STATUSES.includes('shipped'), false);
 });
 Deno.test('ssStatus: defaults null and undefined to the work queue', () => {
   assertEquals(ssStatus(null), 'paid');

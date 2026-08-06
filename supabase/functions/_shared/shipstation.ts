@@ -84,12 +84,31 @@ export function parseSSDate(s: string | null | undefined): string | null {
 // `delivered` maps to `shipped`: this store's mapping has no delivered bucket,
 // and leaving it unmapped would drop the order back into the fallback (Awaiting
 // Shipment) — resurrecting a finished order into the work queue.
+// `cancelled`/`on_hold` map to themselves. They were MISSING, and the fallback
+// below is `paid` — so a cancelled order that fell into an export window was
+// handed back to ShipStation as Awaiting Shipment, resurrecting it. The loop was
+// self-sustaining: the sweep writes `cancelled`, the updated_at trigger fires,
+// that puts the row in the very next export window, the export un-cancels it,
+// and the sweep then reads the active bucket and flips the site to `submitted`.
+// The cancel erased itself. Verified against the store's configured mapping —
+// Cancelled = `cancelled`, On Hold = `on_hold` (ShipStation's defaults).
 const SS_STATUS: Record<string, string> = {
   submitted: 'paid',      // Awaiting Shipment — the co-man's work queue
   processing: 'paid',     // same queue; kept distinct app-side only
   shipped: 'shipped',
   delivered: 'shipped',
+  cancelled: 'cancelled',
+  on_hold: 'on_hold',
 };
+
+// Statuses the export must NOT hand back to ShipStation at all. ShipStation owns
+// fulfilment state (that is the whole premise of the inbound sweep), so pushing
+// an exception status back is the site overwriting its own source of truth.
+// Belt and braces with the mapping above: the mapping stops a resurrection if a
+// row does get exported, this stops it being exported in the first place — and
+// it closes the reverse race, where an order un-cancelled in ShipStation would
+// be re-cancelled by an export firing before the next sweep corrects the site.
+export const NO_EXPORT_STATUSES = ['cancelled', 'on_hold'];
 
 export function ssStatus(status: string | null | undefined): string {
   return SS_STATUS[status ?? 'submitted'] ?? 'paid';

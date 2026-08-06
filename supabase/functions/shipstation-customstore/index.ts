@@ -20,6 +20,7 @@ import { getSecret } from '../_shared/vault.ts';
 import {
   buildOrderXml,
   checkBasicAuth,
+  NO_EXPORT_STATUSES,
   ordersDocument,
   parseAmount,
   parseSSDate,
@@ -93,6 +94,10 @@ Deno.serve(async (req) => {
         .range(from, from + PAGE_SIZE - 1);
       if (startISO) q = q.gte('updated_at', startISO);
       if (endISO) q = q.lte('updated_at', endISO);
+      // ShipStation owns cancelled/on_hold; never hand them back. Without this
+      // the sweep's own write bumps updated_at into the next window and the
+      // export un-cancels the order it just recorded as cancelled.
+      q = q.not('status', 'in', `(${NO_EXPORT_STATUSES.join(',')})`);
 
       const { data, count, error } = await q;
       if (error) return xml(`<Error>${error.message}</Error>`, 500);
