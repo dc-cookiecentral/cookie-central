@@ -33,7 +33,7 @@ All paths below are relative to the repo root, `..` from here.
 | Deliver By sweep | `supabase/functions/shipstation-deliverby/` |
 | Pure helpers + tests | `supabase/functions/_shared/shipstation.ts`, `…_test.ts` |
 | Migrations | `supabase/migrations/2026071516*`, `2026072*`, `2026080412*` |
-| **ADRs** | `docs/DECISIONS.md` — **ADR-026 … ADR-038** are this project. Earlier ones are not. |
+| **ADRs** | `docs/DECISIONS.md` — **ADR-026 … ADR-040** are this project. Earlier ones are not. |
 
 ADRs stay in the shared file on purpose: the `supersedes` / `amends` chains cross
 into earlier ADRs, and renumbering would break them.
@@ -41,7 +41,7 @@ into earlier ADRs, and renumbering would break them.
 ## Running things
 
 ```bash
-deno test --allow-all supabase/functions/_shared/shipstation_test.ts   # 100 cases
+deno test --allow-all supabase/functions/_shared/shipstation_test.ts   # 112 cases
 deno check --import-map=supabase/functions/import_map.json supabase/functions/_shared/shipstation.ts
 npx supabase functions deploy shipstation-customstore                  # bypasses git — deploys immediately
 npm run build
@@ -97,6 +97,23 @@ label says **"Deliver by"**. Deliberate — renaming the column wasn't worth the
   hand. The sweep only ever GETs and PUTs; keep it that way. The sweep's response
   includes a `stores` map as a standing guard — it should always show **one**
   store id for all orders.
+- **The export selects on `updated_at` alone — never on status — and the
+  `set_updated_at_sample_shipments` trigger fires on every UPDATE.** So anything
+  that writes to `sample_shipments` puts that row in the very next export window.
+  This built a live feedback loop: the sweep wrote `cancelled`, the trigger
+  bumped `updated_at`, the export handed the order back to ShipStation as
+  Awaiting Shipment, and the sweep then flipped the site back to `submitted` —
+  the cancel erased itself, silently. Fixed via `NO_EXPORT_STATUSES` plus
+  explicit `cancelled`/`on_hold` mappings, but **assume any status write you add
+  will be re-exported within the window.**
+- **`shipnotify` sends `Carrier` as a DISPLAY NAME** — `"UPS"`, not the carrier
+  code `"ups"`, and `Service` arrives decorated as `"UPS® Ground"`. Anything
+  matching on carrier must normalise, or it will match nothing and fail
+  invisibly.
+- **`shipstation-deliverby/index.ts` has no unit tests** — the 112-case suite
+  covers `_shared` only. A bug there (1,640 no-op UPDATEs, a 2-minute run)
+  reached production and was caught by a live run. Verify changes by invoking
+  the function, not by trusting `deno check`.
 - **`cron.job_run_details.status = 'succeeded'` does NOT mean the job worked.**
   `net.http_post` is fire-and-forget; it only means the request was queued. The
   real outcome is in `net._http_response`. This masked a dead cron for hours.
@@ -115,36 +132,40 @@ If a scheduled job ever looks dead, check **`net._http_response`** — not
 
 ## Current state
 
-**Live:** the ShipStation export (item lines, the CustomField contract, RUSH,
-billing) and the Deliver By sweep function — both deployed, verified against
-`SMP-TEST-1055`.
+**Live and verified:** the ShipStation export, the Deliver By sweep (15-min cron,
+unattended), the field contract, `shipstation-probe`, `cancelled` sync, and the
+rebuilt **Shipments** tab (renamed from "Pending Shipments").
 
-**Live and verified:** Deliver By sweep (15-min cron, unattended), the field
-contract, the "Deliver by" UI label, explicit status mapping, and the
-`shipstation-probe` read-only inspector.
+**The Deliver By sweep no longer pages ShipStation history.** It caches
+`shipstation_order_id` on first sight and resolves via `GET /v2/shipments/{id}`,
+scanning only for orders it cannot resolve and exiting once they are found.
+**~17s → 3.9s**, and it no longer grows with the account. *(The old note here
+said this was the pick-up point. It is done.)*
 
-**`cancelled` sync works — verified end to end** (ADR-040). Cancelling
-`SMP-TEST-1052` in ShipStation flipped the site to `cancelled` on the next sweep,
-and a second run was a no-op. **`on_hold` does NOT work and cannot** — V2's
-`shipment_status` is the label lifecycle, so an order On Hold still reads
-`pending`. Reaching it needs a V1 key.
+**`on_hold` does NOT work and cannot** — V2's `shipment_status` is the label
+lifecycle, so an order On Hold still reads `pending`. Reaching it needs a V1 key.
 
-⚠️ **Known scaling limit — pick up here.** The sweep pages through the `cancelled`
-bucket every run (1,675 shipments and growing) and takes **~17s** against a 30s
-cron timeout. It will eventually breach `MAX_PAGES` (reported in
-`truncated_buckets`, never swallowed) or time out. The real fix is to stop
-scanning: store each order's `shipment_id` on first sight — `sample_shipments.
-shipstation_order_id` exists and is unused — then `GET /v2/shipments/{id}` per
-tracked order. That is ~16 cheap calls instead of paging an unbounded history.
+⚠️ **`delivered` is the live question — and it is nearly free.** Forcing
+`SMP-TEST-1053` to `delivered` on Aug 6 proved **every layer already handles it**:
+the sweep stops tracking it, the export reports it to ShipStation as `shipped`,
+`syncedStatus` refuses to overwrite it, the DB CHECK permits it, the UI renders
+it. The whole feature reduces to **one thing writing the column.** What is
+missing is only a source:
+
+- `GET /v2/tracking` → **401, entitlement wall.** Probed Aug 6; the message is
+  "upgrade your billing plan or add required features". `/v2/carriers` returns
+  200 from the same key, which is what proves it is entitlement and not auth.
+- `/v2/environment/webhooks` → **200, `[]`.** Webhooks are reachable with no
+  subscriptions. Whether the `track` event is gated by the same entitlement is
+  **untested** — it needs a POST, which the probe deliberately will not do.
+- **Carrier-direct** (UPS/USPS free tracking APIs) needs no ShipStation change at
+  all. `tracking_number` and `carrier` are already stored.
 
 **Open, undecided:**
-- `delivered` is unreachable — the Custom Store has no delivery event, and V2's
-  `shipment_status` enum (`pending`/`processing`/`label_purchased`/`on_hold`/
-  `cancelled`) has no `delivered`. `GET /v2/tracking` is gated behind a plan
-  upgrade. Routes left: a ShipStation webhook, or BCC'ing the Delivered
-  notification into a mailbox.
-- `cancelled` / `on_hold` are visible in ShipStation but invisible to the site —
-  `sample_shipments.status` has no such values.
+- The `delivered` source, above.
+- `processing` is written by **nothing, ever**, and cannot be sourced from V2 —
+  its `processing` bucket is the label lifecycle, not "the co-man is picking
+  this". It is removed from the UI pipeline but still legal in the DB CHECK.
 - `custom-request` has no rule-matchable home (no CustomField, no SKU). An
   **Order Tag** is the only safe route. Unbuilt.
 
