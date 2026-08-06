@@ -574,3 +574,37 @@ And `InternalNotes` is reduced to **the site note plus third-party billing instr
 **⚠️ `on_hold` does not work, and cannot with the credentials we hold.** Tested live: an order set On Hold in the ShipStation UI stays `shipment_status: pending` — polled for two minutes. **V2's `shipment_status` is the label lifecycle** (`pending` → `label_purchased`), not the order's status. An order on hold has no label, so it is indistinguishable from one awaiting shipment. The `on_hold` bucket that exists in V2 is a *shipment*-level hold, a different concept. This is the same lesson as ADR-039: **the V2 shipments API does not reflect order-level status.**
 
 **Open.** (a) Does an order-level **cancel** propagate to `shipment_status: cancelled`? Untested — a shipment-level cancel does, but they may differ. (b) If holds matter, the only route is a **V1 API key** (key + secret, distinct from the V2 key), whose `/orders` exposes true order status. That means holding a V1 credential the project has so far avoided, against an API ShipStation has said will eventually deprecate.
+
+## ADR-041: The export resurrected cancelled orders — a feedback loop between the sweep and the pull (corrects ADR-040)
+
+**Date:** August 6, 2026
+**Status:** Fixed, deployed and **verified against production**. Branch `feat/shipstation`.
+
+**The defect.** Cancelling an order in ShipStation un-cancelled itself within one import cycle. The loop:
+
+1. The co-man cancels `SMP-####` in ShipStation.
+2. The 15-minute sweep reads the `cancelled` bucket and writes `status = 'cancelled'` to the site. Correct so far — this is ADR-040 working as designed.
+3. That UPDATE fires `set_updated_at_sample_shipments`, bumping `updated_at` to **now**.
+4. The Custom Store export windows on `updated_at` and **never filters on status**, so the row lands squarely in the very next export.
+5. `ssStatus()` had entries for `submitted`/`processing`/`shipped`/`delivered` only. `cancelled` fell through to the `?? 'paid'` fallback — the store's **Awaiting Shipment** token.
+6. ShipStation re-imported it into the co-man's work queue.
+7. The sweep then read it in an active bucket and, per its own reversibility invariant, flipped the site back to `submitted`.
+
+The cancellation erased itself, end to end, with no error anywhere.
+
+**This corrects ADR-040.** That entry recorded `cancelled` sync as "verified end to end", and it was — in one direction. The test cancelled `SMP-TEST-1052`, confirmed the sweep wrote `cancelled`, and confirmed a second sweep was a no-op. Resurrection requires a **Custom Store import to land in between**, which runs on ShipStation's own clock, not ours. The verification and the defect were separated by a schedule, which is exactly the kind of gap a same-session test cannot see.
+
+**The store's mapping is now read, not inferred.** ADR-039 deduced the defaults from behaviour. Caroline read them off the connection dialog on August 6: Awaiting Payment `unpaid`, Awaiting Shipment `paid`, Shipped `shipped`, Cancelled `cancelled`, On Hold `on_hold`. The fix is built against confirmed values.
+
+**Fixed in two layers, because either alone leaves a hole.**
+
+1. **`cancelled`/`on_hold` now map to themselves** in `SS_STATUS`. If an exception row ever does reach the export, it can no longer take the destructive fallback. This is the same class of latent accident ADR-039 flagged for `delivered`.
+2. **`NO_EXPORT_STATUSES` withholds those rows from the export entirely.** ShipStation owns fulfilment state — that is the whole premise of the inbound sweep — so the site pushing it back was overwriting its own source of truth.
+
+Layer 2 also closes the **reverse race**, which layer 1 alone would not: an order un-cancelled in ShipStation still reads `cancelled` on the site for up to 15 minutes, and an export firing in that window would re-cancel exactly what the co-man had just restored.
+
+**Verified.** 112 `Deno.test` cases (2 new regressions), `deno check` clean. After deploy, the export was called exactly as ShipStation calls it over a 48-hour window: 16 orders returned, `SMP-TEST-1052` **correctly withheld** despite its `updated_at` falling inside that window — the 1051 → 1053 gap in the output is the filter working. The Deliver By sweep was unaffected and reported identically before and after.
+
+**The generalisable lesson, which is bigger than this bug.** The export selects on `updated_at` alone and the `updated_at` trigger fires on **every** UPDATE. Therefore **any write to `sample_shipments` schedules that row for re-export within the window.** A status write is not a local act; it is a message to ShipStation. Anything writing status in future must decide, explicitly, whether it wants that message sent. This is recorded in `sample-site/CLAUDE.md` under gotchas.
+
+**Carried forward.** `on_hold` remains unreachable (ADR-040 (b)) — the mapping is defensive only, since nothing can currently write that status. ADR-040's open question (a), whether an order-level cancel propagates to `shipment_status: cancelled`, is now answered **yes**: `SMP-TEST-1052` was found in the `cancelled` bucket by the sweep, which is what started this whole chain.
