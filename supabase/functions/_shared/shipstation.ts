@@ -215,14 +215,12 @@ const customField = (v: string | null | undefined) => (v ?? '').trim().slice(0, 
 
 // CF1 = who sold it. The full name reads better in the grid than the email,
 // which already travels as <CustomerCode>.
-// The rep on the order. `sales_reps` is the live source — reps are a plain list,
-// not user accounts (migration 20260807000500). `salesperson` is the superseded
-// user_profiles relation, kept only so orders created before the switch still
-// carry a name; drop it once no rows reference salesperson_user_id.
-export const rep = (s: Shipment) => s.sales_rep ?? s.salesperson ?? null;
-
+// The rep on the order. Reps are a plain list, not user accounts — the old
+// salesperson_user_id FK to user_profiles → auth.users was dropped in migration
+// 20260807001500, so there is exactly one source and no precedence to reason
+// about.
 export function salespersonField(s: Shipment): string {
-  return customField(rep(s)?.full_name ?? rep(s)?.email ?? '');
+  return customField(s.sales_rep?.full_name ?? s.sales_rep?.email ?? '');
 }
 
 // CF2 = which account it's for.
@@ -308,7 +306,7 @@ export function buildOrderXml(s: Shipment): string {
     `    <CustomField2>${xmlEscape(accountField(s))}</CustomField2>\n` +
     `    <CustomField3>${xmlEscape(tempOverrideField(s))}</CustomField3>\n` +
     `    <Customer>\n` +
-    `      <CustomerCode>${xmlEscape(rep(s)?.email ?? '')}</CustomerCode>\n` +
+    `      <CustomerCode>${xmlEscape(s.sales_rep?.email ?? '')}</CustomerCode>\n` +
     `      <BillTo>\n` +
     `        <Name>${cdata(s.account ?? '')}</Name>\n` +
     // The selected salesperson's email, so ShipStation's customer notifications
@@ -319,7 +317,7 @@ export function buildOrderXml(s: Shipment): string {
     // that is an identity key for grouping a customer's orders, not a notify
     // target. Optional in the XSD (`Email`, minOccurs="0"); emitted empty when
     // unknown rather than omitted, matching how the export treats SKU (ADR-038).
-    `        <Email>${xmlEscape(rep(s)?.email ?? '')}</Email>\n` +
+    `        <Email>${xmlEscape(s.sales_rep?.email ?? '')}</Email>\n` +
     `      </BillTo>\n` +
     `      <ShipTo>\n` +
     `        <Name>${cdata(addr.contact_name ?? '')}</Name>\n` +
@@ -404,7 +402,6 @@ export interface Shipment {
   created_at: string | null;
   updated_at: string | null;
   sales_rep?: { email: string | null; full_name: string | null } | null;
-  salesperson?: { email: string | null; full_name: string | null } | null;
   address?: Address | null;
   sample_shipment_items?: ShipmentItem[] | null;
 }

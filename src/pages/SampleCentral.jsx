@@ -455,7 +455,7 @@ function QuickStartPanel({ data, cart, setCart, profile, canWrite, refresh, setT
       ) : (
         <div className="flex flex-wrap gap-1.5">
           {recent.map((s) => (
-            <button key={s.id} onClick={() => dupShipment(s)} title={`${s.account || ''} · ${(s.sales_rep || s.salesperson)?.full_name || ''}`} className="bg-cd border border-lt rounded-full text-[11.5px] font-semibold px-3 py-1 text-dk hover:text-pk hover:border-pk">
+            <button key={s.id} onClick={() => dupShipment(s)} title={`${s.account || ''} · ${s.sales_rep?.full_name || ''}`} className="bg-cd border border-lt rounded-full text-[11.5px] font-semibold px-3 py-1 text-dk hover:text-pk hover:border-pk">
               {s.shipment_no}{s.account ? ` · ${s.account}` : ''}
             </button>
           ))}
@@ -507,7 +507,7 @@ const colAccount = {
   render: ({ s }) => (
     <>
       <div className="text-[12.5px] text-dk truncate">{s.account || '—'}</div>
-      <div className="text-[11px] text-gr truncate">{(s.sales_rep || s.salesperson)?.full_name || 'Unknown'}</div>
+      <div className="text-[11px] text-gr truncate">{s.sales_rep?.full_name || 'Unknown'}</div>
     </>
   ),
 };
@@ -622,7 +622,7 @@ function MissionView({ data }) {
   const windowed = !query && !showAll;
 
   const visible = data.shipments.filter((s) => {
-    if (sp !== 'All' && (s.sales_rep || s.salesperson)?.id !== sp) return false;
+    if (sp !== 'All' && s.sales_rep?.id !== sp) return false;
     if (query) return (s.shipment_no || '').toLowerCase().includes(query);
     return true;
   });
