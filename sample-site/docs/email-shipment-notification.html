@@ -24,15 +24,21 @@
      setting changes, this copy can change with it.
 
   ── FIELD REPLACEMENTS ─────────────────────────────────────────────────────────
-  Tokens below are written [[Like This]] as PLACEHOLDERS. Confirm each one against
-  the Field Replacements panel and correct the syntax before saving — a token that
-  does not resolve renders as blank space in a customer-facing email, exactly as
-  "Must arrive by ." does in the live RUSH template today.
+  Syntax is SINGLE square brackets. Confirmed live in the RUSH template:
 
-  Known to render correctly in the RUSH template: order number, carrier + service,
-  ship-to address block, and the item list. The item list arrives as its own
-  pre-formatted <table> with gray rules; the wrapper below is styled to sit around
-  it rather than fight it.
+      [Order #]  [Carrier Name]  [Shipping Service]  [Recipient Name]
+      [Recipient Address]  [Item List]  [Internal Notes]
+
+  Still to confirm — written [[double]] below so they are impossible to miss.
+  REPLACE OR DELETE EACH ONE BEFORE SAVING:
+
+      [[Tracking Number]]   [[Tracking URL]]   [[Ship Date]]
+
+  A token that does not exist renders as literal text to a retail buyer, so an
+  unchecked guess is worse than dropping the field.
+
+  [Item List] arrives as its own pre-formatted <table> with gray rules; the
+  wrapper below is styled to sit around it rather than fight it.
 
   Layout is table-based with inline styles because Gmail strips <style> blocks on
   forward — and forwarding is the entire point of this email.
@@ -77,6 +83,9 @@
         <h1 style="margin:0 0 10px; font-size:26px; line-height:1.25; font-weight:800; color:#2D2235;">
           Your samples are on the way.
         </h1>
+        <p style="margin:0 0 12px; font-size:15px; line-height:1.6; color:#2D2235; font-weight:600;">
+          Hi [Recipient Name],
+        </p>
         <p style="margin:0; font-size:15px; line-height:1.65; color:#5C526A;">
           Freshly baked, generously stuffed, and packed with a little too much
           enthusiasm. They left the bakery on [[Ship Date]].
@@ -97,7 +106,7 @@
                 [[Tracking Number]]
               </div>
               <div style="font-size:13px; color:#5C526A; margin-top:7px;">
-                [[Carrier]] &middot; [[Service]]
+                [Carrier Name] &middot; [Shipping Service]
               </div>
               <!-- Bulletproof button: no images, survives forwarding. If the
                    tracking-URL token does not resolve, DELETE this button — a
@@ -121,8 +130,8 @@
              cleanly and is already familiar. ──────────────────────────── -->
     <tr>
       <td style="padding:26px 32px 0; font-size:14px; line-height:1.7; color:#2D2235;">
-        <strong style="color:#2D2235;">Order #:</strong> [[Order Number]]<br>
-        <strong style="color:#2D2235;">Ship via:</strong> [[Carrier]], [[Service]]
+        <strong style="color:#2D2235;">Order #:</strong> [Order #]<br>
+        <strong style="color:#2D2235;">Ship via:</strong> [Carrier Name], [Shipping Service]
       </td>
     </tr>
 
@@ -132,7 +141,7 @@
           Shipping to
         </div>
         <div style="font-size:14px; line-height:1.6; color:#2D2235; padding-top:12px;">
-          [[Ship To Address]]
+          [Recipient Address]
         </div>
       </td>
     </tr>
@@ -145,7 +154,7 @@
           In the box
         </div>
         <div style="font-size:13.5px; line-height:1.6; color:#2D2235; padding-top:8px;">
-          [[Item List]]
+          [Item List]
         </div>
       </td>
     </tr>
