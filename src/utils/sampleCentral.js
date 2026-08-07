@@ -64,11 +64,27 @@ export const SHIPMENT_PREFIX = TEST_MODE ? 'SMP-TEST-' : 'SMP-';
 // test and real orders share ONE counter. That is intentional: shipment_no is
 // UNIQUE, and separate counters would collide the moment test mode flips off
 // with test rows still in the table.
+// ⚠️ REQUIRED, not cosmetic. The counter is derived from the table, so emptying
+// the table resets it — as happened Aug 6 2026 when all 18 orders were purged.
+// Without a floor the next order would be SMP-1044 again, reissuing 1044–1061.
+//
+// Those numbers are still occupied. The orders were **cancelled** in ShipStation,
+// not deleted — its UI offers no delete — so the records remain, and ShipStation
+// keys Custom Store orders on OrderNumber with a re-import UPDATING the matching
+// order (ADR-039). A reissued number would therefore land on the old cancelled
+// order and export as `paid`, un-cancelling it into the co-man's queue with the
+// new order's data grafted onto the old record. That is the ADR-041 resurrection
+// arriving through a different door, and no code elsewhere would prevent it.
+//
+// Raise this floor whenever the table is purged again — the burnt range only
+// ever grows, because cancelling never frees a number.
+const SHIPMENT_NO_FLOOR = 1100;
+
 export function nextShipmentNo(existing) {
   const max = existing.reduce((m, s) => {
     const n = parseInt(String(s.shipment_no || '').replace(/^SMP-(TEST-)?/, ''), 10);
     return isNaN(n) ? m : Math.max(m, n);
-  }, 1043);
+  }, SHIPMENT_NO_FLOOR - 1);
   return `${SHIPMENT_PREFIX}${max + 1}`;
 }
 
