@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<!--
+  Dirty Cookie — ShipStation "Shipment Notification" email (the tracking email).
+  Paste into: Settings → Emails → Shipment Notification → Edit HTML.
+
+  Sibling to the RUSH notification, but deliberately NOT the same thing. That one
+  is internal: it talks about queues and pick-and-pack and prints Internal Notes.
+  This one gets forwarded to a retail buyer, so it is branded, warm, and contains
+  nothing operational.
+
+  ── THREE RULES FOR EDITING THIS FILE ──────────────────────────────────────────
+
+  1. NEVER add Internal Notes. The RUSH template prints "Notes: RUSH | Notes: …".
+     That field carries the rush flag and free text written for the co-man. In a
+     buyer-facing email it is at best confusing and at worst embarrassing.
+
+  2. It is ADDRESSED TO THE BUYER, DELIVERED TO THE REP. <BillTo><Email> carries
+     the salesperson, so this lands in the rep's inbox — but every line speaks to
+     the person receiving the box, so the rep forwards it untouched with nothing
+     to strip. Never add "Hi [rep name]".
+
+  3. No "just reply to us" copy. From and Reply-To on this store are both
+     orders@shipstation.com — replies do NOT reach the salesperson. If that store
+     setting changes, this copy can change with it.
+
+  ── FIELD REPLACEMENTS ─────────────────────────────────────────────────────────
+  Tokens below are written [[Like This]] as PLACEHOLDERS. Confirm each one against
+  the Field Replacements panel and correct the syntax before saving — a token that
+  does not resolve renders as blank space in a customer-facing email, exactly as
+  "Must arrive by ." does in the live RUSH template today.
+
+  Known to render correctly in the RUSH template: order number, carrier + service,
+  ship-to address block, and the item list. The item list arrives as its own
+  pre-formatted <table> with gray rules; the wrapper below is styled to sit around
+  it rather than fight it.
+
+  Layout is table-based with inline styles because Gmail strips <style> blocks on
+  forward — and forwarding is the entire point of this email.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your Dirty Cookie samples are on the way</title>
+</head>
+<body style="margin:0; padding:0; background:#FDF2F8;">
+
+<!-- Inbox preview text. Hidden in the body. -->
+<div style="display:none; max-height:0; overflow:hidden; opacity:0;">
+  They&rsquo;re out for delivery &mdash; tracking [[Tracking Number]] inside.
+</div>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FDF2F8; padding:24px 12px;">
+<tr><td align="center">
+
+  <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%; max-width:600px; background:#FFFFFF; border-radius:16px; overflow:hidden; font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;">
+
+    <!-- ── Header ─────────────────────────────────────────────────────── -->
+    <tr>
+      <td style="background:#2D2235; padding:26px 32px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td style="font-size:19px; font-weight:800; color:#FFFFFF; letter-spacing:.3px;">
+              <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#E91E90; margin-right:9px;"></span>The Dirty Cookie
+            </td>
+            <td align="right" style="font-size:9.5px; font-weight:600; letter-spacing:1.2px; text-transform:uppercase; color:#C9B8D6;">
+              Over the top. No regrets.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <!-- ── Headline ───────────────────────────────────────────────────── -->
+    <tr>
+      <td style="padding:34px 32px 0;">
+        <h1 style="margin:0 0 10px; font-size:26px; line-height:1.25; font-weight:800; color:#2D2235;">
+          Your samples are on the way.
+        </h1>
+        <p style="margin:0; font-size:15px; line-height:1.65; color:#5C526A;">
+          Freshly baked, generously stuffed, and packed with a little too much
+          enthusiasm. They left the bakery on [[Ship Date]].
+        </p>
+      </td>
+    </tr>
+
+    <!-- ── Tracking hero ──────────────────────────────────────────────── -->
+    <tr>
+      <td style="padding:22px 32px 0;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFF5FA; border:1px solid #E8E0F0; border-radius:12px;">
+          <tr>
+            <td style="padding:22px 24px;" align="center">
+              <div style="font-size:9.5px; font-weight:700; letter-spacing:1.3px; text-transform:uppercase; color:#9990A8; margin-bottom:7px;">
+                Tracking number
+              </div>
+              <div style="font-size:18px; font-weight:700; color:#2D2235; font-family:'SF Mono',Menlo,Consolas,monospace; letter-spacing:.4px; word-break:break-all;">
+                [[Tracking Number]]
+              </div>
+              <div style="font-size:13px; color:#5C526A; margin-top:7px;">
+                [[Carrier]] &middot; [[Service]]
+              </div>
+              <!-- Bulletproof button: no images, survives forwarding. If the
+                   tracking-URL token does not resolve, DELETE this button — a
+                   dead link is worse than none. The number above still works. -->
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:18px auto 0;">
+                <tr>
+                  <td align="center" style="background:#C2185B; border-radius:9px;">
+                    <a href="[[Tracking URL]]" style="display:inline-block; padding:13px 30px; font-size:14px; font-weight:700; color:#FFFFFF; text-decoration:none; letter-spacing:.2px;">
+                      Track this shipment
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <!-- ── Details. Same label style as the RUSH template, which reads
+             cleanly and is already familiar. ──────────────────────────── -->
+    <tr>
+      <td style="padding:26px 32px 0; font-size:14px; line-height:1.7; color:#2D2235;">
+        <strong style="color:#2D2235;">Order #:</strong> [[Order Number]]<br>
+        <strong style="color:#2D2235;">Ship via:</strong> [[Carrier]], [[Service]]
+      </td>
+    </tr>
+
+    <tr>
+      <td style="padding:20px 32px 0;">
+        <div style="font-size:9.5px; font-weight:700; letter-spacing:1.3px; text-transform:uppercase; color:#9990A8; padding-bottom:9px; border-bottom:1px solid #E8E0F0;">
+          Shipping to
+        </div>
+        <div style="font-size:14px; line-height:1.6; color:#2D2235; padding-top:12px;">
+          [[Ship To Address]]
+        </div>
+      </td>
+    </tr>
+
+    <!-- The item list arrives as its own <table> with gray rules. Sized to sit
+         inside this wrapper; do not try to restyle its internals. -->
+    <tr>
+      <td style="padding:22px 32px 0;">
+        <div style="font-size:9.5px; font-weight:700; letter-spacing:1.3px; text-transform:uppercase; color:#9990A8; padding-bottom:9px; border-bottom:1px solid #E8E0F0;">
+          In the box
+        </div>
+        <div style="font-size:13.5px; line-height:1.6; color:#2D2235; padding-top:8px;">
+          [[Item List]]
+        </div>
+      </td>
+    </tr>
+
+    <!-- ── Handling. Worded to hold true for ambient AND cold-chain
+             samples, because the template cannot branch on which was sent. -->
+    <tr>
+      <td style="padding:24px 32px 0;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FDF2F8; border-radius:12px;">
+          <tr>
+            <td style="padding:18px 22px; font-size:13.5px; line-height:1.65; color:#5C526A;">
+              <strong style="color:#2D2235;">When they land:</strong>
+              open the box the day it arrives. Anything that travelled frozen or chilled
+              goes straight into the freezer or fridge. Everything else is happiest at room
+              temperature &mdash; and better still after ten seconds in the microwave.
+              There&rsquo;s a warming card in the box.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <!-- ── Sign-off ───────────────────────────────────────────────────── -->
+    <tr>
+      <td style="padding:26px 32px 32px;">
+        <p style="margin:0; font-size:15px; line-height:1.65; color:#5C526A;">
+          We hope they&rsquo;re worth the wait. Let us know what you think &mdash;
+          preferably with your mouth full.
+        </p>
+        <p style="margin:16px 0 0; font-size:15px; font-weight:700; color:#2D2235;">
+          Enjoy every bite,<br>
+          <span style="color:#C2185B;">The Dirty Cookie</span>
+        </p>
+      </td>
+    </tr>
+
+    <!-- ── Footer ─────────────────────────────────────────────────────── -->
+    <tr>
+      <td style="background:#2D2235; padding:22px 32px;" align="center">
+        <a href="https://www.dirtycookie.com" style="font-size:13px; font-weight:700; color:#FFFFFF; text-decoration:none;">www.dirtycookie.com</a>
+        <div style="font-size:11px; color:#9990A8; margin-top:8px; line-height:1.6;">
+          Gourmet stuffed cookies, cookie shots &amp; other excellent decisions. &#127850;
+        </div>
+      </td>
+    </tr>
+
+  </table>
+
+</td></tr>
+</table>
+
+</body>
+</html>
