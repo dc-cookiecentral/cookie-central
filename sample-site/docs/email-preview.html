@@ -1,0 +1,261 @@
+<title>Shipment email — proof</title>
+
+<style>
+  /* Proofing bench, not a landing page. The email is the only thing allowed to
+     use the brand palette; the surround is a deliberately quiet neutral with a
+     slight aubergine bias so it reads as a light-table rather than competing.
+     Type: system stacks chosen on purpose — ui-monospace for token names and
+     data, system-ui for chrome. A webfont here would only blur the line between
+     the page and the email being proofed. */
+  :root {
+    --ground:  #E9E5EE;
+    --panel:   #FFFFFF;
+    --ink:     #1E1922;
+    --muted:   #6E6478;
+    --faint:   #A79FB2;
+    --rule:    #D6CFDF;
+    --accent:  #C2185B;
+    --ok:      #2E7D5B;
+    --warn:    #B4690E;
+    --warn-bg: #FDF3E3;
+    --ok-bg:   #E8F4EE;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #16131B; --panel: #201C27; --ink: #EDE9F2; --muted: #A79FB2;
+      --faint: #6E6478; --rule: #332C3D; --accent: #FF6FA5;
+      --ok: #6FCB9F; --warn: #E0A94A; --warn-bg: #2A2214; --ok-bg: #16281F;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #16131B; --panel: #201C27; --ink: #EDE9F2; --muted: #A79FB2;
+    --faint: #6E6478; --rule: #332C3D; --accent: #FF6FA5;
+    --ok: #6FCB9F; --warn: #E0A94A; --warn-bg: #2A2214; --ok-bg: #16281F;
+  }
+  :root[data-theme="light"] {
+    --ground: #E9E5EE; --panel: #FFFFFF; --ink: #1E1922; --muted: #6E6478;
+    --faint: #A79FB2; --rule: #D6CFDF; --accent: #C2185B;
+    --ok: #2E7D5B; --warn: #B4690E; --warn-bg: #FDF3E3; --ok-bg: #E8F4EE;
+  }
+
+  body {
+    background: var(--ground); color: var(--ink);
+    font-family: var(--sans); line-height: 1.55;
+    margin: 0; padding: 28px 20px 64px;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+
+  header h1 { font-size: 20px; font-weight: 700; margin: 0 0 4px; letter-spacing: -.2px; }
+  header p  { margin: 0; color: var(--muted); font-size: 14px; max-width: 62ch; }
+
+  .bar {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    background: var(--panel); border: 1px solid var(--rule);
+    border-radius: 10px; padding: 10px 12px;
+  }
+  .bar .lbl {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .09em;
+    text-transform: uppercase; color: var(--faint); margin-right: 2px;
+  }
+  button {
+    font: inherit; font-size: 12.5px; font-weight: 600;
+    padding: 6px 13px; border-radius: 7px; cursor: pointer;
+    border: 1px solid var(--rule); background: transparent; color: var(--muted);
+  }
+  button:hover { color: var(--ink); }
+  button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .sep { width: 1px; align-self: stretch; background: var(--rule); margin: 0 4px; }
+
+  .stage { display: flex; justify-content: center; }
+  #frame { width: 600px; max-width: 100%; transition: width .18s ease; }
+  #frame.narrow { width: 375px; }
+  @media (prefers-reduced-motion: reduce) { #frame { transition: none; } }
+
+  /* Token spans: visible as chips only in token view. */
+  .tok { font-family: var(--mono); font-size: .88em; }
+  body[data-view="tokens"] .tok {
+    background: rgba(194,24,91,.10); color: var(--accent);
+    border-radius: 4px; padding: 0 4px; box-decoration-break: clone;
+  }
+
+  .notes { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 16px 18px; }
+  .notes h2 { font-size: 12px; margin: 0 0 12px; font-family: var(--mono); letter-spacing: .09em; text-transform: uppercase; color: var(--faint); font-weight: 600; }
+  table.tk { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.tk th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--faint); font-weight: 600; padding-bottom: 7px; border-bottom: 1px solid var(--rule); }
+  table.tk td { padding: 7px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  table.tk tr:last-child td { border-bottom: 0; }
+  table.tk td:first-child { font-family: var(--mono); font-size: 12px; white-space: nowrap; padding-right: 14px; }
+  .pill { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
+  .pill.ok   { background: var(--ok-bg); color: var(--ok); }
+  .pill.warn { background: var(--warn-bg); color: var(--warn); }
+  .scroll { overflow-x: auto; }
+</style>
+
+<div class="wrap">
+
+  <header>
+    <h1>Shipment notification — proof</h1>
+    <p>The tracking email, as a buyer sees it after your rep forwards it. Toggle to <strong>Field tokens</strong> to see exactly what gets pasted into ShipStation. The template must be pasted into ShipStation as a <strong>single line</strong> &mdash; multi-line markup is silently mangled.</p>
+  </header>
+
+  <div class="bar">
+    <span class="lbl">Content</span>
+    <button id="b-sample" aria-pressed="true">Sample data</button>
+    <button id="b-tokens" aria-pressed="false">Field tokens</button>
+    <span class="sep"></span>
+    <span class="lbl">Width</span>
+    <button id="b-desktop" aria-pressed="true">Desktop</button>
+    <button id="b-mobile" aria-pressed="false">Mobile</button>
+  </div>
+
+  <div class="stage">
+    <div id="frame">
+      <!-- ══ EMAIL BEGINS — mirrors email-shipment-notification.html ══ -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FDF2F8; border-radius:14px; padding:20px 12px;">
+      <tr><td align="center">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%; max-width:600px; background:#FFFFFF; border-radius:16px; overflow:hidden; font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;">
+
+          <tr>
+            <td style="background:#2D2235; padding:26px 32px;">
+              <div style="font-size:19px; font-weight:800; color:#FFFFFF; letter-spacing:.3px;"><span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#E91E90; margin-right:9px;"></span>Dirty Cookie</div>
+              <div style="font-size:9.5px; font-weight:600; letter-spacing:1.3px; text-transform:uppercase; color:#C9B8D6; margin-top:7px;">Over the top. No regrets.</div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:34px 32px 0;">
+              <h1 style="margin:0 0 12px; font-size:26px; line-height:1.25; font-weight:800; color:#2D2235;">Your samples have shipped, <span class="tok" data-t="[Recipient Name]" data-s="Dana Whitfield"></span>.</h1>
+              <p style="margin:0; font-size:15px; line-height:1.65; color:#5C526A;">Freshly baked, generously stuffed, and packed with enthusiasm. They left the bakery on <span class="tok" data-t="[Ship Date]" data-s="August 7, 2026"></span>.</p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:22px 32px 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFF5FA; border:1px solid #E8E0F0; border-radius:12px;"><tr>
+                <td style="padding:22px 24px;" align="center">
+                  <div style="font-size:9.5px; font-weight:700; letter-spacing:1.3px; text-transform:uppercase; color:#9990A8; margin-bottom:7px;">Tracking number</div>
+                  <div style="font-size:18px; font-weight:700; color:#2D2235; font-family:'SF Mono',Menlo,Consolas,monospace; letter-spacing:.4px; word-break:break-all;"><span class="tok" data-t="[Tracking #]" data-s="1ZK8Y3720316102347"></span></div>
+                  <div style="font-size:13px; color:#5C526A; margin-top:7px;"><span class="tok" data-t="[Carrier Name]" data-s="UPS"></span> &middot; <span class="tok" data-t="[Shipping Service]" data-s="UPS® Ground"></span></div>
+                </td>
+              </tr></table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:26px 32px 0; font-size:14px; line-height:1.7; color:#2D2235;">
+              <strong>Order #:</strong> <span class="tok" data-t="[Order #]" data-s="SMP-1103"></span><br>
+              <strong>Ship via:</strong> <span class="tok" data-t="[Carrier Name]" data-s="UPS"></span>, <span class="tok" data-t="[Shipping Service]" data-s="UPS® Ground"></span>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:20px 32px 0;">
+              <div style="font-size:9.5px; font-weight:700; letter-spacing:1.3px; text-transform:uppercase; color:#9990A8; padding-bottom:9px; border-bottom:1px solid #E8E0F0;">Shipping to</div>
+              <div style="font-size:14px; line-height:1.6; color:#2D2235; padding-top:12px;"><span class="tok" data-t="[Recipient Address]" data-s="Dana Whitfield&#10;Kroger Co.&#10;1014 Vine St&#10;Cincinnati, OH 45202 US" style="white-space:pre-line;"></span></div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:22px 32px 0;">
+              <div style="font-size:9.5px; font-weight:700; letter-spacing:1.3px; text-transform:uppercase; color:#9990A8; padding-bottom:9px; border-bottom:1px solid #E8E0F0;">In the box</div>
+              <div style="font-size:13.5px; line-height:1.6; color:#2D2235; padding-top:8px;" class="scroll">
+                <span class="tok" data-t="[Item List NOSKU]" data-s="__ITEMS__"></span>
+              </div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:24px 32px 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FDF2F8; border-radius:12px;"><tr>
+                <td style="padding:18px 22px; font-size:13.5px; line-height:1.65; color:#5C526A;">
+                  <strong style="color:#2D2235;">When they land:</strong> unless you&rsquo;re digging in right away, raw cookies belong in the fridge and baked cookies keep beautifully at room temperature. When you&rsquo;re ready for them: <strong style="color:#2D2235;">250&deg;F for 12&ndash;14 minutes.</strong> Full instructions are on the card in the box.
+                </td>
+              </tr></table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:26px 32px 32px;">
+              <p style="margin:0; font-size:15px; line-height:1.65; color:#5C526A;">Let us know what you think &mdash; preferably with your mouth full.</p>
+              <p style="margin:16px 0 0; font-size:15px; font-weight:700; color:#2D2235;">Enjoy every bite,<br><span style="color:#C2185B;">Dirty Cookie</span></p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="background:#2D2235; padding:22px 32px;" align="center">
+              <span style="font-size:13px; font-weight:700; color:#FFFFFF;">www.dirtycookie.com</span>
+              <div style="font-size:11px; color:#9990A8; margin-top:8px; line-height:1.6;">Gourmet stuffed cookies, cookie shots &amp; other excellent decisions. &#127850;</div>
+            </td>
+          </tr>
+
+        </table>
+      </td></tr>
+      </table>
+      <!-- ══ EMAIL ENDS ══ -->
+    </div>
+  </div>
+
+  <div class="notes">
+    <h2>Field replacements</h2>
+    <div class="scroll">
+      <table class="tk">
+        <thead><tr><th>Token</th><th>Status</th><th>Field</th></tr></thead>
+        <tbody>
+          <tr><td>[Order #]</td><td><span class="pill ok">Confirmed</span></td><td>Renders correctly in the RUSH template body.</td></tr>
+          <tr><td>[Recipient Name]</td><td><span class="pill ok">Confirmed</span></td><td>Ship-to contact — the buyer, which is who this email greets.</td></tr>
+          <tr><td>[Recipient Address]</td><td><span class="pill ok">Confirmed</span></td><td>Full block, newlines included.</td></tr>
+          <tr><td>[Carrier Name]</td><td><span class="pill ok">Confirmed</span></td><td>Renders as <em>UPS</em>.</td></tr>
+          <tr><td>[Shipping Service]</td><td><span class="pill ok">Confirmed</span></td><td>Renders as <em>UPS® Ground</em>.</td></tr>
+          <tr><td>[Item List NOSKU]</td><td><span class="pill ok">Confirmed</span></td><td>Description and quantity only — SKUs are internal nomenclature and read like a warehouse manifest.</td></tr>
+          <tr><td>[Tracking #]</td><td><span class="pill ok">Confirmed</span></td><td>Selectable text; every carrier site accepts a paste.</td></tr>
+          <tr><td>[Ship Date]</td><td><span class="pill ok">Confirmed</span></td><td>&nbsp;</td></tr>
+          <tr><td>&mdash; no tracking URL &mdash;</td><td><span class="pill warn">Not available</span></td><td>No such replacement exists, so there is no button. A hard-coded carrier link would break the first USPS shipment.</td></tr>
+          <tr><td>[Internal Notes]</td><td><span class="pill warn">Never use here</span></td><td>Carries the RUSH flag and co-man instructions. Must never reach a buyer.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const ITEMS = `<table border="0" cellpadding="4" cellspacing="0" style="font-size:13px;">
+<tr><td width="430" style="border-bottom:solid 1px gray"><b>Description</b></td><td align="center" style="border-bottom:solid 1px gray" width="60"><b>Qty</b></td></tr>
+<tr><td>Gourmet Chocolate Chip — 1.5oz, Baked</td><td align="center">1</td></tr>
+<tr><td>Gourmet Double Choc. Salted Caramel — 3oz, Baked</td><td align="center">1</td></tr>
+<tr><td>Gourmet Chocolate Chip / Choc. Hazelnut — 3oz, Baked</td><td align="center">1</td></tr>
+<tr><td>Warming instructions</td><td align="center">1</td></tr>
+<tr><td>Cookie shot flyer</td><td align="center">1</td></tr>
+</table>`;
+
+  const toks = [...document.querySelectorAll('.tok')];
+
+  function render(view) {
+    document.body.dataset.view = view;
+    for (const el of toks) {
+      if (view === 'tokens') { el.textContent = el.dataset.t; continue; }
+      const s = el.dataset.s;
+      if (s === '__ITEMS__') el.innerHTML = ITEMS;
+      else el.textContent = s;
+    }
+    press('b-sample', view === 'sample');
+    press('b-tokens', view === 'tokens');
+  }
+  const press = (id, on) => document.getElementById(id).setAttribute('aria-pressed', String(on));
+
+  document.getElementById('b-sample').onclick = () => render('sample');
+  document.getElementById('b-tokens').onclick = () => render('tokens');
+
+  const frame = document.getElementById('frame');
+  document.getElementById('b-desktop').onclick = () => {
+    frame.classList.remove('narrow'); press('b-desktop', true); press('b-mobile', false);
+  };
+  document.getElementById('b-mobile').onclick = () => {
+    frame.classList.add('narrow'); press('b-desktop', false); press('b-mobile', true);
+  };
+
+  render('sample');
+</script>

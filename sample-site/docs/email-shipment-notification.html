@@ -1,0 +1,50 @@
+<!--
+  Dirty Cookie - ShipStation Shipment Notification (the tracking email).
+  Settings -> Emails -> Shipment Notification -> Edit HTML.
+
+  ============================================================================
+  KEEP THE PAYLOAD BELOW ON ONE LINE. THIS IS THE WHOLE TRICK.
+  ============================================================================
+
+  The editor mangles multi-line HTML. Four attempts were destroyed proving it:
+
+    1. Nested tables, pretty-printed -> saved as an empty <td></td>, the
+       entire email silently discarded. (Nesting was NOT the cause.)
+    2. Flattened to one table, still multi-line -> characters vanished
+       mid-attribute ("font-weightr-spacing", "keep bture"), in ~26-char
+       chunks near column 118.
+    3. Every line under 68 chars -> still truncated.
+    4. Plain <p> tags, no styling -> saved perfectly.
+
+  The variable was never nesting, length, or CSS density. It was NEWLINES.
+  Collapse the markup to a single line and the full branded design saves
+  intact - nested tables, internal <style> block and all.
+
+  So: paste everything AFTER this comment, as one line. If you reformat it
+  for readability, it will break, and it will break silently.
+
+  ============================================================================
+  RULES
+  ============================================================================
+  1. Never add [Internal Notes] - written for the co-man; this is forwarded
+     to a retail buyer.
+  2. Addressed to the buyer, delivered to the rep: <BillTo><Email> carries
+     the salesperson, so they forward it untouched.
+  3. No "reply to us" copy - From and Reply-To are both
+     orders@shipstation.com, so replies never reach the salesperson.
+
+  TOKENS (all confirmed): [Order #] [Recipient Name] [Recipient Address]
+  [Carrier Name] [Shipping Service] [Ship Date] [Tracking #]
+  [Item List NOSKU]
+
+  [Item List NOSKU], not [Item List] - SKUs read like a warehouse manifest.
+
+  ShipStation auto-links the tracking number, which is why the internal
+  <style> block restyles #trackingblock a. Gmail, Apple Mail and iOS honour
+  it; Outlook desktop ignores internal CSS and shows a default blue link.
+
+  Subject: Samples for [Recipient Name] have shipped - [Tracking #]
+  (Test the subject separately - [Order #] resolves in the RUSH body but
+  came through blank in its subject line.)
+-->
+<style type="text/css">#trackingblock a{color:#2D2235!important;text-decoration:none!important;font-family:Menlo,Consolas,monospace!important;font-size:18px!important;font-weight:700!important;}#footerlink a{color:#FFFFFF!important;text-decoration:none!important;}</style><div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#FDF2F8;">Freshly baked, generously stuffed, and on their way to you.</div><table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FDF2F8" style="background:#FDF2F8;"><tr><td align="center" style="padding:24px 12px; font-family:'Outfit',Helvetica,Arial,sans-serif;"><table width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" style="width:100%; max-width:600px; margin:0 auto; background:#FFFFFF; border-radius:16px;"><tr><td bgcolor="#2D2235" style="background:#2D2235; padding:24px 32px; border-radius:16px 16px 0 0;"><div style="font-size:19px; font-weight:800; color:#FFFFFF; font-family:'Outfit',Helvetica,Arial,sans-serif;">Dirty Cookie</div><div style="font-size:10px; font-weight:600; color:#C9B8D6; text-transform:uppercase; letter-spacing:1.3px; margin-top:7px; font-family:'Outfit',Helvetica,Arial,sans-serif;">Over the top. No regrets.</div></td></tr><tr><td style="padding:34px 32px 0; font-family:'Outfit',Helvetica,Arial,sans-serif;"><div style="font-size:26px; line-height:1.25; font-weight:800; color:#2D2235; margin-bottom:12px;">Your samples have shipped, [Recipient Name].</div><div style="font-size:15px; line-height:1.65; color:#5C526A;">Freshly baked, generously stuffed, and packed with enthusiasm. They left the bakery on [Ship Date].</div></td></tr><tr><td style="padding:22px 32px 0;"><table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFF5FA" style="background:#FFF5FA; border:1px solid #E8E0F0; border-radius:12px;"><tr><td id="trackingblock" align="center" style="padding:22px 24px; font-family:'Outfit',Helvetica,Arial,sans-serif;"><div style="font-size:10px; font-weight:700; color:#9990A8; text-transform:uppercase; letter-spacing:1.3px;">Tracking number</div><div style="font-size:18px; font-weight:700; color:#2D2235; font-family:Menlo,Consolas,monospace; margin-top:7px; word-break:break-all;">[Tracking #]</div><div style="font-size:13px; color:#5C526A; margin-top:7px;">[Carrier Name] &middot; [Shipping Service]</div></td></tr></table></td></tr><tr><td style="padding:26px 32px 0; font-size:14px; line-height:1.7; color:#2D2235; font-family:'Outfit',Helvetica,Arial,sans-serif;"><strong>Order #:</strong> [Order #]<br><strong>Ship via:</strong> [Carrier Name], [Shipping Service]</td></tr><tr><td style="padding:20px 32px 0; font-family:'Outfit',Helvetica,Arial,sans-serif;"><div style="font-size:10px; font-weight:700; color:#9990A8; text-transform:uppercase; letter-spacing:1.3px; padding-bottom:9px; border-bottom:1px solid #E8E0F0;">Shipping to</div><div style="font-size:14px; line-height:1.6; color:#2D2235; padding-top:12px;">[Recipient Address]</div></td></tr><tr><td style="padding:22px 32px 0; font-family:'Outfit',Helvetica,Arial,sans-serif;"><div style="font-size:10px; font-weight:700; color:#9990A8; text-transform:uppercase; letter-spacing:1.3px; padding-bottom:9px; border-bottom:1px solid #E8E0F0;">In the box</div><div style="font-size:13.5px; line-height:1.6; color:#2D2235; padding-top:8px;">[Item List NOSKU]</div></td></tr><tr><td style="padding:24px 32px 0;"><table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FDF2F8" style="background:#FDF2F8; border-radius:12px;"><tr><td style="padding:18px 22px; font-size:13.5px; line-height:1.65; color:#5C526A; font-family:'Outfit',Helvetica,Arial,sans-serif;"><strong style="color:#2D2235;">When they land:</strong> unless you&rsquo;re digging in right away, raw cookies belong in the fridge and baked cookies keep beautifully at room temperature. When you&rsquo;re ready for them: <strong style="color:#2D2235;">250&deg;F for 12&ndash;14 minutes.</strong> Full instructions are on the card in the box.</td></tr></table></td></tr><tr><td style="padding:26px 32px 32px; font-family:'Outfit',Helvetica,Arial,sans-serif;"><div style="font-size:15px; line-height:1.65; color:#5C526A;">Let us know what you think &mdash; preferably with your mouth full.</div><div style="font-size:15px; font-weight:700; color:#2D2235; margin-top:16px;">Enjoy every bite,<br><span style="color:#C2185B;">Dirty Cookie</span></div></td></tr><tr><td id="footerlink" align="center" bgcolor="#2D2235" style="background:#2D2235; padding:22px 32px; border-radius:0 0 16px 16px; font-family:'Outfit',Helvetica,Arial,sans-serif;"><a href="https://www.dirtycookie.com" style="font-size:13px; font-weight:700; color:#FFFFFF; text-decoration:none;">www.dirtycookie.com</a><div style="font-size:11px; color:#9990A8; line-height:1.6; margin-top:8px;">Gourmet stuffed cookies, cookie shots &amp; other excellent decisions. &#127850;</div></td></tr></table></td></tr></table>
