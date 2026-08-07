@@ -24,20 +24,24 @@
      setting changes, this copy can change with it.
 
   ── FIELD REPLACEMENTS ─────────────────────────────────────────────────────────
-  Syntax is SINGLE square brackets. Confirmed live in the RUSH template:
+  Syntax is SINGLE square brackets. Every token here is confirmed against the
+  Field Replacements panel — no placeholders remain in this file:
 
-      [Order #]  [Carrier Name]  [Shipping Service]  [Recipient Name]
-      [Recipient Address]  [Item List]  [Internal Notes]
+      [Order #]        [Recipient Name]     [Recipient Address]
+      [Carrier Name]   [Shipping Service]   [Ship Date]
+      [Tracking #]     [Item List NOSKU]
 
-  Still to confirm — written [[double]] below so they are impossible to miss.
-  REPLACE OR DELETE EACH ONE BEFORE SAVING:
+  [Item List NOSKU], not [Item List]: the SKU column is internal nomenclature
+  (CC-1.5OZ-BAK-G) that means nothing to a buyer and makes the box read like a
+  warehouse manifest. NOSKU prints description and quantity only.
 
-      [[Tracking Number]]   [[Tracking URL]]   [[Ship Date]]
+  There is NO tracking-URL replacement, which is why this template has no
+  "Track shipment" button. Do not hard-code a carrier link in its place — it
+  would break the first time an order ships USPS instead of UPS.
 
-  A token that does not exist renders as literal text to a retail buyer, so an
-  unchecked guess is worse than dropping the field.
+  [Internal Notes] is deliberately absent. See rule 1.
 
-  [Item List] arrives as its own pre-formatted <table> with gray rules; the
+  The item list arrives as its own pre-formatted <table> with grey rules; the
   wrapper below is styled to sit around it rather than fight it.
 
   Layout is table-based with inline styles because Gmail strips <style> blocks on
@@ -53,7 +57,7 @@
 
 <!-- Inbox preview text. Hidden in the body. -->
 <div style="display:none; max-height:0; overflow:hidden; opacity:0;">
-  They&rsquo;re out for delivery &mdash; tracking [[Tracking Number]] inside.
+  They&rsquo;re out for delivery &mdash; tracking [Tracking #] inside.
 </div>
 
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FDF2F8; padding:24px 12px;">
@@ -80,15 +84,12 @@
     <!-- ── Headline ───────────────────────────────────────────────────── -->
     <tr>
       <td style="padding:34px 32px 0;">
-        <h1 style="margin:0 0 10px; font-size:26px; line-height:1.25; font-weight:800; color:#2D2235;">
-          Your samples are on the way.
+        <h1 style="margin:0 0 12px; font-size:26px; line-height:1.25; font-weight:800; color:#2D2235;">
+          Samples for [Recipient Name] have shipped.
         </h1>
-        <p style="margin:0 0 12px; font-size:15px; line-height:1.6; color:#2D2235; font-weight:600;">
-          Hi [Recipient Name],
-        </p>
         <p style="margin:0; font-size:15px; line-height:1.65; color:#5C526A;">
-          Freshly baked, generously stuffed, and packed with a little too much
-          enthusiasm. They left the bakery on [[Ship Date]].
+          Freshly baked, generously stuffed, and packed with enthusiasm.
+          They left the bakery on [Ship Date].
         </p>
       </td>
     </tr>
@@ -103,23 +104,15 @@
                 Tracking number
               </div>
               <div style="font-size:18px; font-weight:700; color:#2D2235; font-family:'SF Mono',Menlo,Consolas,monospace; letter-spacing:.4px; word-break:break-all;">
-                [[Tracking Number]]
+                [Tracking #]
               </div>
               <div style="font-size:13px; color:#5C526A; margin-top:7px;">
                 [Carrier Name] &middot; [Shipping Service]
               </div>
-              <!-- Bulletproof button: no images, survives forwarding. If the
-                   tracking-URL token does not resolve, DELETE this button — a
-                   dead link is worse than none. The number above still works. -->
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:18px auto 0;">
-                <tr>
-                  <td align="center" style="background:#C2185B; border-radius:9px;">
-                    <a href="[[Tracking URL]]" style="display:inline-block; padding:13px 30px; font-size:14px; font-weight:700; color:#FFFFFF; text-decoration:none; letter-spacing:.2px;">
-                      Track this shipment
-                    </a>
-                  </td>
-                </tr>
-              </table>
+              <!-- No "Track shipment" button: ShipStation exposes no tracking-URL
+                   field replacement on this template, and a hard-coded carrier link
+                   would break the moment an order ships USPS instead of UPS. The
+                   number is selectable and every carrier site accepts a paste. -->
             </td>
           </tr>
         </table>
@@ -154,7 +147,7 @@
           In the box
         </div>
         <div style="font-size:13.5px; line-height:1.6; color:#2D2235; padding-top:8px;">
-          [Item List]
+          [Item List NOSKU]
         </div>
       </td>
     </tr>
@@ -167,10 +160,10 @@
           <tr>
             <td style="padding:18px 22px; font-size:13.5px; line-height:1.65; color:#5C526A;">
               <strong style="color:#2D2235;">When they land:</strong>
-              open the box the day it arrives. Anything that travelled frozen or chilled
-              goes straight into the freezer or fridge. Everything else is happiest at room
-              temperature &mdash; and better still after ten seconds in the microwave.
-              There&rsquo;s a warming card in the box.
+              unless you&rsquo;re digging in right away, raw cookies belong in the fridge and
+              baked cookies keep beautifully at room temperature. Ten seconds in the
+              microwave brings the baked ones right back. There&rsquo;s a warming card in
+              the box.
             </td>
           </tr>
         </table>
