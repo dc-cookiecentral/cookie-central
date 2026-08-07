@@ -215,8 +215,12 @@ const customField = (v: string | null | undefined) => (v ?? '').trim().slice(0, 
 
 // CF1 = who sold it. The full name reads better in the grid than the email,
 // which already travels as <CustomerCode>.
+// The rep on the order. Reps are a plain list, not user accounts — the old
+// salesperson_user_id FK to user_profiles → auth.users was dropped in migration
+// 20260807001500, so there is exactly one source and no precedence to reason
+// about.
 export function salespersonField(s: Shipment): string {
-  return customField(s.salesperson?.full_name ?? s.salesperson?.email ?? '');
+  return customField(s.sales_rep?.full_name ?? s.sales_rep?.email ?? '');
 }
 
 // CF2 = which account it's for.
@@ -302,9 +306,18 @@ export function buildOrderXml(s: Shipment): string {
     `    <CustomField2>${xmlEscape(accountField(s))}</CustomField2>\n` +
     `    <CustomField3>${xmlEscape(tempOverrideField(s))}</CustomField3>\n` +
     `    <Customer>\n` +
-    `      <CustomerCode>${xmlEscape(s.salesperson?.email ?? '')}</CustomerCode>\n` +
+    `      <CustomerCode>${xmlEscape(s.sales_rep?.email ?? '')}</CustomerCode>\n` +
     `      <BillTo>\n` +
     `        <Name>${cdata(s.account ?? '')}</Name>\n` +
+    // The selected salesperson's email, so ShipStation's customer notifications
+    // reach the rep who owns the account rather than nobody. One Cortina login
+    // enters orders on behalf of many reps, so the ordering user is NOT the
+    // person who should hear about the shipment — the one picked in the
+    // Salesperson field is. <CustomerCode> already carries the same address, but
+    // that is an identity key for grouping a customer's orders, not a notify
+    // target. Optional in the XSD (`Email`, minOccurs="0"); emitted empty when
+    // unknown rather than omitted, matching how the export treats SKU (ADR-038).
+    `        <Email>${xmlEscape(s.sales_rep?.email ?? '')}</Email>\n` +
     `      </BillTo>\n` +
     `      <ShipTo>\n` +
     `        <Name>${cdata(addr.contact_name ?? '')}</Name>\n` +
@@ -388,7 +401,7 @@ export interface Shipment {
   notes: string | null;
   created_at: string | null;
   updated_at: string | null;
-  salesperson?: { email: string | null; full_name: string | null } | null;
+  sales_rep?: { email: string | null; full_name: string | null } | null;
   address?: Address | null;
   sample_shipment_items?: ShipmentItem[] | null;
 }

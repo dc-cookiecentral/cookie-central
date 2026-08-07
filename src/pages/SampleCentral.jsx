@@ -29,7 +29,7 @@ const TABS = [
 ];
 
 const EMPTY_HEADER = {
-  salesperson_user_id: '', account: '', address_id: '', temp_override: '',
+  sales_rep_id: '', account: '', address_id: '', temp_override: '',
   required_by: '', rush: false, collateral: [], notes: '',
   third_party_billing: false, tp_carrier: '', tp_account: '', tp_postal_code: '',
 };
@@ -79,7 +79,7 @@ export default function SampleCentral() {
   };
 
   const submit = async () => {
-    if (!header.salesperson_user_id) return setToast({ err: 'Pick a salesperson first.' });
+    if (!header.sales_rep_id) return setToast({ err: 'Pick a salesperson first.' });
     if (!header.address_id) return setToast({ err: 'Pick a ship-to address.' });
     if (cartLines.length === 0 && customItems.length === 0) return setToast({ err: 'Add at least one cookie or custom line.' });
     if (!tpComplete(header)) return setToast({ err: 'Third-party billing needs carrier, account number and postal code — the co-man cannot bill the account without all three.' });
@@ -88,7 +88,7 @@ export default function SampleCentral() {
       ...customItems.filter((c) => c.spec).map((c) => ({ product_code: null, custom: true, custom_spec: c.spec, project_no: c.project_no || null, qty: Number(c.qty) || 1, description: c.spec })),
     ];
     const h = {
-      salesperson_user_id: header.salesperson_user_id, account: header.account || null, address_id: header.address_id,
+      sales_rep_id: header.sales_rep_id, account: header.account || null, address_id: header.address_id,
       temp, temp_override: header.temp_override || null, required_by: header.required_by || null, rush: !!header.rush,
       collateral: header.collateral, notes: header.notes || null, status: 'submitted',
       third_party_billing: !!header.third_party_billing,
@@ -263,7 +263,10 @@ function CartDrawer({
           <Section title="Who & where">
             <div className="grid grid-cols-2 gap-2">
               <Labeled label="Salesperson *">
-                <select value={header.salesperson_user_id} onChange={(e) => set('salesperson_user_id', e.target.value)} className="w-full px-2 py-1 rounded border border-lt text-[12.5px] bg-bg">
+                {/* The rep's email rides along invisibly: it is written to
+                    <BillTo><Email> on export, which is the address ShipStation
+                    sends customer notifications to. Nothing to fill in here. */}
+                <select value={header.sales_rep_id} onChange={(e) => set('sales_rep_id', e.target.value)} className="w-full px-2 py-1 rounded border border-lt text-[12.5px] bg-bg">
                   <option value="">— select —</option>
                   {data.salespeople.map((s) => <option key={s.id} value={s.id}>{s.full_name}</option>)}
                 </select>
@@ -452,7 +455,7 @@ function QuickStartPanel({ data, cart, setCart, profile, canWrite, refresh, setT
       ) : (
         <div className="flex flex-wrap gap-1.5">
           {recent.map((s) => (
-            <button key={s.id} onClick={() => dupShipment(s)} title={`${s.account || ''} · ${s.salesperson?.full_name || ''}`} className="bg-cd border border-lt rounded-full text-[11.5px] font-semibold px-3 py-1 text-dk hover:text-pk hover:border-pk">
+            <button key={s.id} onClick={() => dupShipment(s)} title={`${s.account || ''} · ${s.sales_rep?.full_name || ''}`} className="bg-cd border border-lt rounded-full text-[11.5px] font-semibold px-3 py-1 text-dk hover:text-pk hover:border-pk">
               {s.shipment_no}{s.account ? ` · ${s.account}` : ''}
             </button>
           ))}
@@ -504,7 +507,7 @@ const colAccount = {
   render: ({ s }) => (
     <>
       <div className="text-[12.5px] text-dk truncate">{s.account || '—'}</div>
-      <div className="text-[11px] text-gr truncate">{s.salesperson?.full_name || 'Unknown'}</div>
+      <div className="text-[11px] text-gr truncate">{s.sales_rep?.full_name || 'Unknown'}</div>
     </>
   ),
 };
@@ -619,7 +622,7 @@ function MissionView({ data }) {
   const windowed = !query && !showAll;
 
   const visible = data.shipments.filter((s) => {
-    if (sp !== 'All' && s.salesperson?.id !== sp) return false;
+    if (sp !== 'All' && s.sales_rep?.id !== sp) return false;
     if (query) return (s.shipment_no || '').toLowerCase().includes(query);
     return true;
   });

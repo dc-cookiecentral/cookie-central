@@ -32,7 +32,7 @@ import {
 
 const PAGE_SIZE = 100;
 const SELECT =
-  '*, salesperson:user_profiles!salesperson_user_id ( email, full_name ), address:addresses!address_id ( * ), sample_shipment_items ( * )';
+  '*, sales_rep:sales_reps!sales_rep_id ( email, full_name ), address:addresses!address_id ( * ), sample_shipment_items ( * )';
 
 function xml(body: string, status = 200): Response {
   return new Response(body, {

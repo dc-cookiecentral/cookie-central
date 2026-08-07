@@ -53,7 +53,7 @@ function shipment(overrides: Partial<Shipment> = {}): Shipment {
     notes: 'First meeting, keep it classic.',
     created_at: '2026-07-27T10:05:00Z',
     updated_at: '2026-07-27T11:30:00Z',
-    salesperson: { email: 'alex@cortinafoods.com', full_name: 'Alex Morgan' },
+    sales_rep: { email: 'alex@cortinafoods.com', full_name: 'Alex Morgan' },
     address: {
       contact_name: 'Dana Buyer',
       company: 'Kroger Co.',
@@ -430,7 +430,7 @@ Deno.test('buildOrderXml: CustomField1 is the salesperson', () => {
   assertEquals(el(buildOrderXml(shipment()), 'CustomField1'), 'Alex Morgan');
 });
 Deno.test('buildOrderXml: CustomField1 falls back to the email when there is no name', () => {
-  const s = shipment({ salesperson: { email: 'alex@cortinafoods.com', full_name: null } });
+  const s = shipment({ sales_rep: { email: 'alex@cortinafoods.com', full_name: null } });
   assertEquals(el(buildOrderXml(s), 'CustomField1'), 'alex@cortinafoods.com');
 });
 Deno.test('buildOrderXml: CustomField2 is the account', () => {
@@ -532,6 +532,25 @@ Deno.test('buildOrderXml: defaults a missing quantity to 1', () => {
 });
 Deno.test('buildOrderXml: uses the salesperson email as CustomerCode', () => {
   assertEquals(el(buildOrderXml(shipment()), 'CustomerCode'), 'alex@cortinafoods.com');
+});
+Deno.test('buildOrderXml: BillTo Email carries the salesperson, not the ordering user', () => {
+  // One Cortina login enters orders for many reps, so ShipStation must notify
+  // the rep selected on the order — not whoever happened to be signed in.
+  assertEquals(el(buildOrderXml(shipment()), 'Email'), 'alex@cortinafoods.com');
+});
+Deno.test('buildOrderXml: the sales rep drives name and both email fields', () => {
+  const xml = buildOrderXml(shipment({
+    sales_rep: { email: 'rep@cortinafoods.com', full_name: 'Dana Rep' },
+  }));
+  assertEquals(el(xml, 'Email'), 'rep@cortinafoods.com');        // ShipStation notifies here
+  assertEquals(el(xml, 'CustomerCode'), 'rep@cortinafoods.com'); // identity key
+  assertEquals(el(xml, 'CustomField1'), 'Dana Rep');             // grid-visible
+});
+Deno.test('buildOrderXml: BillTo Email is emitted empty when the salesperson is unknown', () => {
+  // Emitted, never omitted — a missing required element rejects the whole batch
+  // silently (ADR-029), and the XSD is only documented for Order and ShipTo.
+  const xml = buildOrderXml(shipment({ sales_rep: null }));
+  assertEquals(xml.includes('<Email></Email>'), true);
 });
 Deno.test('buildOrderXml: uppercases and trims the ship-to state', () => {
   const xml = buildOrderXml(shipment({ address: { ...shipment().address, state: ' oh ' } }));
