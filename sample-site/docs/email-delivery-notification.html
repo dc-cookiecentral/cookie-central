@@ -1,0 +1,42 @@
+<!--
+  Dirty Cookie - ShipStation Delivery Notification (the "it arrived" email).
+  Settings -> Emails -> Delivery Notification -> Edit HTML.
+
+  ============================================================================
+  KEEP THE PAYLOAD BELOW ON ONE LINE. Multi-line markup is silently mangled
+  by this editor - see email-shipment-notification.html for the four failed
+  attempts that proved it. Do not reformat for readability.
+  ============================================================================
+
+  SIBLING TO THE SHIPMENT EMAIL, DIFFERENT JOB.
+  The shipment email's hero is the tracking number, because "where is it" is
+  the live question while the box is moving. Here the box is already on the
+  desk, so the hero is the oven - the only thing the reader can act on now.
+  Storage guidance stays in the shipment email because that is the one that
+  arrives BEFORE the box; repeating it here would be too late to help.
+
+  RULES (identical to the shipment email)
+  1. Never add [Internal Notes] - written for the co-man; this is forwarded
+     to a retail buyer.
+  2. Addressed to the buyer, delivered to the rep: <BillTo><Email> carries
+     the salesperson, so they forward it untouched.
+  3. No "reply to us" copy - From and Reply-To are both
+     orders@shipstation.com. Note that a FORWARDED copy does reply to the
+     rep, which is why the close invites a conversation without naming a
+     mechanism.
+
+  TOKENS - confirmed on the shipment template:
+    [Order #] [Recipient Name] [Tracking #] [Carrier Name]
+    [Shipping Service] [Item List NOSKU]
+
+  ⚠️ UNVERIFIED: a delivery-date token. The shipment template has [Ship Date];
+  whether this one exposes [Delivery Date] is unchecked, so no date is used
+  here. Add one only after confirming it in the Field Replacements panel.
+
+  ⚠️ The 250F / 12-14 min instruction is the WARMING time for baked cookies.
+  If the raw/frozen products bake differently, that line needs splitting -
+  ask before assuming one number covers both.
+
+  Subject: Your Dirty Cookie samples have arrived
+-->
+<style type="text/css">#footerlink a{color:#FFFFFF!important;text-decoration:none!important;}</style><div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#FDF2F8;">They&rsquo;ve landed. Here is how to get the best out of them.</div><table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FDF2F8" style="background:#FDF2F8;"><tr><td align="center" style="padding:24px 12px; font-family:'Outfit',Helvetica,Arial,sans-serif;"><table width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" style="width:100%; max-width:600px; margin:0 auto; background:#FFFFFF; border-radius:16px;"><tr><td bgcolor="#2D2235" style="background:#2D2235; padding:24px 32px; border-radius:16px 16px 0 0;"><div style="font-size:19px; font-weight:800; color:#FFFFFF; font-family:'Outfit',Helvetica,Arial,sans-serif;">Dirty Cookie</div><div style="font-size:10px; font-weight:600; color:#C9B8D6; text-transform:uppercase; letter-spacing:1.3px; margin-top:7px; font-family:'Outfit',Helvetica,Arial,sans-serif;">Over the top. No regrets.</div></td></tr><tr><td style="padding:34px 32px 0; font-family:'Outfit',Helvetica,Arial,sans-serif;"><div style="font-size:26px; line-height:1.25; font-weight:800; color:#2D2235; margin-bottom:12px;">They&rsquo;ve arrived, [Recipient Name].</div><div style="font-size:15px; line-height:1.65; color:#5C526A;">Your samples have been delivered. Here&rsquo;s how to give them their best possible first impression.</div></td></tr><tr><td style="padding:22px 32px 0;"><table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFF5FA" style="background:#FFF5FA; border:1px solid #E8E0F0; border-radius:12px;"><tr><td align="center" style="padding:24px; font-family:'Outfit',Helvetica,Arial,sans-serif;"><div style="font-size:10px; font-weight:700; color:#9990A8; text-transform:uppercase; letter-spacing:1.3px;">Before you taste</div><div style="font-size:30px; font-weight:800; color:#C2185B; margin-top:8px; line-height:1.15;">250&deg;F</div><div style="font-size:17px; font-weight:700; color:#2D2235; margin-top:2px;">for 12&ndash;14 minutes</div><div style="font-size:13.5px; line-height:1.6; color:#5C526A; margin-top:12px;">Warm, gooey and stuffed is how these are meant to be eaten. Straight from the box is fine. Straight from the oven is better.</div></td></tr></table></td></tr><tr><td style="padding:26px 32px 0; font-family:'Outfit',Helvetica,Arial,sans-serif;"><div style="font-size:10px; font-weight:700; color:#9990A8; text-transform:uppercase; letter-spacing:1.3px; padding-bottom:9px; border-bottom:1px solid #E8E0F0;">What arrived</div><div style="font-size:13.5px; line-height:1.6; color:#2D2235; padding-top:8px;">[Item List NOSKU]</div></td></tr><tr><td style="padding:22px 32px 0; font-size:13px; line-height:1.7; color:#9990A8; font-family:'Outfit',Helvetica,Arial,sans-serif;">Order [Order #] &middot; delivered by [Carrier Name] &middot; tracking [Tracking #]</td></tr><tr><td style="padding:26px 32px 32px; font-family:'Outfit',Helvetica,Arial,sans-serif;"><div style="font-size:15px; line-height:1.65; color:#5C526A;">Now the part we actually care about: tell us what you thought. Which one disappeared first?</div><div style="font-size:15px; font-weight:700; color:#2D2235; margin-top:16px;">Enjoy every bite,<br><span style="color:#C2185B;">Dirty Cookie</span></div></td></tr><tr><td id="footerlink" align="center" bgcolor="#2D2235" style="background:#2D2235; padding:22px 32px; border-radius:0 0 16px 16px; font-family:'Outfit',Helvetica,Arial,sans-serif;"><a href="https://www.dirtycookie.com" style="font-size:13px; font-weight:700; color:#FFFFFF; text-decoration:none;">www.dirtycookie.com</a><div style="font-size:11px; color:#9990A8; line-height:1.6; margin-top:8px;">Gourmet stuffed cookies, cookie shots &amp; other excellent decisions. &#127850;</div></td></tr></table></td></tr></table>
