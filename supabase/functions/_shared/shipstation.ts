@@ -305,6 +305,15 @@ export function buildOrderXml(s: Shipment): string {
     `      <CustomerCode>${xmlEscape(s.salesperson?.email ?? '')}</CustomerCode>\n` +
     `      <BillTo>\n` +
     `        <Name>${cdata(s.account ?? '')}</Name>\n` +
+    // The selected salesperson's email, so ShipStation's customer notifications
+    // reach the rep who owns the account rather than nobody. One Cortina login
+    // enters orders on behalf of many reps, so the ordering user is NOT the
+    // person who should hear about the shipment — the one picked in the
+    // Salesperson field is. <CustomerCode> already carries the same address, but
+    // that is an identity key for grouping a customer's orders, not a notify
+    // target. Optional in the XSD (`Email`, minOccurs="0"); emitted empty when
+    // unknown rather than omitted, matching how the export treats SKU (ADR-038).
+    `        <Email>${xmlEscape(s.salesperson?.email ?? '')}</Email>\n` +
     `      </BillTo>\n` +
     `      <ShipTo>\n` +
     `        <Name>${cdata(addr.contact_name ?? '')}</Name>\n` +

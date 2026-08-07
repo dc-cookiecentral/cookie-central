@@ -533,6 +533,17 @@ Deno.test('buildOrderXml: defaults a missing quantity to 1', () => {
 Deno.test('buildOrderXml: uses the salesperson email as CustomerCode', () => {
   assertEquals(el(buildOrderXml(shipment()), 'CustomerCode'), 'alex@cortinafoods.com');
 });
+Deno.test('buildOrderXml: BillTo Email carries the salesperson, not the ordering user', () => {
+  // One Cortina login enters orders for many reps, so ShipStation must notify
+  // the rep selected on the order — not whoever happened to be signed in.
+  assertEquals(el(buildOrderXml(shipment()), 'Email'), 'alex@cortinafoods.com');
+});
+Deno.test('buildOrderXml: BillTo Email is emitted empty when the salesperson is unknown', () => {
+  // Emitted, never omitted — a missing required element rejects the whole batch
+  // silently (ADR-029), and the XSD is only documented for Order and ShipTo.
+  const xml = buildOrderXml(shipment({ salesperson: null }));
+  assertEquals(xml.includes('<Email></Email>'), true);
+});
 Deno.test('buildOrderXml: uppercases and trims the ship-to state', () => {
   const xml = buildOrderXml(shipment({ address: { ...shipment().address, state: ' oh ' } }));
   assertEquals(el(xml, 'State'), 'OH');
