@@ -538,6 +538,17 @@ Deno.test('buildOrderXml: BillTo Email carries the salesperson, not the ordering
   // the rep selected on the order — not whoever happened to be signed in.
   assertEquals(el(buildOrderXml(shipment()), 'Email'), 'alex@cortinafoods.com');
 });
+Deno.test('buildOrderXml: sales_rep wins over the superseded salesperson relation', () => {
+  // Reps are a plain list now, not user accounts. The legacy user_profiles
+  // relation survives only for orders created before the switch, so when both
+  // are present the rep must win — otherwise a corrected rep would be ignored.
+  const xml = buildOrderXml(shipment({
+    sales_rep: { email: 'rep@cortinafoods.com', full_name: 'Dana Rep' },
+  }));
+  assertEquals(el(xml, 'Email'), 'rep@cortinafoods.com');
+  assertEquals(el(xml, 'CustomerCode'), 'rep@cortinafoods.com');
+  assertEquals(el(xml, 'CustomField1'), 'Dana Rep');
+});
 Deno.test('buildOrderXml: BillTo Email is emitted empty when the salesperson is unknown', () => {
   // Emitted, never omitted — a missing required element rejects the whole batch
   // silently (ADR-029), and the XSD is only documented for Order and ShipTo.

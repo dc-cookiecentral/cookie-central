@@ -27,13 +27,19 @@ export function useSampleCentral() {
         // carried it) is the reference for this shape; see ADR-029 #4, where
         // the FK-column short form silently returned null and dropped every
         // order from the export.
-        .select('*, salesperson:salesperson_user_id ( id, full_name, email ), address:addresses!address_id ( * ), sample_shipment_items ( * )')
+        // `sales_rep` is the live relation; `salesperson` is kept only so the
+        // one pre-existing order (SMP-TEST-1044) still renders a name. Reps are
+        // a plain list now, not user accounts — see migration 20260807000500.
+        .select('*, sales_rep:sales_reps!sales_rep_id ( id, full_name, email ), salesperson:salesperson_user_id ( id, full_name, email ), address:addresses!address_id ( * ), sample_shipment_items ( * )')
         .order('created_at', { ascending: false }),
       supabase.from('sample_templates').select('*').order('name'),
+      // The Salesperson dropdown. Reads sales_reps, NOT user_profiles — a rep is
+      // a name and an email to notify, not a login. Binding this to auth was
+      // what forced an account per person (migration 20260807000500).
       supabase
-        .from('user_profiles')
-        .select('id, full_name, email, role, active_in_dropdown')
-        .eq('active_in_dropdown', true)
+        .from('sales_reps')
+        .select('id, full_name, email, company')
+        .eq('active', true)
         .order('full_name'),
     ]);
     const failed = [catalog, addresses, shipments, templates, salespeople].find((r) => r.error);
