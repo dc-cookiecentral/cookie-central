@@ -141,12 +141,9 @@ Columns are the **real** ADR-026 names.
 | `OrderDate` | `created_at` | not `required_by` |
 | `OrderStatus` | `status` | app status **verbatim**; ShipStation Marketplace mapping routes submitted/processing → **Awaiting Shipment**, shipped/delivered → **Shipped** |
 | `ShippingMethod` | — (**not exported**) | Omitted entirely (ADR-031). The app expresses no service preference; ShipStation's store default + automation rules decide |
-| `CustomField1` | `rush` | `rush` when flagged, else empty. Internal urgency signal — **not** a speed instruction; drives the team notification |
-| `CustomField2` | any `sample_shipment_items.custom` | `custom-request` (grid-visible + rule-matchable) |
-| `CustomField3` | — | reserved |
-| `InternalNotes` | `RUSH` (leading, when rushed) + `notes` | 1000-char. Rule-matchable: *Internal Notes contains RUSH* (ADR-037) |
+| `InternalNotes` | `RUSH` (leading, when rushed) + `notes` | 1000-char. Rule-matchable: *Internal Notes contains RUSH* (ADR-037). **This is where rush lives** — it was CustomField1, then CF3, before ADR-037 settled it here |
 | `CustomerNotes` | third-party billing | ShipStation's **Notes from Buyer**. Also documented rule criteria |
-| `CustomField1` | `salesperson.full_name` (falls back to email) | 100-char, truncated |
+| `CustomField1` | `sales_rep_id` → `sales_reps.full_name` (falls back to email) | 100-char, truncated |
 | `CustomField2` | `account` | 100-char, truncated |
 | `CustomField3` | `temp_override` | **Blank unless a human overrode the derived temp** — so a rule can match non-blank |
 | `CustomerCode` | `sales_rep_id` → `sales_reps.email` | Identity key for grouping a customer's orders — **not** a notify target |
@@ -155,6 +152,7 @@ Columns are the **real** ADR-026 names.
 | `ShipTo/*` | `addresses` `contact_name`/`company`/`street`/`city`/`state`/`zip` | **State 2-char + PostalCode validated** or skip+log |
 | `Items/Item` | `sample_shipment_items` `product_code`/`description`/`qty`, `UnitPrice`=0.00 | real lines only |
 | **cold-chain** | — (**not exported**) | ShipStation **product tag** on Raw SKUs (co-man); auto-applied on import |
+| **custom-request** | — (**not exported**) | Had CustomField2 before ADR-037 took it for `account`. Now has **no rule-matchable home at all**: no CustomField, and ShipStation ignores Item SKU rules on multi-item orders. An **Order Tag** is the only safe route — unbuilt |
 
 ---
 
