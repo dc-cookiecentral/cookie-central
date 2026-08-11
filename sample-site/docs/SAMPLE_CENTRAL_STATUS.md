@@ -34,7 +34,7 @@ disagrees with an ADR about *what is true now*, this file wins.
 ## Salesperson roster — loaded August 11
 
 The Salesperson dropdown reads `sales_reps`, a plain lookup list with **no
-connection to auth** (ADR pending; migrations `20260807000500` /
+connection to auth** (ADR-042; migrations `20260807000500` /
 `20260807001500`). A rep is a name to display and an email to notify, not a
 login — modelling it as authentication was the earlier mistake, and it would
 have meant 25 dormant magic-link-capable accounts.
