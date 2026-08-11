@@ -33,7 +33,7 @@ All paths below are relative to the repo root, `..` from here.
 | Deliver By sweep | `supabase/functions/shipstation-deliverby/` |
 | Pure helpers + tests | `supabase/functions/_shared/shipstation.ts`, `…_test.ts` |
 | Migrations | `supabase/migrations/2026071516*`, `2026072*`, `2026080412*` |
-| **ADRs** | `docs/DECISIONS.md` — **ADR-026 … ADR-040** are this project. Earlier ones are not. |
+| **ADRs** | `docs/DECISIONS.md` — **ADR-026 … ADR-042** are this project. Earlier ones are not. |
 
 ADRs stay in the shared file on purpose: the `supersedes` / `amends` chains cross
 into earlier ADRs, and renumbering would break them.

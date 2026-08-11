@@ -608,3 +608,32 @@ Layer 2 also closes the **reverse race**, which layer 1 alone would not: an orde
 **The generalisable lesson, which is bigger than this bug.** The export selects on `updated_at` alone and the `updated_at` trigger fires on **every** UPDATE. Therefore **any write to `sample_shipments` schedules that row for re-export within the window.** A status write is not a local act; it is a message to ShipStation. Anything writing status in future must decide, explicitly, whether it wants that message sent. This is recorded in `sample-site/CLAUDE.md` under gotchas.
 
 **Carried forward.** `on_hold` remains unreachable (ADR-040 (b)) — the mapping is defensive only, since nothing can currently write that status. ADR-040's open question (a), whether an order-level cancel propagates to `shipment_status: cancelled`, is now answered **yes**: `SMP-TEST-1052` was found in the `cancelled` bucket by the sweep, which is what started this whole chain.
+
+## ADR-042: Sales reps are a lookup list, not user accounts (supersedes ADR-026's salesperson model)
+
+**Date:** August 11, 2026
+**Status:** Built, applied and live. 27 reps in `sales_reps`. Merged to `main` (PRs #14, #15, #16).
+
+**The mistake being corrected.** ADR-026 stored the salesperson **by user id**, and the Salesperson dropdown read `user_profiles`. That table's `id` is `REFERENCES auth.users(id)`, so *every selectable rep had to be a real login*. Making the Cortina roster selectable would therefore have meant **25 dormant, magic-link-capable accounts** — each one needing its own `user_role_seeds` row, or `handle_new_auth_user` silently provisions it as **`ops`** on first sign-in, a role that reaches 34 tables including `purchase_orders`, `production_runs` and `cortina_invoices`. And because that insert is `ON CONFLICT (id) DO NOTHING`, seeding afterwards does not correct it; the only fix is a manual `UPDATE`, once someone notices.
+
+The premise was wrong from the start. **Cortina has ONE person entering samples on behalf of many reps.** The reps never sign in. The site needs only their name (to display, and to send as `CustomField1`) and their email (for `<BillTo><Email>`, which is what ShipStation notifies). That is a lookup list. Modelling it as authentication converted a display concern into an access-control liability — the blast radius of getting the dropdown wrong was write access to production data.
+
+**What shipped.**
+
+1. **`sales_reps`** (`20260807000500`): `id`, `full_name`, `email UNIQUE`, `company`, `active`, timestamps. A **plain table with no FK to `auth.users`** — deliberately, because a rep who leaves must not vanish from historical orders, which an `auth.users` FK invites. `active` handles departures instead: `false` removes them from new selection while every past shipment still renders their name. RLS: readable by any authenticated user (the dropdown needs it, and it holds nothing more sensitive than a work name and address), writable only by `admin`/`ops` — the Cortina ordering account *picks from* this list, it does not curate it.
+2. **`sample_shipments.sales_rep_id`** added alongside, then **`salesperson_user_id` dropped** (`20260807001500`) once no rows referenced it. Dropping it removed the `sales_rep ?? salesperson` fallback from the export, and with it a permanent "which field wins" question. Done deliberately while the table was empty: no backfill, no data risk.
+3. **The roster** (`20260807120000`, `20260810120000`): Caroline and David Landeck (Dirty Cookie), then 25 Cortina reps from the supplied Employee Directory spreadsheet. **27 selectable, 27 logins avoided.**
+
+**No app change was needed to notify them.** `buildOrderXml` already emitted the selected rep's email into `<BillTo><Email>` and `<CustomerCode>`, and their name into `CustomField1` (ADR-038). Only the *source* of that record changed, from a `user_profiles` join to a `sales_reps` join. Two existing tests cover the BillTo mapping.
+
+**What this supersedes in ADR-026.** "Salesperson stored by user id" (§ *What shipped*) and the **dropdown flag** `user_profiles.active_in_dropdown` (`20260715170000`). That column now **drives nothing** — it is left in place rather than dropped, because it is harmless and other roles' rows carry it, but nothing reads it. The rationale ADR-026 gave for storing by id — "keeps history stable across dropdown changes" — was correct in intent and is preserved better here: `sales_rep_id` is still an id, it simply points at a list instead of at an identity.
+
+**Three transforms applied to the source spreadsheet**, recorded because they are not reversible from the file alone: names title-cased (the file mixes `AGARWAL, AMIT K` with `David Rahal`, and the dropdown orders by `full_name`, so unnormalised it sorts by surname for half the list and given name for the other half — this flattens `LiDestri` to `Lidestri`); emails lowercased (Postgres `UNIQUE` on `text` is case-sensitive, so `AAgarwal@` and `aagarwal@` would both be insertable); and 25 rows from 26, because `murgese@cortinafoods.com` appears twice under two different names and `email` is `UNIQUE`.
+
+**Open, and worth knowing before trusting the roster.**
+(a) `murgese@cortinafoods.com` carries **two names in one row** pending confirmation from Cortina on whether that is one person or two.
+(b) **Three name/email mismatches** went in as the file has them — `Alexa C Flynn → ahill@`, `Scott C Robbins → crobbins@`, `Heather Sandford → heather.sanford@`. They read as name changes or preferred names, not typos, and the email is the operative field. First place to look if a rep reports never receiving a notification.
+(c) The source file is titled *"Sales Mktg Innovations Supplier Partners"* and may include contacts who are not salespeople. **Everyone in it is now selectable as the notified party on a real sample shipment** — and there is no sandbox.
+(d) Six reps carry `@onefrozen.com` addresses but are labelled `company = 'Cortina'`, One Frozen being treated as part of the Cortina group.
+
+**Carried forward.** The **single Cortina ordering account** still needs a `user_role_seeds` row with `role='cortina'` before first sign-in — that requirement survives this ADR unchanged, and remains not self-correcting. What no longer applies is ADR-026's carried-forward item (b) read as "seed every salesperson": there is exactly one account to seed, not twenty-five.
