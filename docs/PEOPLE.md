@@ -21,6 +21,30 @@
 
 **Cortina HQ:** 2 Van Riper Road, Montvale NJ 07645
 
+### Sales reps (Sample Central)
+
+The **25-person Cortina sales roster is not listed here** — it lives in the
+`sales_reps` table, seeded by `supabase/migrations/20260810120000_seed_cortina_sales_reps.sql`
+from "Cortina OF Sales Mktg Innovations Supplier Partners List.xlsx" (Aug 11,
+2026). Duplicating it here would just create a second copy to keep in sync.
+
+Read the live list with:
+
+```sql
+select full_name, email, company from sales_reps where active order by full_name;
+```
+
+Two things worth knowing about those rows:
+
+- **They are not logins.** `sales_reps` is a lookup list with no link to
+  `auth.users` — a rep is a name to display and an email to notify. Only the
+  people in the tables above have accounts.
+- **Six carry `@onefrozen.com` addresses** but are labelled `company = 'Cortina'`
+  (One Frozen treated as part of the Cortina group).
+
+Caroline and David Landeck are also in `sales_reps`, as `company = 'Dirty Cookie'`
+— they are internal, and were added first as notification test recipients.
+
 ## Partners
 
 | Company | Role | Key contact | Notes |
