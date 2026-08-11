@@ -149,7 +149,8 @@ Columns are the **real** ADR-026 names.
 | `CustomField1` | `salesperson.full_name` (falls back to email) | 100-char, truncated |
 | `CustomField2` | `account` | 100-char, truncated |
 | `CustomField3` | `temp_override` | **Blank unless a human overrode the derived temp** — so a rule can match non-blank |
-| `CustomerCode` | `salesperson_user_id` → `user_profiles.email` | |
+| `CustomerCode` | `sales_rep_id` → `sales_reps.email` | Identity key for grouping a customer's orders — **not** a notify target |
+| `BillTo/Email` | `sales_rep_id` → `sales_reps.email` | **The address ShipStation's customer notifications go to** (ADR-038). Emitted empty when the rep is unknown rather than omitted |
 | `BillTo/Name` | `account` | |
 | `ShipTo/*` | `addresses` `contact_name`/`company`/`street`/`city`/`state`/`zip` | **State 2-char + PostalCode validated** or skip+log |
 | `Items/Item` | `sample_shipment_items` `product_code`/`description`/`qty`, `UnitPrice`=0.00 | real lines only |
