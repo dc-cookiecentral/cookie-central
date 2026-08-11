@@ -38,7 +38,12 @@ gate Cortina is supposed to get. And because the insert is
 `ON CONFLICT (id) DO NOTHING`, adding the seed afterwards does **not** fix them;
 you'd have to `UPDATE user_profiles SET role='cortina'` by hand.
 
-- [ ] Insert each Cortina salesperson into `user_role_seeds` **first**:
+⚠️ **This applies to the ONE Cortina ordering account, not to the sales reps.**
+Reps stopped being user accounts in migration `20260807000500` — they are rows in
+`sales_reps`, a lookup list with no link to `auth.users`. Cortina has a single
+person entering samples on behalf of many reps; only that person needs a login.
+
+- [ ] Insert the Cortina **ordering account** into `user_role_seeds` **first**:
 ```sql
 insert into user_role_seeds (email, full_name, role, title) values
   ('someone@cortinafoods.com', 'Their Name', 'cortina', 'Sales')
@@ -47,9 +52,17 @@ on conflict (email) do update set role = excluded.role;
 - [ ] Only then send the magic link (auth is magic-link only — there is no password path).
 - [ ] Verify after they sign in:
 ```sql
-select email, role, active_in_dropdown from user_profiles order by role, email;
+select email, role from user_profiles order by role, email;
 ```
-- [ ] `active_in_dropdown` defaults to `true`, so they appear in the builder's salesperson picker automatically — no extra step.
+- [ ] **Signing someone in does NOT put them in the salesperson picker.** That
+  needs a `sales_reps` row — a separate, deliberate step. *(`user_profiles.active_in_dropdown`
+  used to control this; it drives nothing now.)* The picker holds 27 reps as of
+  Aug 11, 2026: 25 Cortina + Caroline and David Landeck. To add one:
+```sql
+insert into sales_reps (full_name, email, company)
+  values ('Their Name', 'someone@cortinafoods.com', 'Cortina')
+on conflict (email) do update set active = true;
+```
 
 *As of July 28, 2026: `user_profiles` holds 3 admins and **zero** `cortina` users.*
 
@@ -124,7 +137,7 @@ Rule on **order tags / CustomFields — never on Item SKU** (SKU rules silently 
 ## 7. Email / CC — copy `samplesmngmt@cortinafoods.com`
 Copy the sample-mgmt inbox on **all orders, shipments, deliveries** — two places:
 - [ ] **Shipment + delivery emails:** Store → Emails/Notifications → **"Blind Copy on Shipment and Delivery Email"** = `samplesmngmt@cortinafoods.com` (BCC; covers shipment + delivery together).
-- [ ] **Order confirmation:** the salesperson (`salesperson_user_id` → their `email`, exported as `CustomerCode`) is the recipient; add the sample-mgmt inbox as an additional recipient/notification if order-creation copies are also required.
+- [ ] **Order confirmation:** the salesperson (`sales_rep_id` → `sales_reps.email`, exported as **`BillTo Email`** *and* `CustomerCode`) is the recipient; add the sample-mgmt inbox as an additional recipient/notification if order-creation copies are also required. **`BillTo Email` is the notify target** — `CustomerCode` carries the same address but is an identity key for grouping a customer's orders, not something ShipStation mails (ADR-038). *(Was `salesperson_user_id`, dropped in migration `20260807001500`; reps are now a lookup list, not user accounts.)*
 
 ## 8. Verify — mapping test, no label needed
 - [ ] Trigger a **manual store import** in ShipStation.
