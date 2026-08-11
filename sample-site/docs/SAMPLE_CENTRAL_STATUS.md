@@ -1,6 +1,6 @@
 # Sample Central + ShipStation — Current State
 
-**As of August 6, 2026.** The authoritative answer to "what's built, what's live,
+**As of August 11, 2026.** The authoritative answer to "what's built, what's live,
 what's next." Design *rationale* lives in `DECISIONS.md` (ADR-024→040);
 account-side setup lives in `SHIPSTATION_SETUP_CHECKLIST.md`. This file is state,
 not reasoning — if it disagrees with an ADR about *why*, the ADR wins. If it
@@ -12,7 +12,7 @@ disagrees with an ADR about *what is true now*, this file wins.
 
 | Layer | State |
 |---|---|
-| Schema | All migrations applied incl. `20260805050000` (`cancelled`/`on_hold`); remote ledger in sync |
+| Schema | All migrations applied incl. `20260810120000` (Cortina rep roster). **Remote ledger is NOT in sync** — see below |
 | `shipstation-customstore` | Deployed. `verify_jwt=false`, Basic Auth. Export withholds exception statuses |
 | `shipstation-deliverby` | Deployed. 15-min cron. Resolves by cached `shipstation_order_id` — **3.9s**, no longer pages history |
 | `shipstation-probe` | Deployed. Read-only inspector; `shipment_no`, `export_hours`, `capabilities` |
@@ -30,6 +30,76 @@ disagrees with an ADR about *what is true now*, this file wins.
 | `CustomerNotes` ("Notes from Buyer") | third-party billing |
 | `CustomField1 / 2 / 3` | salesperson / account / manual temp override |
 | `ShippingMethod` | **not sent** — ShipStation owns service choice (ADR-031) |
+
+## Salesperson roster — loaded August 11
+
+The Salesperson dropdown reads `sales_reps`, a plain lookup list with **no
+connection to auth** (ADR pending; migrations `20260807000500` /
+`20260807001500`). A rep is a name to display and an email to notify, not a
+login — modelling it as authentication was the earlier mistake, and it would
+have meant 25 dormant magic-link-capable accounts.
+
+**27 reps live: 25 Cortina + Caroline and David Landeck (Dirty Cookie).** The
+Cortina roster came from "Cortina OF Sales Mktg Innovations Supplier Partners
+List.xlsx" (Employee Directory, 26 rows) on Aug 11 and was applied via the
+Management API.
+
+The selected rep's email is what ShipStation notifies:
+
+| Element | From |
+|---|---|
+| `<BillTo><Email>` | `sales_rep.email` — **the notify target** |
+| `<Customer><CustomerCode>` | `sales_rep.email` — identity key for grouping, not a notify target |
+| `CustomField1` | `sales_rep.full_name` |
+
+No app change was needed for any of that; `buildOrderXml` already emitted all
+three. Covered by two tests in the 115-case suite.
+
+Three transforms were applied to the source file, all documented in the
+migration header:
+
+- **Names title-cased.** The file mixes `AGARWAL, AMIT K` with `David Rahal`,
+  and the dropdown both displays and *orders by* `full_name`. This flattens
+  `LiDestri` → `Lidestri` for two reps; uniform casing was the explicit call.
+- **Emails lowercased.** Postgres `UNIQUE` on `text` is case-sensitive, so
+  `AAgarwal@` and `aagarwal@` would otherwise both be insertable.
+- **25 rows, not 26.** `murgese@cortinafoods.com` appears twice under two
+  different names ("Cope, Maria Antonietta" and "Mery Urgese"). `email` is
+  `UNIQUE` and both are to be selectable, so that mailbox carries **both names
+  in one row**. Split it if Cortina confirms two people with two addresses.
+
+⚠️ **Three name/email mismatches went in as the file has them** — `Alexa C
+Flynn → ahill@`, `Scott C Robbins → crobbins@`, `Heather Sandford →
+heather.sanford@` (one `d`). They read as name changes or preferred names, not
+typos, and the email is the operative field. **If a rep reports never receiving
+a notification, start here.**
+
+⚠️ **The source file is titled "Sales Mktg Innovations Supplier Partners"** and
+may include marketing, innovation and supplier contacts, not only salespeople.
+Everyone in it is now selectable as the notified party on a real sample
+shipment.
+
+## Migration ledger drift
+
+`supabase_migrations.schema_migrations` tops out at **`20260805050000`**. Five
+repo migrations are applied to the database but **unregistered**, because the
+no-Docker workflow runs SQL through the Management API, which executes without
+recording a history row:
+
+```
+20260806235500_seed_caroline
+20260807000500_sales_reps
+20260807001500_drop_salesperson_user_id
+20260807120000_seed_david_sales_rep
+20260810120000_seed_cortina_sales_reps
+```
+
+All five were read and **replay cleanly** — every one is either
+`INSERT … ON CONFLICT DO UPDATE` or `IF EXISTS`-guarded DDL, so a `db push`
+would apply them against the live database without error and leave it in its
+current state. Bookkeeping gap, not a landmine. *(Reasoned from the SQL plus
+the live schema — not tested by an actual push, since there is no Docker and no
+staging copy.)*
 
 ## Store status mapping — confirmed, not inferred
 
@@ -162,7 +232,7 @@ Status remains **read-only** (ADR-032).
 | §3 rush automation rule | **done** (re-pointed to `Internal Notes contains RUSH`) |
 | §4 cold-chain product tags | **done** |
 | §1 store status mapping | verified correct as configured |
-| §A.1 Cortina user seeding | **outstanding** — and not self-correcting: an unseeded user provisions as internal `ops`, and seeding afterwards does not fix it |
+| §A.1 Cortina user seeding | **narrowed, still outstanding.** The 25 reps need no seeds at all now — they are `sales_reps` rows, not logins. What remains is the **single Cortina ordering account**, and that is still not self-correcting: an unseeded user provisions as internal `ops`, and seeding afterwards does not fix it |
 | §9 go-live cleanup | **outstanding** — clear `VITE_SAMPLE_TEST_MODE`, redeploy, purge `SMP-TEST-%` in Supabase **and** cancel the matching orders in ShipStation |
 
 ## Loose ends

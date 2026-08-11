@@ -136,6 +136,13 @@ If a scheduled job ever looks dead, check **`net._http_response`** — not
 unattended), the field contract, `shipstation-probe`, `cancelled` sync, and the
 rebuilt **Shipments** tab (renamed from "Pending Shipments").
 
+**The Salesperson dropdown holds 27 reps** (25 Cortina + Caroline and David
+Landeck) as of Aug 11. `sales_reps` is a lookup list, **not auth** — no rep has
+a login. The selected rep's email goes to `<BillTo><Email>`, which is the only
+address ShipStation notifies. Caveats — a shared mailbox carrying two names,
+three name/email mismatches, and a source file that may include non-sales
+contacts — are in `docs/SAMPLE_CENTRAL_STATUS.md`.
+
 **The Deliver By sweep no longer pages ShipStation history.** It caches
 `shipstation_order_id` on first sight and resolves via `GET /v2/shipments/{id}`,
 scanning only for orders it cannot resolve and exiting once they are found.
