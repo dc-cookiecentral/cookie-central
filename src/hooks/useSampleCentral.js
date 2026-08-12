@@ -151,3 +151,23 @@ export async function deleteTemplate(id) {
   const { error } = await supabase.from('sample_templates').delete().eq('id', id);
   return { error };
 }
+
+// Record (or clear) what went wrong with a shipment. Site-owned data — see
+// migration 20260812150000 for why none of this goes to ShipStation.
+//
+// Clearing sets issue_at back to null, which is what "no issue logged" means
+// everywhere else; leaving a timestamp with no flags would make the reporting
+// query count a shipment that has nothing wrong with it.
+export async function saveShipmentIssue(id, { flags, note }) {
+  const clean = (flags || []).filter(Boolean);
+  const logged = clean.length > 0 || !!(note || '').trim();
+  const { error } = await supabase
+    .from('sample_shipments')
+    .update({
+      issue_flags: clean,
+      issue_note: (note || '').trim() || null,
+      issue_at: logged ? new Date().toISOString() : null,
+    })
+    .eq('id', id);
+  return { error };
+}
