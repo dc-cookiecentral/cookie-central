@@ -181,6 +181,61 @@ export function syncedStatus(
   return null;   // absent from ShipStation entirely: not our business to guess
 }
 
+// ── Delivery (ShipStation → app) ────────────────────────────────────────────
+// The source for `delivered`, which had no source at all until Aug 11 2026.
+//
+// It is NOT `GET /v2/tracking` — that path is ShipEngine's and returns 401 on
+// this account no matter the plan; V2's release notes list only
+// `POST /v2/tracking/stop` under it. The endpoint that works is per-LABEL:
+//
+//   GET /v2/labels?tracking_number=…   → label_id   (we store the number)
+//   GET /v2/labels/{label_id}/track    → status_code
+//
+// Both verified 200 live on Aug 11. Three prior notes (ADR-034, ADR-039 and
+// SAMPLE_CENTRAL_STATUS) recorded `delivered` as blocked behind a billing
+// upgrade. It never was — we had only ever probed the one path V2 does not
+// offer.
+//
+// `status_code` is the high-level enum:
+//   UN unknown · AC accepted · IT in transit · DE delivered
+//   EX exception · AT delivery attempt · NY not yet in system
+//   SP delivered to collection location
+export type TrackLog = {
+  status_code?: string | null;
+  actual_delivery_date?: string | null;
+  status_detail_code?: string | null;
+};
+
+// `SP` — "Delivered To Collection Location" — is deliberately NOT delivered.
+// The parcel is in a locker or at a pickup point; the rep does not have it, and
+// telling the sales team it landed when nobody has collected it is the more
+// expensive error. Flip this one line if that turns out to be wrong in practice.
+export const DELIVERED_TRACK_CODES = ['DE'];
+
+/**
+ * Delivery decision for one tracked label. Returns the write to make, or
+ * **null** for "leave it alone" — the common case, mirroring syncedStatus().
+ *
+ * Invariants:
+ *  1. Only ever promotes `shipped` → `delivered`. It never touches an order in
+ *     any other state, so it cannot resurrect a cancelled one or fight the
+ *     bucket sync, which owns everything before shipment.
+ *  2. Never un-delivers. Carriers do amend history, and a `delivered` order
+ *     flipping back to in-transit would read as a lost parcel.
+ *  3. `at` falls back to null, never to "now". A delivery timestamp invented by
+ *     the sweep would be indistinguishable from a real one, and the sweep's
+ *     clock is not when the box arrived.
+ */
+export function deliveredFromTrack(
+  track: TrackLog | null,
+  current: string | null,
+): { status: 'delivered'; delivered_at: string | null } | null {
+  if (current !== 'shipped') return null;                      // invariants 1 + 2
+  const code = (track?.status_code ?? '').trim().toUpperCase();
+  if (!DELIVERED_TRACK_CODES.includes(code)) return null;
+  return { status: 'delivered', delivered_at: track?.actual_delivery_date ?? null };   // invariant 3
+}
+
 // State must be 2 letters, zip 5 or 5-4; ShipStation silently rejects malformed
 // values, so the export validates and skips+logs a bad row instead.
 export const validState = (s: string | null | undefined) => !!s && /^[A-Za-z]{2}$/.test(s.trim());

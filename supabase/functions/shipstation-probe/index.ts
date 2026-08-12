@@ -141,6 +141,57 @@ Deno.serve(async (req) => {
             : ((r.body ?? (r as { text?: string }).text ?? null)),
         });
       }
+      // The per-LABEL tracking endpoint. This is a DIFFERENT surface from the
+      // /v2/tracking GET above, and it is the one that matters: the V2 release
+      // notes list only `POST /v2/tracking/stop` under /v2/tracking, so that
+      // GET is ShipEngine's, not part of ShipStation V2 at all. The recurring
+      // 401 therefore says "not offered here", not "upgrade your plan" — which
+      // is what ADR-034 and every note since have assumed.
+      //
+      // Two hops, because we store a tracking number and the endpoint wants a
+      // label id: /v2/labels?tracking_number= → label_id → /v2/labels/{id}/track.
+      // Both GETs. `status_code: 'DE'` is the delivered signal.
+      if (tn) {
+        const list = await ss(key, `/v2/labels?tracking_number=${encodeURIComponent(tn)}`);
+        const labels = (list.body as { labels?: Array<Record<string, unknown>> })?.labels ?? [];
+        const labelId = labels.length ? String(labels[0].label_id ?? '') : null;
+        results.push({
+          what: 'labels by tracking number (finds label_id)',
+          path: '/v2/labels?tracking_number=…',
+          http_status: list.status,
+          ok: list.ok,
+          body: list.ok
+            ? {
+                label_count: labels.length,
+                label_id: labelId,
+                tracking_status: labels[0]?.tracking_status ?? null,
+              }
+            : (list.body ?? (list as { text?: string }).text ?? null),
+        });
+
+        if (labelId) {
+          const trk = await ss(key, `/v2/labels/${encodeURIComponent(labelId)}/track`);
+          const b = trk.body as Record<string, unknown> | null;
+          results.push({
+            what: 'label track — THE delivered source',
+            path: `/v2/labels/${labelId}/track`,
+            http_status: trk.status,
+            ok: trk.ok,
+            body: trk.ok
+              ? {
+                  status_code: b?.status_code ?? null,               // DE = delivered
+                  status_description: b?.status_description ?? null,
+                  status_detail_code: b?.status_detail_code ?? null,
+                  carrier_status_description: b?.carrier_status_description ?? null,
+                  estimated_delivery_date: b?.estimated_delivery_date ?? null,
+                  actual_delivery_date: b?.actual_delivery_date ?? null,
+                  event_count: Array.isArray(b?.events) ? (b.events as unknown[]).length : null,
+                }
+              : (b ?? (trk as { text?: string }).text ?? null),
+          });
+        }
+      }
+
       return json({ probed_with: { tracking_number: tn ? `${tn.slice(0, 6)}…` : null, carrier_code: cc }, results });
     }
 

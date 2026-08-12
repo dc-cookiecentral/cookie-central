@@ -32,7 +32,10 @@
 import { serviceClient } from '../_shared/supabase.ts';
 import { getSecret } from '../_shared/vault.ts';
 import { handleCors, json } from '../_shared/cors.ts';
-import { SS_ACTIVE_BUCKETS, SS_SCAN_BUCKETS, syncedStatus } from '../_shared/shipstation.ts';
+import {
+  SS_ACTIVE_BUCKETS, SS_SCAN_BUCKETS, syncedStatus,
+  deliveredFromTrack, type TrackLog,
+} from '../_shared/shipstation.ts';
 
 const SS = 'https://api.shipstation.com';
 
@@ -167,6 +170,35 @@ async function shipmentsByNo(key: string, truncated: string[], wanted: Set<strin
   return map;
 }
 
+// ── Delivery poll ───────────────────────────────────────────────────────────
+// The third job, added Aug 11 2026. Separate from the two above because it
+// operates on a DIFFERENT set of orders: those already shipped, which
+// TRACKED_STATUSES deliberately excludes.
+//
+// A ceiling, surfaced rather than swallowed. Shipped orders accumulate forever
+// and each costs one or two API calls, so an unbounded poll would eventually
+// blow the 30s cron timeout the same way the bucket scan did. Oldest-first is
+// wrong here (they are the least likely to be moving), so we take the most
+// recently shipped and report anything skipped.
+const MAX_DELIVERY_POLLS = 100;
+
+/** tracking number → label id. Only called until the id is cached. */
+async function labelIdByTracking(key: string, tracking: string): Promise<string | null> {
+  const r = await ss(key, 'GET', `/v2/labels?tracking_number=${encodeURIComponent(tracking)}`);
+  if (!r.ok) return null;
+  const labels = (r.body as { labels?: Array<Record<string, unknown>> })?.labels ?? [];
+  // More than one label for a tracking number means a void-and-reprint. The
+  // most recent is the live one, and the list sorts by created_at desc.
+  return labels.length ? String(labels[0].label_id ?? '') || null : null;
+}
+
+/** The delivery signal itself. Null when the label is unknown or unreadable. */
+async function trackLabel(key: string, labelId: string): Promise<TrackLog | null> {
+  const r = await ss(key, 'GET', `/v2/labels/${encodeURIComponent(labelId)}/track`);
+  if (!r.ok) return null;
+  return (r.body ?? null) as TrackLog | null;
+}
+
 /** GET → set the one field → PUT the whole object back. Verified to preserve
  *  items, ship_to, internal_notes, service and warehouse. */
 async function setDeliverBy(key: string, shipmentId: string, date: string) {
@@ -200,7 +232,12 @@ Deno.serve(async (req) => {
     if (error) return json({ error: `read sample_shipments: ${error.message}` }, 500);
 
     const rows = (data ?? []) as Row[];
-    if (!rows.length) return json({ ok: true, considered: 0, updated: 0, note: 'nothing to track' });
+    // ⚠️ Deliberately NO early return on an empty `rows`. There used to be one,
+    // and it silently skipped the delivery poll below — which reads a DIFFERENT
+    // set of orders (`shipped`, excluded from TRACKED_STATUSES on purpose). With
+    // every order shipped and none awaiting fulfilment, the sweep reported
+    // "nothing to track" and never looked at a single tracking number. The loops
+    // below are all no-ops on an empty list, so falling through costs nothing.
 
     // ── Resolve each order to its ShipStation shipment ──────────────────────
     // Cached id first (one cheap GET), bucket scan only for what is left over.
@@ -280,6 +317,82 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── 3. Delivery poll. Shipped orders only — a separate query, because ──
+    // TRACKED_STATUSES excludes `shipped` on purpose (shipnotify owns it).
+    const delivered: Array<{ shipment_no: string; delivered_at: string | null }> = [];
+    const labelsLearned: string[] = [];
+    let polled = 0;
+    let deliveryUnresolved = 0;
+    let deliverySkipped = 0;
+
+    const { data: shippedRows, error: shippedErr } = await supabase
+      .from('sample_shipments')
+      .select('shipment_no, status, tracking_number, shipstation_label_id')
+      .eq('status', 'shipped')
+      .not('tracking_number', 'is', null)
+      .order('shipped_at', { ascending: false, nullsFirst: false })
+      .limit(MAX_DELIVERY_POLLS + 1);
+
+    if (shippedErr) {
+      // Not fatal: the Deliver By sweep above has already done its work, and
+      // failing the whole run would strand it too.
+      console.error(`shipstation-deliverby: read shipped rows: ${shippedErr.message}`);
+      failed.push({ shipment_no: '(delivery poll)', error: shippedErr.message });
+    } else {
+      const all = (shippedRows ?? []) as Array<{
+        shipment_no: string; status: string;
+        tracking_number: string | null; shipstation_label_id: string | null;
+      }>;
+      // Loud about the cap: a truncated poll makes "nothing delivered" a lie.
+      if (all.length > MAX_DELIVERY_POLLS) {
+        deliverySkipped = all.length - MAX_DELIVERY_POLLS;
+        console.error(
+          `shipstation-deliverby: delivery poll capped at ${MAX_DELIVERY_POLLS}; ` +
+          `${deliverySkipped} older shipped order(s) NOT checked this run`,
+        );
+      }
+
+      for (const row of all.slice(0, MAX_DELIVERY_POLLS)) {
+        try {
+          let labelId = row.shipstation_label_id;
+          if (!labelId) {
+            labelId = await labelIdByTracking(key, row.tracking_number as string);
+            if (labelId) {
+              const { error: lblErr } = await supabase
+                .from('sample_shipments')
+                .update({ shipstation_label_id: labelId })
+                .eq('shipment_no', row.shipment_no);
+              // Only a lost optimisation — the id is re-resolved next run.
+              if (lblErr) console.error(`shipstation-deliverby: cache label ${row.shipment_no}: ${lblErr.message}`);
+              else labelsLearned.push(row.shipment_no);
+            }
+          }
+          // No label yet is normal for a hand-entered tracking number, or one
+          // the carrier has not registered. Not an error, just nothing to read.
+          if (!labelId) { deliveryUnresolved++; continue; }
+
+          polled++;
+          const write = deliveredFromTrack(await trackLabel(key, labelId), row.status);
+          if (!write) continue;
+
+          const { error: dErr } = await supabase
+            .from('sample_shipments')
+            .update({ status: write.status, delivered_at: write.delivered_at })
+            .eq('shipment_no', row.shipment_no)
+            // Guard against the row having moved since the read above — the
+            // export and shipnotify both write here, and delivered must only
+            // ever promote a still-shipped order.
+            .eq('status', 'shipped');
+          if (dErr) failed.push({ shipment_no: row.shipment_no, error: `delivered: ${dErr.message}` });
+          else delivered.push({ shipment_no: row.shipment_no, delivered_at: write.delivered_at });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          console.error(`shipstation-deliverby: delivery ${row.shipment_no}: ${msg}`);
+          failed.push({ shipment_no: row.shipment_no, error: msg });
+        }
+      }
+    }
+
     const byStore: Record<string, number> = {};
     for (const row of rows) {
       const m = pending.get(row.shipment_no);
@@ -292,7 +405,10 @@ Deno.serve(async (req) => {
       `shipstation-deliverby: stores=${JSON.stringify(byStore)} considered=${rows.length} updated=${updated.length} ` +
       `status-changes=${JSON.stringify(statusChanges)} ` +
       `already=${alreadyCorrect} not-yet-imported=${notYetImported} ` +
-      `by-id=${byId} scanned=${scanned.size} learned=${learned.length} failed=${failed.length}`,
+      `by-id=${byId} scanned=${scanned.size} learned=${learned.length} ` +
+      `delivery-polled=${polled} delivered=${JSON.stringify(delivered)} ` +
+      `labels-learned=${labelsLearned.length} delivery-unresolved=${deliveryUnresolved} ` +
+      `delivery-skipped=${deliverySkipped} failed=${failed.length}`,
     );
     return json({
       ok: true,
@@ -310,6 +426,13 @@ Deno.serve(async (req) => {
       resolved_by_id: byId,
       scanned: scanned.size,
       ids_learned: learned.length,
+      // Delivery poll. `delivery_skipped` must stay 0 — anything else means the
+      // cap bit and some shipped orders went unchecked.
+      delivery_polled: polled,
+      delivered,
+      labels_learned: labelsLearned.length,
+      delivery_unresolved: deliveryUnresolved,
+      delivery_skipped: deliverySkipped,
       failed,
     });
   } catch (e) {
