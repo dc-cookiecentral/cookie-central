@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import AppSwitcher from '../components/AppSwitcher';
+import { useDialog } from '../hooks/useDialog';
 import {
   useSampleCentral, addAddress, createShipment, saveTemplate, deleteTemplate,
 } from '../hooks/useSampleCentral';
@@ -28,6 +29,9 @@ const TABS = [
   { key: 'mission', label: 'Shipments' },
   { key: 'address', label: 'Address Book' },
 ];
+
+// Stable identity for a custom line, so React keys survive a mid-list delete.
+const newLineId = () => (globalThis.crypto?.randomUUID?.() ?? `c${Date.now()}${Math.random().toString(36).slice(2, 7)}`);
 
 const EMPTY_HEADER = {
   sales_rep_id: '', account: '', address_id: '', temp_override: '',
@@ -64,6 +68,11 @@ export default function SampleCentral() {
   const [confirming, setConfirming] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
+  const [invalid, setInvalid] = useState(null);   // { field, message } | null
+
+  // Any edit clears the standing error. Re-validating on every keystroke would
+  // nag mid-typing; clearing is the half that is always welcome.
+  useEffect(() => { setInvalid(null); }, [header, cart, customItems]);
 
   const productByCode = useMemo(() => new Map((data?.catalog || []).map((p) => [p.code, p])), [data]);
   const cartLines = useMemo(
@@ -88,24 +97,29 @@ export default function SampleCentral() {
   // Validation is split out of submit() so the confirm sheet cannot open on an
   // order that would fail anyway — and so submit() can re-check. The two are a
   // moment apart, and the cart is still editable behind the sheet.
+  // Returns { field, message } so the message can be rendered AT the control
+  // that is wrong. A toast at the top of <main> describing a field inside a
+  // right-hand drawer — possibly scrolled out of view — makes the user hunt for
+  // what they got wrong.
   const validationError = () => {
-    if (!header.sales_rep_id) return 'Pick a salesperson first.';
-    if (!header.address_id) return 'Pick a ship-to address.';
-    if (cartLines.length === 0 && customItems.length === 0) return 'Add at least one cookie or custom line.';
-    if (!tpComplete(header)) return 'Third-party billing needs carrier, account number and postal code — the co-man cannot bill the account without all three.';
+    if (!header.sales_rep_id) return { field: 'sales_rep_id', message: 'Pick a salesperson — they receive the shipment notification.' };
+    if (!header.address_id) return { field: 'address_id', message: 'Pick a ship-to address.' };
+    if (cartLines.length === 0 && customItems.length === 0) return { field: 'items', message: 'Add at least one cookie or custom line.' };
+    if (!tpComplete(header)) return { field: 'third_party', message: 'Carrier, account number and postal code are all needed — the co-man cannot bill the account without all three.' };
     return null;
   };
 
   const requestSubmit = () => {
     const err = validationError();
-    if (err) return setToast({ err });
+    setInvalid(err);
+    if (err) return;
     setSubmitError(null);
     setConfirming(true);
   };
 
   const submit = async () => {
     const err = validationError();
-    if (err) { setConfirming(false); return setToast({ err }); }
+    if (err) { setInvalid(err); setConfirming(false); return; }
     setSubmitError(null);
     // A submitted order cannot be recalled from this app, so a double-click must
     // not become two shipments — and two inserts would also race for the same
@@ -185,11 +199,21 @@ export default function SampleCentral() {
       )}
 
       <main className="flex-1 px-6 py-5">
-        {toast && (
-          <div className={`mb-3 text-[12.5px] px-3 py-2 rounded border ${toast.err ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}`} onClick={() => setToast(null)}>
-            {toast.err || toast.ok} <span className="text-gr">(click to dismiss)</span>
-          </div>
-        )}
+        {/* The live region is ALWAYS mounted. A region that appears at the same
+            moment as its text is frequently missed by screen readers — they
+            watch existing regions for changes. Errors additionally carry
+            role="alert", which is announced on insertion. */}
+        <div aria-live="polite" aria-atomic="true">
+          {toast && (
+            <div
+              role={toast.err ? 'alert' : undefined}
+              className={`mb-3 text-[12.5px] px-3 py-2 rounded border ${toast.err ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}`}
+            >
+              {toast.err || toast.ok}
+              <button onClick={() => setToast(null)} className="ml-2 text-gr underline">Dismiss</button>
+            </div>
+          )}
+        </div>
 
         {loading && <div className="text-sm text-gr py-10 text-center">Loading Sample Central…</div>}
         {error && (
@@ -214,7 +238,7 @@ export default function SampleCentral() {
           customItems={customItems} setCustomItems={setCustomItems} header={header} setHeader={setHeader}
           temp={temp} productByCode={productByCode} profile={profile} canWrite={canWrite}
           onClose={() => setCartOpen(false)} onAddAddress={refresh} refresh={refresh}
-          submit={requestSubmit} setToast={setToast}
+          submit={requestSubmit} setToast={setToast} invalid={invalid}
         />
       )}
 
@@ -243,19 +267,13 @@ export default function SampleCentral() {
 // invisible on the way in: WHO gets notified (the email, not just the name),
 // WHERE it ships, HOW MANY cookies, and whether it is going out cold.
 function ConfirmSubmit({ rep, addr, header, cartLines, customItems, temp, submitting, submitError, onCancel, onConfirm }) {
-  const cancelRef = useRef(null);
+  const ref = useRef(null);
+  // Escape is ignored mid-submit: the insert is already in flight and closing
+  // the sheet would leave the user unsure whether the order went out.
+  useDialog(ref, submitting ? undefined : onCancel);
   const cookies = cartLines.reduce((n, l) => n + l.qty, 0);
   const customLines = customItems.filter((c) => c.spec);
   const large = cookies >= LARGE_ORDER_COOKIES;
-
-  useEffect(() => {
-    // Focus lands on Cancel, not Confirm: a stray Enter on an already-open sheet
-    // should do the harmless thing.
-    cancelRef.current?.focus();
-    const onKey = (e) => { if (e.key === 'Escape' && !submitting) onCancel(); };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onCancel, submitting]);
 
   const Row = ({ label, children, warn }) => (
     <div className="flex gap-3 py-1.5 border-b border-bg last:border-0">
@@ -266,9 +284,9 @@ function ConfirmSubmit({ rep, addr, header, cartLines, customItems, temp, submit
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/50 z-[60]" />
+      <div className="fixed inset-0 bg-black/50 z-[60]" aria-hidden="true" />
       <div
-        role="dialog" aria-modal="true" aria-labelledby="confirm-title"
+        ref={ref} role="dialog" aria-modal="true" aria-labelledby="confirm-title"
         className="fixed z-[70] inset-x-0 bottom-0 sm:inset-0 sm:m-auto sm:h-fit sm:max-w-[440px] bg-cd rounded-t-2xl sm:rounded-2xl shadow-2xl p-4"
       >
         <h2 id="confirm-title" className="text-[15px] font-extrabold text-dk mb-0.5">Send this shipment?</h2>
@@ -317,7 +335,7 @@ function ConfirmSubmit({ rep, addr, header, cartLines, customItems, temp, submit
 
         <div className="flex gap-2">
           <button
-            ref={cancelRef} onClick={onCancel} disabled={submitting}
+            data-autofocus onClick={onCancel} disabled={submitting}
             className="flex-1 border border-lt bg-bg text-dk py-2.5 rounded-lg text-[13px] font-bold disabled:opacity-50"
           >
             Keep editing
@@ -376,7 +394,7 @@ function CatalogView({ data, filter, setFilter, cart, setQty, addToCart }) {
                     </div>
                     <div className="text-[11.5px] text-gr whitespace-nowrap">{p.dough_oz}oz · 1 cookie · EA</div>
                     <div className="flex items-center gap-1">
-                      <button onClick={() => setQty(p.code, (cart[p.code] || 0) - 1)} className="w-6 h-6 rounded border border-lt text-gr hover:text-pk">−</button>
+                      <button aria-label={`One fewer ${p.description || p.code}`} onClick={() => setQty(p.code, (cart[p.code] || 0) - 1)} className="w-6 h-6 rounded border border-lt text-gr hover:text-pk relative after:absolute after:-inset-[10px] after:content-['']">−</button>
                       <input
                         type="number" inputMode="numeric" min="0" max={MAX_LINE_QTY}
                         aria-label={`Quantity — ${p.description || p.code}`}
@@ -384,7 +402,7 @@ function CatalogView({ data, filter, setFilter, cart, setQty, addToCart }) {
                         onChange={(e) => setQty(p.code, parseInt(e.target.value, 10) || 0)}
                         className="w-14 text-center border border-lt rounded text-[12.5px] py-0.5"
                       />
-                      <button onClick={() => addToCart(p.code)} className="w-6 h-6 rounded border border-pk bg-pk text-white">+</button>
+                      <button aria-label={`One more ${p.description || p.code}`} onClick={() => addToCart(p.code)} className="w-6 h-6 rounded border border-pk bg-pk text-white relative after:absolute after:-inset-[10px] after:content-['']">+</button>
                     </div>
                   </div>
                 ))}
@@ -400,9 +418,16 @@ function CatalogView({ data, filter, setFilter, cart, setQty, addToCart }) {
 // ── Build Shipment drawer (prototype's cart panel) ──────────────────────────
 function CartDrawer({
   data, cart, setCart, cartLines, setQty, customItems, setCustomItems, header, setHeader,
-  temp, productByCode, profile, canWrite, onClose, onAddAddress, refresh, submit, setToast,
+  temp, productByCode, profile, canWrite, onClose, onAddAddress, refresh, submit, setToast, invalid,
 }) {
   const [showAddr, setShowAddr] = useState(false);
+  const ref = useRef(null);
+  useDialog(ref, onClose);
+  // The message renders under its own control; `Err` keeps that one-liner honest
+  // about which field it belongs to.
+  const Err = ({ field }) => (invalid?.field === field
+    ? <div role="alert" className="text-[11px] text-red-700 mt-1">{invalid.message}</div>
+    : null);
   const set = (k, v) => setHeader((h) => ({ ...h, [k]: v }));
   const toggleCollateral = (c) => setHeader((h) => ({ ...h, collateral: h.collateral.includes(c) ? h.collateral.filter((x) => x !== c) : [...h.collateral, c] }));
   const overridden = !!header.temp_override && header.temp_override !== derivedTemp(cartLines.map((l) => ({ code: l.code })), productByCode);
@@ -410,11 +435,16 @@ function CartDrawer({
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />
-      <aside className="fixed right-0 top-0 h-full w-full sm:w-[460px] bg-cd z-50 shadow-2xl flex flex-col">
+      {/* Presentational only — the × button and Escape are the real close
+          affordances, and both are keyboard-reachable. */}
+      <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} aria-hidden="true" />
+      <aside
+        ref={ref} role="dialog" aria-modal="true" aria-labelledby="drawer-title"
+        className="fixed right-0 top-0 h-full w-full sm:w-[460px] bg-cd z-50 shadow-2xl flex flex-col"
+      >
         <header className="flex items-center justify-between px-4 h-[60px] border-b border-lt shrink-0">
-          <div className="font-extrabold text-[16px] text-dk">Build Shipment</div>
-          <button onClick={onClose} className="text-gr hover:text-pk text-[20px] leading-none px-2" aria-label="Close">×</button>
+          <div id="drawer-title" className="font-extrabold text-[16px] text-dk">Build Shipment</div>
+          <button onClick={onClose} className="text-gr hover:text-pk text-[20px] leading-none px-3 py-2" aria-label="Close Build Shipment">×</button>
         </header>
 
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
@@ -424,7 +454,11 @@ function CartDrawer({
                 {/* The rep's email rides along invisibly: it is written to
                     <BillTo><Email> on export, which is the address ShipStation
                     sends customer notifications to. Nothing to fill in here. */}
-                <select value={header.sales_rep_id} onChange={(e) => set('sales_rep_id', e.target.value)} className="w-full px-2 py-1 rounded border border-lt text-[12.5px] bg-bg">
+                <select
+                  value={header.sales_rep_id} onChange={(e) => set('sales_rep_id', e.target.value)}
+                  aria-invalid={invalid?.field === 'sales_rep_id' || undefined}
+                  className={`w-full px-2 py-1 rounded border text-[12.5px] bg-bg ${invalid?.field === 'sales_rep_id' ? 'border-red-500' : 'border-lt'}`}
+                >
                   <option value="">— select —</option>
                   {/* Name AND email. The email is the operative field — it is what
                       ShipStation notifies — and it is the one nobody can verify
@@ -435,6 +469,7 @@ function CartDrawer({
                     <option key={s.id} value={s.id}>{s.full_name}{s.email ? ` — ${s.email}` : ''}</option>
                   ))}
                 </select>
+                <Err field="sales_rep_id" />
               </Labeled>
               <Labeled label="Account">
                 <input value={header.account} onChange={(e) => set('account', e.target.value)} placeholder="Whole Foods Market" className="w-full px-2 py-1 rounded border border-lt text-[12.5px]" />
@@ -445,10 +480,15 @@ function CartDrawer({
                 <div className="text-[10.5px] text-gr uppercase">Ship-to address *</div>
                 <button onClick={() => setShowAddr((v) => !v)} className="text-[11.5px] text-pk font-semibold">{showAddr ? 'Cancel' : '+ New address'}</button>
               </div>
-              <select value={header.address_id} onChange={(e) => set('address_id', e.target.value)} className="w-full px-2 py-1 rounded border border-lt text-[12.5px] bg-bg">
+              <select
+                value={header.address_id} onChange={(e) => set('address_id', e.target.value)}
+                aria-invalid={invalid?.field === 'address_id' || undefined}
+                className={`w-full px-2 py-1 rounded border text-[12.5px] bg-bg ${invalid?.field === 'address_id' ? 'border-red-500' : 'border-lt'}`}
+              >
                 <option value="">— select —</option>
                 {data.addresses.map((a) => <option key={a.id} value={a.id}>{a.nickname || a.company} — {a.city}, {a.state}</option>)}
               </select>
+              <Err field="address_id" />
               {addr && <div className="text-[11.5px] text-gr mt-1">{addr.contact_name} · {addr.company} · {addr.street}, {addr.city}, {addr.state} {addr.zip}</div>}
               {showAddr && <InlineAddress onSaved={() => { setShowAddr(false); onAddAddress(); }} canWrite={canWrite} setToast={setToast} />}
             </div>
@@ -461,16 +501,19 @@ function CartDrawer({
 
           <Section title="Cookies">
             {cartLines.length === 0 ? (
-              <div className="text-[12.5px] text-gr italic">Cart is empty — add cookies from <b>Order Samples</b>, or start from a saved assortment above.</div>
+              <>
+                <div className="text-[12.5px] text-gr italic">Cart is empty — add cookies from <b>Order Samples</b>, or start from a saved assortment above.</div>
+                <Err field="items" />
+              </>
             ) : (
               <div className="divide-y divide-bg">
                 {cartLines.map((l) => (
                   <div key={l.code} className="flex items-center gap-2 py-1.5">
                     <div className="flex-1 min-w-0"><div className="text-[12.5px] font-semibold text-dk truncate">{l.product?.description || l.code}</div><div className="text-[10.5px] font-mono text-gr">{l.code}</div></div>
                     <div className="flex items-center gap-1">
-                      <button onClick={() => setQty(l.code, l.qty - 1)} className="w-5 h-5 rounded border border-lt text-gr">−</button>
+                      <button aria-label={`One fewer ${l.product?.description || l.code}`} onClick={() => setQty(l.code, l.qty - 1)} className="w-5 h-5 rounded border border-lt text-gr relative after:absolute after:-inset-[10px] after:content-['']">−</button>
                       <span className="text-[12.5px] w-6 text-center">{l.qty}</span>
-                      <button onClick={() => setQty(l.code, l.qty + 1)} className="w-5 h-5 rounded border border-pk bg-pk text-white">+</button>
+                      <button aria-label={`One more ${l.product?.description || l.code}`} onClick={() => setQty(l.code, l.qty + 1)} className="w-5 h-5 rounded border border-pk bg-pk text-white relative after:absolute after:-inset-[10px] after:content-['']">+</button>
                     </div>
                   </div>
                 ))}
@@ -480,14 +523,20 @@ function CartDrawer({
 
           <Section title="Custom requests (optional)">
             {customItems.map((c, i) => (
-              <div key={i} className="grid grid-cols-12 gap-1.5 mb-1.5">
+              // Keyed by identity, not index: deleting a line with index keys
+              // hands the removed row's DOM node (and focus) to its neighbour.
+              <div key={c.id ?? i} className="grid grid-cols-12 gap-1.5 mb-1.5">
                 <input value={c.spec} onChange={(e) => setCustomItems((arr) => arr.map((x, j) => (j === i ? { ...x, spec: e.target.value } : x)))} placeholder="Custom item spec" className="col-span-6 px-2 py-1 rounded border border-lt text-[12.5px]" />
                 <input value={c.project_no || ''} onChange={(e) => setCustomItems((arr) => arr.map((x, j) => (j === i ? { ...x, project_no: e.target.value } : x)))} placeholder="Project #" className="col-span-3 px-2 py-1 rounded border border-lt text-[12.5px] font-mono" />
                 <input type="number" value={c.qty} onChange={(e) => setCustomItems((arr) => arr.map((x, j) => (j === i ? { ...x, qty: e.target.value } : x)))} className="col-span-2 px-2 py-1 rounded border border-lt text-[12.5px]" />
-                <button onClick={() => setCustomItems((arr) => arr.filter((_, j) => j !== i))} className="col-span-1 text-red-600 text-[13px]">×</button>
+                <button
+                  onClick={() => setCustomItems((arr) => arr.filter((_, j) => j !== i))}
+                  aria-label={`Remove custom line ${i + 1}${c.spec ? `: ${c.spec}` : ''}`}
+                  className="col-span-1 text-red-600 text-[13px] relative after:absolute after:-inset-2 after:content-['']"
+                >×</button>
               </div>
             ))}
-            <button onClick={() => setCustomItems((arr) => [...arr, { spec: '', qty: 1, project_no: '' }])} className="text-[11.5px] text-pk font-semibold">+ Add custom line</button>
+            <button onClick={() => setCustomItems((arr) => [...arr, { id: newLineId(), spec: '', qty: 1, project_no: '' }])} className="text-[11.5px] text-pk font-semibold py-1.5">+ Add custom line</button>
           </Section>
 
           <Section title="Handling">
@@ -538,6 +587,7 @@ function CartDrawer({
                     <input value={header.tp_postal_code} onChange={(e) => set('tp_postal_code', e.target.value)} placeholder="90210" className="w-full px-2 py-1 rounded border border-lt text-[12.5px] font-mono" />
                   </Labeled>
                 </div>
+                <Err field="third_party" />
                 <div className="text-[10.5px] text-gr">{TP_NOTICE}</div>
               </div>
             )}
@@ -609,7 +659,7 @@ function QuickStartPanel({ data, cart, setCart, profile, canWrite, refresh, setT
           {data.templates.map((t) => (
             <span key={t.id} className="inline-flex items-center bg-cd border border-lt rounded-full overflow-hidden">
               <button onClick={() => applyTemplate(t)} title={t.description || ''} className="text-[11.5px] font-semibold px-3 py-1 text-dk hover:text-pk">{t.name}</button>
-              {canWrite && <button onClick={async () => { await deleteTemplate(t.id); refresh(); }} className="text-[11.5px] text-gr hover:text-red-600 pr-2.5 pl-0.5" aria-label={`Delete ${t.name}`}>×</button>}
+              {canWrite && <button onClick={async () => { await deleteTemplate(t.id); refresh(); }} className="text-[11.5px] text-gr hover:text-red-600 pr-2.5 pl-0.5 relative after:absolute after:-inset-2 after:content-['']" aria-label={`Delete ${t.name}`}>×</button>}
             </span>
           ))}
         </div>
@@ -944,9 +994,12 @@ function ShipmentCard({ s, cols, open, onToggle }) {
   const ctx = { s, items, hasCustom, due };
   return (
     <div className="bg-cd border border-lt rounded-xl overflow-hidden">
+      {/* aria-label: without it the whole six-cell grid is read out as the
+          button's label — order number, account, rep, every flag — per row. */}
       <button
         onClick={onToggle}
         aria-expanded={open}
+        aria-label={`${s.shipment_no}, ${s.account || 'no account'}, ${s.status === 'on_hold' ? 'on hold' : s.status}. ${open ? 'Hide' : 'Show'} details`}
         className={`w-full text-left px-3 py-2.5 hover:bg-pc grid gap-x-3 gap-y-1.5 items-center ${cols.grid}`}
       >
         {cols.cells.map((c) => (
