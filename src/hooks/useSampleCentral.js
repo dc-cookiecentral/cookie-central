@@ -18,7 +18,11 @@ export function useSampleCentral() {
         .from('products')
         .select('code, description, flavor, outer_cookie, stuffing, tier, form, dough_oz, prep, allergens, ingredients, nutrition')
         .eq('sample_eligible', true),
-      supabase.from('addresses').select('*').order('nickname'),
+      // Live addresses only. A retired one still resolves for past shipments —
+      // those come through the shipment's own `address:addresses!address_id`
+      // embed below, which is not filtered — and for the export, which joins at
+      // pull time. This list is only "what can I pick now".
+      supabase.from('addresses').select('*').eq('active', true).order('nickname'),
       supabase
         .from('sample_shipments')
         // `address:addresses!address_id` must use the explicit table!fk form —
@@ -72,16 +76,58 @@ export async function addAddress(fields) {
   return { data, error };
 }
 
+// Retire, NOT edit and NOT a hard delete (migration 20260812120000).
+//
+// Editing was rejected deliberately: an address is copied into ShipStation at
+// import, so changing it here does not change an order the co-man already
+// holds. An edit control invites someone to "fix" a shipment that has already
+// gone out and believe it worked. Orders are changed by telling the Dirty
+// Cookie team — the site has no path to it, by design (ADR-032).
+//
+// A hard delete raises a foreign-key error on any address that has been used
+// (the FK is NO ACTION), and would strand an order not yet pulled: the export
+// joins the address at pull time, so it would fail validation and be skipped
+// silently.
+//
+// So the row stays and `active` goes false. Gone from the picker, still intact
+// for every shipment that used it.
+export async function retireAddress(id) {
+  const { error } = await supabase.from('addresses').update({ active: false }).eq('id', id);
+  return { error };
+}
+
 // Create a shipment header + its line items. `header` carries the derived temp
 // snapshot; `items` = [{ product_code|null, custom, custom_spec, project_no, qty, description }].
 // `existingShipments` is used to mint the next SMP-#### number.
 export async function createShipment(header, items, existingShipments) {
-  const shipment_no = nextShipmentNo(existingShipments);
-  const { data: ship, error: shipErr } = await supabase
-    .from('sample_shipments')
-    .insert({ ...header, shipment_no })
-    .select()
-    .single();
+  // The number is minted from the CLIENT's list, so two submits a moment apart
+  // compute the same one. `shipment_no` is UNIQUE, so the loser used to get a
+  // raw Postgres error and lose the cart — on an action that is unrecallable
+  // and, from the user's side, indistinguishable from "did it send?".
+  //
+  // On a duplicate (23505) we re-derive from the DATABASE rather than the stale
+  // in-memory list and try again. The proper fix is to mint server-side, but
+  // SHIPMENT_NO_FLOOR and the TEST- prefix live in the frontend today, and
+  // moving them changes the go-live purge procedure too. This removes the
+  // failure without that surgery.
+  let ship = null;
+  let shipErr = null;
+  let candidate = nextShipmentNo(existingShipments);
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const res = await supabase
+      .from('sample_shipments')
+      .insert({ ...header, shipment_no: candidate })
+      .select()
+      .single();
+    if (!res.error) { ship = res.data; shipErr = null; break; }
+    shipErr = res.error;
+    // 23505 = unique_violation. Anything else is a real failure (RLS, a bad
+    // FK, no connection) and retrying would just repeat it.
+    if (res.error.code !== '23505') break;
+    const { data: fresh } = await supabase.from('sample_shipments').select('shipment_no');
+    candidate = nextShipmentNo(fresh ?? existingShipments);
+  }
   if (shipErr) return { error: shipErr };
   if (items.length) {
     const rows = items.map((it) => ({ ...it, shipment_id: ship.id }));
