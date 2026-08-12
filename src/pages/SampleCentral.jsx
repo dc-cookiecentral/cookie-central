@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import AppSwitcher from '../components/AppSwitcher';
 import { useDialog } from '../hooks/useDialog';
 import {
-  useSampleCentral, addAddress, createShipment, saveTemplate, deleteTemplate,
+  useSampleCentral, addAddress, retireAddress, createShipment, saveTemplate, deleteTemplate,
 } from '../hooks/useSampleCentral';
 import {
   flavorFamily, derivedTemp, effectiveTemp, groupCatalog,
@@ -291,7 +291,8 @@ function ConfirmSubmit({ rep, addr, header, cartLines, customItems, temp, submit
       >
         <h2 id="confirm-title" className="text-[15px] font-extrabold text-dk mb-0.5">Send this shipment?</h2>
         <p className="text-[11.5px] text-gr mb-3">
-          It goes straight to the co-manufacturer&rsquo;s queue. You cannot cancel it from here afterwards.
+          It goes straight to the co-manufacturer&rsquo;s queue. You cannot cancel it from here
+          afterwards &mdash; that takes a message to the Dirty Cookie team.
         </p>
 
         <div className="bg-bg border border-lt rounded-xl px-3 py-1.5 mb-3">
@@ -686,23 +687,43 @@ function QuickStartPanel({ data, cart, setCart, profile, canWrite, refresh, setT
   );
 }
 
+// Add only. There is no edit, deliberately — see retireAddress(). An address is
+// copied into ShipStation at import, so changing it here would not change an
+// order the co-man already holds, and an edit control invites exactly that
+// misunderstanding. A wrong address is retired and replaced.
+const ADDRESS_FIELDS = [
+  ['nickname', 'Nickname'], ['contact_name', 'Contact'], ['company', 'Company'],
+  ['street', 'Street'], ['city', 'City'], ['state', 'State'], ['zip', 'Zip'],
+];
+
 function InlineAddress({ onSaved, canWrite, setToast }) {
-  const [f, setF] = useState({ nickname: '', contact_name: '', company: '', street: '', city: '', state: '', zip: '' });
+  const [f, setF] = useState(() => Object.fromEntries(ADDRESS_FIELDS.map(([k]) => [k, ''])));
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
+
   const save = async () => {
     setSaving(true);
     const { error } = await addAddress(f);
     setSaving(false);
     if (error) { if (setToast) setToast({ err: error.message }); else window.alert(error.message); return; }
+    // No success toast: this form also opens inside the drawer, where the toast
+    // renders behind the overlay. The form closing and the address appearing in
+    // the list is the feedback that is visible in both places.
     onSaved();
   };
+
   return (
     <div className="mt-2 bg-bg border border-lt rounded-lg p-2 grid grid-cols-2 gap-1.5">
-      {[['nickname', 'Nickname'], ['contact_name', 'Contact'], ['company', 'Company'], ['street', 'Street'], ['city', 'City'], ['state', 'State'], ['zip', 'Zip']].map(([k, l]) => (
-        <input key={k} value={f[k]} onChange={(e) => set(k, e.target.value)} placeholder={l} className="px-2 py-1 rounded border border-lt text-[11.5px]" />
+      {ADDRESS_FIELDS.map(([k, l]) => (
+        <input
+          key={k} value={f[k]} onChange={(e) => set(k, e.target.value)}
+          placeholder={l} aria-label={l}
+          className="px-2 py-1 rounded border border-lt text-[11.5px]"
+        />
       ))}
-      <button onClick={save} disabled={saving || !canWrite} className="col-span-2 bg-pk text-white py-1 rounded text-[11.5px] font-semibold disabled:opacity-50">{saving ? 'Saving…' : 'Save address'}</button>
+      <button onClick={save} disabled={saving || !canWrite} className="col-span-2 bg-pk text-white py-1 rounded text-[11.5px] font-semibold disabled:opacity-50">
+        {saving ? 'Saving…' : 'Save address'}
+      </button>
     </div>
   );
 }
@@ -943,6 +964,15 @@ function MissionView({ data }) {
         </button>
       </div>
 
+      {/* Status is owned by ShipStation and read-only here (ADR-032). Without
+          saying so, the absence of any control reads as a missing feature
+          rather than a deliberate boundary — and the salesperson sits waiting
+          for a change nobody has been asked to make. */}
+      <div className="text-[11.5px] text-gr bg-cd border border-lt rounded-lg px-3 py-2 mb-3">
+        Status comes from ShipStation and cannot be changed here.
+        <b className="text-dk"> To change, hold or cancel an order, contact the Dirty Cookie team.</b>
+      </div>
+
       {query && (
         <div className="text-[11.5px] text-gr mb-3">
           Searching all orders for “{q.trim()}” — the {RECENT_DAYS}-day window is ignored while searching.
@@ -1140,19 +1170,61 @@ function TrackingLink({ number, carrier }) {
 // ── Address Book ────────────────────────────────────────────────────────────
 function AddressView({ data, refresh, canWrite, setToast }) {
   const [adding, setAdding] = useState(false);
+  const [confirmId, setConfirmId] = useState(null);
+
+  const retire = async (a) => {
+    const { error } = await retireAddress(a.id);
+    setConfirmId(null);
+    if (error) return setToast({ err: error.message });
+    refresh();
+    setToast({ ok: `“${a.nickname || a.company}” removed from the address list.` });
+  };
+
   return (
     <div>
       <div className="flex justify-between items-center mb-2">
         <div className="text-[10.5px] font-bold uppercase tracking-wider text-pk">Ship-to addresses ({data.addresses.length})</div>
         <button onClick={() => setAdding((v) => !v)} className="text-[11.5px] font-semibold px-2 py-0.5 rounded border border-pk text-pk">{adding ? 'Cancel' : '+ New'}</button>
       </div>
+
+      {/* The boundary, stated where someone would otherwise go looking for an
+          edit button. Addresses are copied into ShipStation at import, so
+          nothing here reaches an order that has already been placed. */}
+      <div className="text-[11.5px] text-gr bg-cd border border-lt rounded-lg px-3 py-2 mb-2">
+        Wrong address? Remove it and add a corrected one — removing hides it from
+        the picker and leaves past shipments untouched.
+        <b className="text-dk"> To change or cancel an order that has already been submitted, contact the Dirty Cookie team.</b>
+      </div>
+
       {adding && <InlineAddress onSaved={() => { setAdding(false); refresh(); }} canWrite={canWrite} setToast={setToast} />}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-2">
         {data.addresses.map((a) => (
           <div key={a.id} className="bg-cd border border-lt rounded-lg p-3">
-            <div className="text-[12.5px] font-bold text-dk">{a.nickname || a.company}</div>
+            <div className="flex items-start justify-between gap-2">
+              <div className="text-[12.5px] font-bold text-dk min-w-0 truncate">{a.nickname || a.company}</div>
+              {canWrite && confirmId !== a.id && (
+                <button
+                  onClick={() => setConfirmId(a.id)}
+                  aria-label={`Remove ${a.nickname || a.company}`}
+                  className="text-[11px] text-gr hover:text-red-600 font-semibold shrink-0 py-1 px-1"
+                >Remove</button>
+              )}
+            </div>
             <div className="text-[11.5px] text-gr">{a.contact_name} · {a.company}</div>
             <div className="text-[11.5px] text-gr">{a.street}, {a.city}, {a.state} {a.zip}</div>
+
+            {/* Inline, not a window.confirm: it can say what actually happens. */}
+            {confirmId === a.id && (
+              <div role="alert" className="mt-2 border border-red-200 bg-red-50 rounded-lg p-2">
+                <div className="text-[11.5px] text-red-700 mb-1.5">
+                  Remove from the picker? Shipments already sent to this address keep it.
+                </div>
+                <div className="flex gap-1.5">
+                  <button onClick={() => setConfirmId(null)} className="flex-1 border border-lt bg-cd text-dk py-1 rounded text-[11.5px] font-semibold">Keep</button>
+                  <button onClick={() => retire(a)} className="flex-1 bg-red-600 text-white py-1 rounded text-[11.5px] font-semibold">Remove</button>
+                </div>
+              </div>
+            )}
           </div>
         ))}
         {data.addresses.length === 0 && <div className="text-[12.5px] text-gr italic">No addresses yet — add one above or inline while building a shipment.</div>}
