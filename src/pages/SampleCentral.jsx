@@ -288,7 +288,11 @@ function ConfirmSubmit({ rep, addr, header, cartLines, customItems, temp, submit
       <div className="fixed inset-0 bg-black/50 z-[60]" aria-hidden="true" />
       <div
         ref={ref} role="dialog" aria-modal="true" aria-labelledby="confirm-title"
-        className="fixed z-[70] inset-x-0 bottom-0 sm:inset-0 sm:m-auto sm:h-fit sm:max-w-[440px] bg-cd rounded-t-2xl sm:rounded-2xl shadow-2xl p-4"
+        // max-h + scroll: the sheet grows with the order (line list, third-party
+        // billing, test banner). Anchored to the bottom on mobile, an unbounded
+        // sheet runs off the TOP of the screen, where a fixed element cannot be
+        // scrolled back into view.
+        className="fixed z-[70] inset-x-0 bottom-0 sm:inset-0 sm:m-auto sm:h-fit sm:max-w-[440px] max-h-[90vh] overflow-y-auto bg-cd rounded-t-2xl sm:rounded-2xl shadow-2xl p-4"
       >
         <h2 id="confirm-title" className="text-[18px] font-extrabold text-dk mb-0.5">Send this shipment?</h2>
         <p className="text-[14px] text-gr mb-3">
@@ -312,6 +316,32 @@ function ConfirmSubmit({ rep, addr, header, cartLines, customItems, temp, submit
             {cookies} cookie{cookies === 1 ? '' : 's'} across {cartLines.length} line{cartLines.length === 1 ? '' : 's'}
             {customLines.length > 0 && ` · ${customLines.length} custom`}
             {large && <div className="text-[12px] font-normal">That is a large shipment — worth a second look.</div>}
+
+            {/* The lines themselves, not just the totals. A count cannot catch
+                the two mistakes this sheet exists to catch — 120 of something
+                instead of 12, or the wrong cookie entirely — and by this point
+                the cart is behind an overlay and cannot be re-read. Scrolls
+                rather than growing, so the buttons stay on screen. */}
+            <ul className="mt-1.5 max-h-[152px] overflow-y-auto pr-1 space-y-0.5">
+              {cartLines.map((l) => (
+                <li key={l.code} className="flex gap-2 items-baseline">
+                  <span className="w-9 shrink-0 text-right font-mono text-[12px] font-bold text-dk">{l.qty}×</span>
+                  <span className="min-w-0 truncate text-[12px] font-normal text-gr" title={l.product?.description || l.code}>
+                    {l.product?.description || l.code}
+                  </span>
+                </li>
+              ))}
+              {customLines.map((c, i) => (
+                <li key={c.id ?? i} className="flex gap-2 items-baseline">
+                  <span className="w-9 shrink-0 text-right font-mono text-[12px] font-bold text-dk">{Number(c.qty) || 1}×</span>
+                  <span className="min-w-0 truncate text-[12px] font-normal text-gr" title={c.spec}>
+                    {c.spec}
+                    <span className="text-pk font-semibold"> · custom</span>
+                    {c.project_no ? <span className="font-mono"> {c.project_no}</span> : null}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </Row>
           <Row label="Handling" warn={temp === 'Cold'}>
             {temp === 'Cold' ? 'Cold chain — ships next-day' : 'Ambient'}
