@@ -40,7 +40,7 @@ const EMPTY_HEADER = {
 };
 
 const TempBadge = ({ temp, overridden }) => (
-  <span className={`inline-block px-2 py-0.5 rounded-full text-[11.5px] font-semibold ${temp === 'Cold' ? 'bg-sky-100 text-sky-700' : 'bg-amber-100 text-amber-800'}`}>
+  <span className={`inline-block px-2 py-0.5 rounded-full text-[14px] font-semibold ${temp === 'Cold' ? 'bg-sky-100 text-sky-700' : 'bg-amber-100 text-amber-800'}`}>
     {temp === 'Cold' ? 'Cold chain' : 'Ambient'}{overridden ? ' · override' : ''}
   </span>
 );
@@ -51,7 +51,7 @@ const StatusPill = ({ s }) => {
     // Exceptions read as warnings, not stages — they need to catch the eye.
     on_hold: 'bg-amber-100 text-amber-800', cancelled: 'bg-red-100 text-red-700',
   };
-  return <span className={`inline-block px-2 py-0.5 rounded-full text-[11.5px] font-semibold ${map[s] || map.submitted}`}>{s === 'on_hold' ? 'on hold' : s}</span>;
+  return <span className={`inline-block px-2 py-0.5 rounded-full text-[14px] font-semibold ${map[s] || map.submitted}`}>{s === 'on_hold' ? 'on hold' : s}</span>;
 };
 
 export default function SampleCentral() {
@@ -165,14 +165,14 @@ export default function SampleCentral() {
         <div className="flex items-center gap-[9px] font-extrabold text-[18px] tracking-[.3px] mr-2">
           <span className="w-[10px] h-[10px] rounded-full bg-pk" />
           Sample Central
-          <small className="font-medium text-[11px] tracking-[.5px] uppercase text-[#C9B8D6]">Dirty Cookie</small>
+          <small className="font-medium text-[12px] tracking-[.5px] uppercase text-[#C9B8D6]">Dirty Cookie</small>
         </div>
         <div className="flex gap-0.5 ml-[18px]">
           {TABS.map((t) => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`font-semibold text-[13.5px] px-[15px] py-2 rounded-lg ${tab === t.key ? 'bg-pk text-white' : 'text-[#C9B8D6] hover:text-white hover:bg-white/10'}`}
+              className={`font-semibold text-[15px] px-[15px] py-2 rounded-lg ${tab === t.key ? 'bg-pk text-white' : 'text-[#C9B8D6] hover:text-white hover:bg-white/10'}`}
             >
               {t.label}
             </button>
@@ -182,18 +182,18 @@ export default function SampleCentral() {
           <AppSwitcher dark />
           <button
             onClick={() => setCartOpen(true)}
-            className="relative bg-pk hover:bg-pm text-white font-bold text-[13px] px-4 py-2 rounded-lg"
+            className="relative bg-pk hover:bg-pm text-white font-bold text-[15px] px-4 py-2 rounded-lg"
           >
             Build Shipment
             {cartCount > 0 && (
-              <span className="absolute -top-[7px] -right-[7px] w-5 h-5 rounded-full bg-white text-pk text-[11px] font-extrabold flex items-center justify-center">{cartCount}</span>
+              <span className="absolute -top-[7px] -right-[7px] w-5 h-5 rounded-full bg-white text-pk text-[12px] font-extrabold flex items-center justify-center">{cartCount}</span>
             )}
           </button>
         </div>
       </nav>
 
       {TEST_MODE && (
-        <div className="bg-amber-100 text-amber-900 border-b border-amber-300 text-[11.5px] font-bold px-6 py-1.5">
+        <div className="bg-amber-100 text-amber-900 border-b border-amber-300 text-[14px] font-bold px-6 py-1.5">
           TEST MODE — orders are numbered {SHIPMENT_PREFIX}#### and still reach ShipStation
         </div>
       )}
@@ -207,7 +207,7 @@ export default function SampleCentral() {
           {toast && (
             <div
               role={toast.err ? 'alert' : undefined}
-              className={`mb-3 text-[12.5px] px-3 py-2 rounded border ${toast.err ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}`}
+              className={`mb-3 text-[14px] px-3 py-2 rounded border ${toast.err ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}`}
             >
               {toast.err || toast.ok}
               <button onClick={() => setToast(null)} className="ml-2 text-gr underline">Dismiss</button>
@@ -219,7 +219,7 @@ export default function SampleCentral() {
         {error && (
           <div className="text-sm text-red-600 py-6">
             {error}
-            <div className="text-[12.5px] text-gr mt-1">If tables are missing, apply the Phase-2 migrations first (sample_central_tables, user_active_in_dropdown).</div>
+            <div className="text-[14px] text-gr mt-1">If tables are missing, apply the Phase-2 migrations first (sample_central_tables, user_active_in_dropdown).</div>
           </div>
         )}
 
@@ -277,8 +277,8 @@ function ConfirmSubmit({ rep, addr, header, cartLines, customItems, temp, submit
 
   const Row = ({ label, children, warn }) => (
     <div className="flex gap-3 py-1.5 border-b border-bg last:border-0">
-      <div className="w-[92px] shrink-0 text-[11px] uppercase tracking-[.4px] text-gr font-semibold">{label}</div>
-      <div className={`text-[12.5px] min-w-0 ${warn ? 'text-amber-800 font-semibold' : 'text-dk'}`}>{children}</div>
+      <div className="w-[104px] shrink-0 text-[12px] uppercase tracking-[.4px] text-gr font-semibold">{label}</div>
+      <div className={`text-[14px] min-w-0 ${warn ? 'text-amber-800 font-semibold' : 'text-dk'}`}>{children}</div>
     </div>
   );
 
@@ -289,8 +289,8 @@ function ConfirmSubmit({ rep, addr, header, cartLines, customItems, temp, submit
         ref={ref} role="dialog" aria-modal="true" aria-labelledby="confirm-title"
         className="fixed z-[70] inset-x-0 bottom-0 sm:inset-0 sm:m-auto sm:h-fit sm:max-w-[440px] bg-cd rounded-t-2xl sm:rounded-2xl shadow-2xl p-4"
       >
-        <h2 id="confirm-title" className="text-[15px] font-extrabold text-dk mb-0.5">Send this shipment?</h2>
-        <p className="text-[11.5px] text-gr mb-3">
+        <h2 id="confirm-title" className="text-[18px] font-extrabold text-dk mb-0.5">Send this shipment?</h2>
+        <p className="text-[14px] text-gr mb-3">
           It goes straight to the co-manufacturer&rsquo;s queue. You cannot cancel it from here
           afterwards &mdash; that takes a message to the Dirty Cookie team.
         </p>
@@ -300,17 +300,17 @@ function ConfirmSubmit({ rep, addr, header, cartLines, customItems, temp, submit
             <div className="font-semibold truncate">{rep?.full_name || '—'}</div>
             {/* The operative field. A wrong address here means the rep silently
                 never hears about their own sample. */}
-            <div className="text-[11.5px] text-gr break-all">{rep?.email || 'no email on file'}</div>
+            <div className="text-[14px] text-gr break-all">{rep?.email || 'no email on file'}</div>
           </Row>
           <Row label="Ship to">
             <div className="truncate">{addr?.contact_name} · {addr?.company}</div>
-            <div className="text-[11.5px] text-gr">{addr?.street}, {addr?.city}, {addr?.state} {addr?.zip}</div>
+            <div className="text-[14px] text-gr">{addr?.street}, {addr?.city}, {addr?.state} {addr?.zip}</div>
           </Row>
           {header.account && <Row label="Account">{header.account}</Row>}
           <Row label="Contents" warn={large}>
             {cookies} cookie{cookies === 1 ? '' : 's'} across {cartLines.length} line{cartLines.length === 1 ? '' : 's'}
             {customLines.length > 0 && ` · ${customLines.length} custom`}
-            {large && <div className="text-[11px] font-normal">That is a large shipment — worth a second look.</div>}
+            {large && <div className="text-[12px] font-normal">That is a large shipment — worth a second look.</div>}
           </Row>
           <Row label="Handling" warn={temp === 'Cold'}>
             {temp === 'Cold' ? 'Cold chain — ships next-day' : 'Ambient'}
@@ -323,13 +323,13 @@ function ConfirmSubmit({ rep, addr, header, cartLines, customItems, temp, submit
         </div>
 
         {TEST_MODE && (
-          <div className="text-[11px] text-amber-900 bg-amber-100 border border-amber-300 rounded-lg px-2.5 py-1.5 mb-3">
+          <div className="text-[12px] text-amber-900 bg-amber-100 border border-amber-300 rounded-lg px-2.5 py-1.5 mb-3">
             Test mode numbers this {SHIPMENT_PREFIX}#### — but it still reaches the co-man&rsquo;s real queue.
           </div>
         )}
 
         {submitError && (
-          <div role="alert" className="text-[11.5px] text-red-700 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1.5 mb-3">
+          <div role="alert" className="text-[14px] text-red-700 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1.5 mb-3">
             Not sent — {submitError}
           </div>
         )}
@@ -337,13 +337,13 @@ function ConfirmSubmit({ rep, addr, header, cartLines, customItems, temp, submit
         <div className="flex gap-2">
           <button
             data-autofocus onClick={onCancel} disabled={submitting}
-            className="flex-1 border border-lt bg-bg text-dk py-2.5 rounded-lg text-[13px] font-bold disabled:opacity-50"
+            className="flex-1 border border-lt bg-bg text-dk py-2.5 rounded-lg text-[15px] font-bold disabled:opacity-50"
           >
             Keep editing
           </button>
           <button
             onClick={onConfirm} disabled={submitting}
-            className="flex-1 bg-pk text-white py-2.5 rounded-lg text-[13px] font-bold hover:bg-pm disabled:opacity-60"
+            className="flex-1 bg-pk text-white py-2.5 rounded-lg text-[15px] font-bold hover:bg-pm disabled:opacity-60"
           >
             {submitting ? 'Sending…' : 'Send it'}
           </button>
@@ -364,36 +364,36 @@ function CatalogView({ data, filter, setFilter, cart, setQty, addToCart }) {
   const groups = groupCatalog(items);
   return (
     <div>
-      <div className="text-[12.5px] text-gr mb-3">Organized by prep state → tier → size — the order that drives how a sample shipment is pulled and handled. UOM: <b>1 cookie · EA</b>.</div>
+      <div className="text-[14px] text-gr mb-3">Organized by prep state → tier → size — the order that drives how a sample shipment is pulled and handled. UOM: <b>1 cookie · EA</b>.</div>
       <div className="flex gap-1.5 mb-3 flex-wrap">
         {FILTERS.map((f) => (
-          <button key={f} onClick={() => setFilter(f)} className={`px-3.5 py-1.5 rounded-full text-[12.5px] font-semibold border ${filter === f ? 'border-pk bg-pk text-white' : 'border-lt bg-cd text-gr hover:text-pk'}`}>
+          <button key={f} onClick={() => setFilter(f)} className={`px-3.5 py-1.5 rounded-full text-[14px] font-semibold border ${filter === f ? 'border-pk bg-pk text-white' : 'border-lt bg-cd text-gr hover:text-pk'}`}>
             {f}
           </button>
         ))}
       </div>
-      {items.length === 0 && <div className="text-[13px] text-gr italic py-8 text-center">No sample-eligible cookies match this filter.</div>}
+      {items.length === 0 && <div className="text-[15px] text-gr italic py-8 text-center">No sample-eligible cookies match this filter.</div>}
       {groups.map((g) => (
         <div key={g.prep} className="mb-5">
           <div className="flex items-center gap-2 mb-2">
-            <span className={`px-2 py-0.5 rounded-full text-[11.5px] font-bold ${g.prep === 'Raw' ? 'bg-sky-100 text-sky-700' : 'bg-orange-100 text-orange-700'}`}>{g.prep}</span>
-            <span className="text-[11.5px] text-gr">{g.count} cookie{g.count > 1 ? 's' : ''} · {g.storage}</span>
+            <span className={`px-2 py-0.5 rounded-full text-[14px] font-bold ${g.prep === 'Raw' ? 'bg-sky-100 text-sky-700' : 'bg-orange-100 text-orange-700'}`}>{g.prep}</span>
+            <span className="text-[14px] text-gr">{g.count} cookie{g.count > 1 ? 's' : ''} · {g.storage}</span>
           </div>
           {g.tiers.map((t) => (
             <div key={t.tier} className="mb-3 bg-cd border border-lt rounded-xl overflow-hidden">
               <div className="px-3 py-1.5 bg-pc flex items-center gap-2">
-                <span className={`px-2 py-0.5 rounded-full text-[11.5px] font-semibold ${t.tier === 'Gourmet' ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-700'}`}>{t.tier}</span>
-                <span className="text-[11.5px] font-semibold text-dk">{t.tier} cookies</span>
-                <span className="text-[11.5px] text-gr">{t.items.length} option{t.items.length > 1 ? 's' : ''}</span>
+                <span className={`px-2 py-0.5 rounded-full text-[14px] font-semibold ${t.tier === 'Gourmet' ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-700'}`}>{t.tier}</span>
+                <span className="text-[14px] font-semibold text-dk">{t.tier} cookies</span>
+                <span className="text-[14px] text-gr">{t.items.length} option{t.items.length > 1 ? 's' : ''}</span>
               </div>
               <div className="divide-y divide-bg">
                 {t.items.map((p) => (
                   <div key={p.code} className="flex items-center gap-3 px-3 py-2">
                     <div className="flex-1 min-w-0">
-                      <div className="text-[13px] font-semibold text-dk truncate">{flavorFamily(p)}</div>
-                      <div className="text-[11.5px] text-gr truncate">{p.description} · <span className="font-mono">{p.code}</span></div>
+                      <div className="text-[15px] font-semibold text-dk truncate">{flavorFamily(p)}</div>
+                      <div className="text-[14px] text-gr truncate">{p.description} · <span className="font-mono">{p.code}</span></div>
                     </div>
-                    <div className="text-[11.5px] text-gr whitespace-nowrap">{p.dough_oz}oz · 1 cookie · EA</div>
+                    <div className="text-[14px] text-gr whitespace-nowrap">{p.dough_oz}oz · 1 cookie · EA</div>
                     <div className="flex items-center gap-1">
                       <button aria-label={`One fewer ${p.description || p.code}`} onClick={() => setQty(p.code, (cart[p.code] || 0) - 1)} className="w-6 h-6 rounded border border-lt text-gr hover:text-pk relative after:absolute after:-inset-[10px] after:content-['']">−</button>
                       <input
@@ -401,7 +401,7 @@ function CatalogView({ data, filter, setFilter, cart, setQty, addToCart }) {
                         aria-label={`Quantity — ${p.description || p.code}`}
                         value={cart[p.code] || 0}
                         onChange={(e) => setQty(p.code, parseInt(e.target.value, 10) || 0)}
-                        className="w-14 text-center border border-lt rounded text-[12.5px] py-0.5"
+                        className="w-14 text-center border border-lt rounded text-[14px] py-0.5"
                       />
                       <button aria-label={`One more ${p.description || p.code}`} onClick={() => addToCart(p.code)} className="w-6 h-6 rounded border border-pk bg-pk text-white relative after:absolute after:-inset-[10px] after:content-['']">+</button>
                     </div>
@@ -427,7 +427,7 @@ function CartDrawer({
   // The message renders under its own control; `Err` keeps that one-liner honest
   // about which field it belongs to.
   const Err = ({ field }) => (invalid?.field === field
-    ? <div role="alert" className="text-[11px] text-red-700 mt-1">{invalid.message}</div>
+    ? <div role="alert" className="text-[12px] text-red-700 mt-1">{invalid.message}</div>
     : null);
   const set = (k, v) => setHeader((h) => ({ ...h, [k]: v }));
   const toggleCollateral = (c) => setHeader((h) => ({ ...h, collateral: h.collateral.includes(c) ? h.collateral.filter((x) => x !== c) : [...h.collateral, c] }));
@@ -444,8 +444,8 @@ function CartDrawer({
         className="fixed right-0 top-0 h-full w-full sm:w-[460px] bg-cd z-50 shadow-2xl flex flex-col"
       >
         <header className="flex items-center justify-between px-4 h-[60px] border-b border-lt shrink-0">
-          <div id="drawer-title" className="font-extrabold text-[16px] text-dk">Build Shipment</div>
-          <button onClick={onClose} className="text-gr hover:text-pk text-[20px] leading-none px-3 py-2" aria-label="Close Build Shipment">×</button>
+          <div id="drawer-title" className="font-extrabold text-[18px] text-dk">Build Shipment</div>
+          <button onClick={onClose} className="text-gr hover:text-pk text-[18px] leading-none px-3 py-2" aria-label="Close Build Shipment">×</button>
         </header>
 
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
@@ -458,7 +458,7 @@ function CartDrawer({
                 <select
                   value={header.sales_rep_id} onChange={(e) => set('sales_rep_id', e.target.value)}
                   aria-invalid={invalid?.field === 'sales_rep_id' || undefined}
-                  className={`w-full px-2 py-1 rounded border text-[12.5px] bg-bg ${invalid?.field === 'sales_rep_id' ? 'border-red-500' : 'border-lt'}`}
+                  className={`w-full px-2 py-1 rounded border text-[14px] bg-bg ${invalid?.field === 'sales_rep_id' ? 'border-red-500' : 'border-lt'}`}
                 >
                   <option value="">— select —</option>
                   {/* Name AND email. The email is the operative field — it is what
@@ -473,24 +473,24 @@ function CartDrawer({
                 <Err field="sales_rep_id" />
               </Labeled>
               <Labeled label="Account">
-                <input value={header.account} onChange={(e) => set('account', e.target.value)} placeholder="Whole Foods Market" className="w-full px-2 py-1 rounded border border-lt text-[12.5px]" />
+                <input value={header.account} onChange={(e) => set('account', e.target.value)} placeholder="Whole Foods Market" className="w-full px-2 py-1 rounded border border-lt text-[14px]" />
               </Labeled>
             </div>
             <div className="mt-2">
               <div className="flex justify-between items-center mb-0.5">
-                <div className="text-[10.5px] text-gr uppercase">Ship-to address *</div>
-                <button onClick={() => setShowAddr((v) => !v)} className="text-[11.5px] text-pk font-semibold">{showAddr ? 'Cancel' : '+ New address'}</button>
+                <div className="text-[12px] text-gr uppercase">Ship-to address *</div>
+                <button onClick={() => setShowAddr((v) => !v)} className="text-[14px] text-pk font-semibold">{showAddr ? 'Cancel' : '+ New address'}</button>
               </div>
               <select
                 value={header.address_id} onChange={(e) => set('address_id', e.target.value)}
                 aria-invalid={invalid?.field === 'address_id' || undefined}
-                className={`w-full px-2 py-1 rounded border text-[12.5px] bg-bg ${invalid?.field === 'address_id' ? 'border-red-500' : 'border-lt'}`}
+                className={`w-full px-2 py-1 rounded border text-[14px] bg-bg ${invalid?.field === 'address_id' ? 'border-red-500' : 'border-lt'}`}
               >
                 <option value="">— select —</option>
                 {data.addresses.map((a) => <option key={a.id} value={a.id}>{a.nickname || a.company} — {a.city}, {a.state}</option>)}
               </select>
               <Err field="address_id" />
-              {addr && <div className="text-[11.5px] text-gr mt-1">{addr.contact_name} · {addr.company} · {addr.street}, {addr.city}, {addr.state} {addr.zip}</div>}
+              {addr && <div className="text-[14px] text-gr mt-1">{addr.contact_name} · {addr.company} · {addr.street}, {addr.city}, {addr.state} {addr.zip}</div>}
               {showAddr && <InlineAddress onSaved={() => { setShowAddr(false); onAddAddress(); }} canWrite={canWrite} setToast={setToast} />}
             </div>
           </Section>
@@ -503,17 +503,17 @@ function CartDrawer({
           <Section title="Cookies">
             {cartLines.length === 0 ? (
               <>
-                <div className="text-[12.5px] text-gr italic">Cart is empty — add cookies from <b>Order Samples</b>, or start from a saved assortment above.</div>
+                <div className="text-[14px] text-gr italic">Cart is empty — add cookies from <b>Order Samples</b>, or start from a saved assortment above.</div>
                 <Err field="items" />
               </>
             ) : (
               <div className="divide-y divide-bg">
                 {cartLines.map((l) => (
                   <div key={l.code} className="flex items-center gap-2 py-1.5">
-                    <div className="flex-1 min-w-0"><div className="text-[12.5px] font-semibold text-dk truncate">{l.product?.description || l.code}</div><div className="text-[10.5px] font-mono text-gr">{l.code}</div></div>
+                    <div className="flex-1 min-w-0"><div className="text-[14px] font-semibold text-dk truncate">{l.product?.description || l.code}</div><div className="text-[12px] font-mono text-gr">{l.code}</div></div>
                     <div className="flex items-center gap-1">
                       <button aria-label={`One fewer ${l.product?.description || l.code}`} onClick={() => setQty(l.code, l.qty - 1)} className="w-5 h-5 rounded border border-lt text-gr relative after:absolute after:-inset-[10px] after:content-['']">−</button>
-                      <span className="text-[12.5px] w-6 text-center">{l.qty}</span>
+                      <span className="text-[14px] w-6 text-center">{l.qty}</span>
                       <button aria-label={`One more ${l.product?.description || l.code}`} onClick={() => setQty(l.code, l.qty + 1)} className="w-5 h-5 rounded border border-pk bg-pk text-white relative after:absolute after:-inset-[10px] after:content-['']">+</button>
                     </div>
                   </div>
@@ -527,17 +527,17 @@ function CartDrawer({
               // Keyed by identity, not index: deleting a line with index keys
               // hands the removed row's DOM node (and focus) to its neighbour.
               <div key={c.id ?? i} className="grid grid-cols-12 gap-1.5 mb-1.5">
-                <input value={c.spec} onChange={(e) => setCustomItems((arr) => arr.map((x, j) => (j === i ? { ...x, spec: e.target.value } : x)))} placeholder="Custom item spec" className="col-span-6 px-2 py-1 rounded border border-lt text-[12.5px]" />
-                <input value={c.project_no || ''} onChange={(e) => setCustomItems((arr) => arr.map((x, j) => (j === i ? { ...x, project_no: e.target.value } : x)))} placeholder="Project #" className="col-span-3 px-2 py-1 rounded border border-lt text-[12.5px] font-mono" />
-                <input type="number" value={c.qty} onChange={(e) => setCustomItems((arr) => arr.map((x, j) => (j === i ? { ...x, qty: e.target.value } : x)))} className="col-span-2 px-2 py-1 rounded border border-lt text-[12.5px]" />
+                <input value={c.spec} onChange={(e) => setCustomItems((arr) => arr.map((x, j) => (j === i ? { ...x, spec: e.target.value } : x)))} placeholder="Custom item spec" className="col-span-6 px-2 py-1 rounded border border-lt text-[14px]" />
+                <input value={c.project_no || ''} onChange={(e) => setCustomItems((arr) => arr.map((x, j) => (j === i ? { ...x, project_no: e.target.value } : x)))} placeholder="Project #" className="col-span-3 px-2 py-1 rounded border border-lt text-[14px] font-mono" />
+                <input type="number" value={c.qty} onChange={(e) => setCustomItems((arr) => arr.map((x, j) => (j === i ? { ...x, qty: e.target.value } : x)))} className="col-span-2 px-2 py-1 rounded border border-lt text-[14px]" />
                 <button
                   onClick={() => setCustomItems((arr) => arr.filter((_, j) => j !== i))}
                   aria-label={`Remove custom line ${i + 1}${c.spec ? `: ${c.spec}` : ''}`}
-                  className="col-span-1 text-red-600 text-[13px] relative after:absolute after:-inset-2 after:content-['']"
+                  className="col-span-1 text-red-600 text-[15px] relative after:absolute after:-inset-2 after:content-['']"
                 >×</button>
               </div>
             ))}
-            <button onClick={() => setCustomItems((arr) => [...arr, { id: newLineId(), spec: '', qty: 1, project_no: '' }])} className="text-[11.5px] text-pk font-semibold py-1.5">+ Add custom line</button>
+            <button onClick={() => setCustomItems((arr) => [...arr, { id: newLineId(), spec: '', qty: 1, project_no: '' }])} className="text-[14px] text-pk font-semibold py-1.5">+ Add custom line</button>
           </Section>
 
           <Section title="Handling">
@@ -545,7 +545,7 @@ function CartDrawer({
               <TempBadge temp={temp} overridden={overridden} />
             </div>
             <Labeled label="Temp override (deprioritized)">
-              <select value={header.temp_override} onChange={(e) => set('temp_override', e.target.value)} className="w-full px-2 py-1 rounded border border-lt text-[12.5px] bg-bg">
+              <select value={header.temp_override} onChange={(e) => set('temp_override', e.target.value)} className="w-full px-2 py-1 rounded border border-lt text-[14px] bg-bg">
                 <option value="">— auto from items ({derivedTemp(cartLines.map((l) => ({ code: l.code })), productByCode)}) —</option>
                 <option value="Ambient">Ambient</option>
                 <option value="Cold">Cold</option>
@@ -556,63 +556,63 @@ function CartDrawer({
                   submitted, and it is stamped onto ShipStation's native Deliver
                   By field by the sweep — so it hands the co-man an impossible
                   date and pollutes their sorting. */}
-              <Labeled label="Deliver by"><input type="date" min={todayISO()} value={header.required_by} onChange={(e) => set('required_by', e.target.value)} className="w-full px-2 py-1 rounded border border-lt text-[12.5px]" /></Labeled>
+              <Labeled label="Deliver by"><input type="date" min={todayISO()} value={header.required_by} onChange={(e) => set('required_by', e.target.value)} className="w-full px-2 py-1 rounded border border-lt text-[14px]" /></Labeled>
             </div>
             <label className={`flex items-start gap-2 mt-2 p-2 rounded-lg border cursor-pointer ${header.rush ? 'border-red-300 bg-red-50' : 'border-lt bg-bg'}`}>
               <input type="checkbox" checked={!!header.rush} onChange={(e) => set('rush', e.target.checked)} className="mt-0.5" />
               <span>
-                <span className={`block text-[12.5px] font-bold ${header.rush ? 'text-red-700' : 'text-dk'}`}>Rush order</span>
-                <span className="block text-[10.5px] text-gr">{RUSH_NOTICE}</span>
+                <span className={`block text-[14px] font-bold ${header.rush ? 'text-red-700' : 'text-dk'}`}>Rush order</span>
+                <span className="block text-[12px] text-gr">{RUSH_NOTICE}</span>
               </span>
             </label>
             <label className={`flex items-start gap-2 mt-2 p-2 rounded-lg border cursor-pointer ${header.third_party_billing ? 'border-pk bg-pink-50' : 'border-lt bg-bg'}`}>
               <input type="checkbox" checked={!!header.third_party_billing} onChange={(e) => set('third_party_billing', e.target.checked)} className="mt-0.5" />
               <span>
-                <span className="block text-[12.5px] font-bold text-dk">Bill shipping to a third-party account</span>
-                <span className="block text-[10.5px] text-gr">Use the customer&rsquo;s carrier account instead of Dirty Cookie&rsquo;s.</span>
+                <span className="block text-[14px] font-bold text-dk">Bill shipping to a third-party account</span>
+                <span className="block text-[12px] text-gr">Use the customer&rsquo;s carrier account instead of Dirty Cookie&rsquo;s.</span>
               </span>
             </label>
             {header.third_party_billing && (
               <div className="mt-1.5 p-2 rounded-lg border border-lt bg-bg space-y-1.5">
                 <Labeled label="Carrier *">
-                  <select value={header.tp_carrier} onChange={(e) => set('tp_carrier', e.target.value)} className="w-full px-2 py-1 rounded border border-lt text-[12.5px] bg-cd">
+                  <select value={header.tp_carrier} onChange={(e) => set('tp_carrier', e.target.value)} className="w-full px-2 py-1 rounded border border-lt text-[14px] bg-cd">
                     <option value="">— select —</option>
                     {TP_CARRIERS.map((c) => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </Labeled>
                 <div className="grid grid-cols-2 gap-2">
                   <Labeled label="Account number *">
-                    <input value={header.tp_account} onChange={(e) => set('tp_account', e.target.value)} placeholder="123456789" className="w-full px-2 py-1 rounded border border-lt text-[12.5px] font-mono" />
+                    <input value={header.tp_account} onChange={(e) => set('tp_account', e.target.value)} placeholder="123456789" className="w-full px-2 py-1 rounded border border-lt text-[14px] font-mono" />
                   </Labeled>
                   <Labeled label="Account postal code *">
-                    <input value={header.tp_postal_code} onChange={(e) => set('tp_postal_code', e.target.value)} placeholder="90210" className="w-full px-2 py-1 rounded border border-lt text-[12.5px] font-mono" />
+                    <input value={header.tp_postal_code} onChange={(e) => set('tp_postal_code', e.target.value)} placeholder="90210" className="w-full px-2 py-1 rounded border border-lt text-[14px] font-mono" />
                   </Labeled>
                 </div>
                 <Err field="third_party" />
-                <div className="text-[10.5px] text-gr">{TP_NOTICE}</div>
+                <div className="text-[12px] text-gr">{TP_NOTICE}</div>
               </div>
             )}
-            <div className="text-[10.5px] text-gr mt-2">Shipping service and box are chosen in ShipStation. Cold-chain orders are auto-upgraded to next-day there.</div>
+            <div className="text-[12px] text-gr mt-2">Shipping service and box are chosen in ShipStation. Cold-chain orders are auto-upgraded to next-day there.</div>
           </Section>
 
           <Section title="Collateral">
             {COLLATERAL_OPTIONS.map((c) => (
-              <label key={c} className="flex items-center gap-1.5 text-[12.5px] text-dk py-0.5">
+              <label key={c} className="flex items-center gap-1.5 text-[14px] text-dk py-0.5">
                 <input type="checkbox" checked={header.collateral.includes(c)} onChange={() => toggleCollateral(c)} /> {c}
               </label>
             ))}
           </Section>
 
           <Section title="Notes">
-            <textarea value={header.notes} onChange={(e) => set('notes', e.target.value)} rows={3} className="w-full px-2 py-1 rounded border border-lt text-[12.5px]" placeholder="First meeting, keep it classic." />
+            <textarea value={header.notes} onChange={(e) => set('notes', e.target.value)} rows={3} className="w-full px-2 py-1 rounded border border-lt text-[14px]" placeholder="First meeting, keep it classic." />
           </Section>
         </div>
 
         <footer className="px-4 py-3 border-t border-lt shrink-0">
           {/* Opens the confirm sheet — it no longer submits directly. The label
               says so, so the button does not promise an action it does not take. */}
-          <button onClick={submit} disabled={!canWrite} className="w-full bg-pk text-white py-2.5 rounded-lg text-[13px] font-bold hover:bg-pm disabled:opacity-50">Review &amp; submit</button>
-          {!canWrite && <div className="text-[11.5px] text-gr text-center mt-1">Your role can view but not submit.</div>}
+          <button onClick={submit} disabled={!canWrite} className="w-full bg-pk text-white py-2.5 rounded-lg text-[15px] font-bold hover:bg-pm disabled:opacity-50">Review &amp; submit</button>
+          {!canWrite && <div className="text-[14px] text-gr text-center mt-1">Your role can view but not submit.</div>}
         </footer>
       </aside>
     </>
@@ -650,34 +650,34 @@ function QuickStartPanel({ data, cart, setCart, profile, canWrite, refresh, setT
 
   return (
     <div className="bg-[#F6F3FA] border border-[#E9E1F2] rounded-xl px-4 py-3">
-      <div className="text-[12.5px] font-extrabold text-dk mb-2">Quick start</div>
+      <div className="text-[14px] font-extrabold text-dk mb-2">Quick start</div>
 
-      <div className="text-[10.5px] font-bold uppercase tracking-[.4px] text-gr mb-1.5">Saved assortments</div>
+      <div className="text-[12px] font-bold uppercase tracking-[.4px] text-gr mb-1.5">Saved assortments</div>
       {data.templates.length === 0 ? (
-        <div className="text-[11.5px] text-gr italic">No templates yet — build a cart, then save it below.</div>
+        <div className="text-[14px] text-gr italic">No templates yet — build a cart, then save it below.</div>
       ) : (
         <div className="flex flex-wrap gap-1.5">
           {data.templates.map((t) => (
             <span key={t.id} className="inline-flex items-center bg-cd border border-lt rounded-full overflow-hidden">
-              <button onClick={() => applyTemplate(t)} title={t.description || ''} className="text-[11.5px] font-semibold px-3 py-1 text-dk hover:text-pk">{t.name}</button>
-              {canWrite && <button onClick={async () => { await deleteTemplate(t.id); refresh(); }} className="text-[11.5px] text-gr hover:text-red-600 pr-2.5 pl-0.5 relative after:absolute after:-inset-2 after:content-['']" aria-label={`Delete ${t.name}`}>×</button>}
+              <button onClick={() => applyTemplate(t)} title={t.description || ''} className="text-[14px] font-semibold px-3 py-1 text-dk hover:text-pk">{t.name}</button>
+              {canWrite && <button onClick={async () => { await deleteTemplate(t.id); refresh(); }} className="text-[14px] text-gr hover:text-red-600 pr-2.5 pl-0.5 relative after:absolute after:-inset-2 after:content-['']" aria-label={`Delete ${t.name}`}>×</button>}
             </span>
           ))}
         </div>
       )}
 
       <div className="flex gap-1.5 mt-2">
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Save current cart as…" className="flex-1 px-2 py-1 rounded border border-lt text-[11.5px]" />
-        <button onClick={saveCurrent} disabled={!canWrite} className="bg-cd border border-pk text-pk px-3 py-1 rounded text-[11.5px] font-semibold disabled:opacity-50">Save</button>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Save current cart as…" className="flex-1 px-2 py-1 rounded border border-lt text-[14px]" />
+        <button onClick={saveCurrent} disabled={!canWrite} className="bg-cd border border-pk text-pk px-3 py-1 rounded text-[14px] font-semibold disabled:opacity-50">Save</button>
       </div>
 
-      <div className="text-[10.5px] font-bold uppercase tracking-[.4px] text-gr mt-3 mb-1.5">Duplicate a past shipment</div>
+      <div className="text-[12px] font-bold uppercase tracking-[.4px] text-gr mt-3 mb-1.5">Duplicate a past shipment</div>
       {recent.length === 0 ? (
-        <div className="text-[11.5px] text-gr italic">No past shipments yet.</div>
+        <div className="text-[14px] text-gr italic">No past shipments yet.</div>
       ) : (
         <div className="flex flex-wrap gap-1.5">
           {recent.map((s) => (
-            <button key={s.id} onClick={() => dupShipment(s)} title={`${s.account || ''} · ${s.sales_rep?.full_name || ''}`} className="bg-cd border border-lt rounded-full text-[11.5px] font-semibold px-3 py-1 text-dk hover:text-pk hover:border-pk">
+            <button key={s.id} onClick={() => dupShipment(s)} title={`${s.account || ''} · ${s.sales_rep?.full_name || ''}`} className="bg-cd border border-lt rounded-full text-[14px] font-semibold px-3 py-1 text-dk hover:text-pk hover:border-pk">
               {s.shipment_no}{s.account ? ` · ${s.account}` : ''}
             </button>
           ))}
@@ -718,10 +718,10 @@ function InlineAddress({ onSaved, canWrite, setToast }) {
         <input
           key={k} value={f[k]} onChange={(e) => set(k, e.target.value)}
           placeholder={l} aria-label={l}
-          className="px-2 py-1 rounded border border-lt text-[11.5px]"
+          className="px-2 py-1 rounded border border-lt text-[14px]"
         />
       ))}
-      <button onClick={save} disabled={saving || !canWrite} className="col-span-2 bg-pk text-white py-1 rounded text-[11.5px] font-semibold disabled:opacity-50">
+      <button onClick={save} disabled={saving || !canWrite} className="col-span-2 bg-pk text-white py-1 rounded text-[14px] font-semibold disabled:opacity-50">
         {saving ? 'Saving…' : 'Save address'}
       </button>
     </div>
@@ -738,18 +738,18 @@ function InlineAddress({ onSaved, canWrite, setToast }) {
 // deadline and line count stop being the question and "where is it" starts — so
 // the shipped table trades those columns for carrier, tracking and cost. A
 // single shared column set would have to show the union, half of it blank.
-const chip = 'text-[10px] font-bold uppercase px-1.5 py-px rounded whitespace-nowrap';
+const chip = 'text-[12px] font-bold uppercase px-1.5 py-px rounded whitespace-nowrap';
 
 const colOrder = {
   label: 'Order',
-  render: ({ s }) => <span className="font-mono text-[12px] font-bold text-dk">{s.shipment_no}</span>,
+  render: ({ s }) => <span className="font-mono text-[14px] font-bold text-dk">{s.shipment_no}</span>,
 };
 const colAccount = {
   label: 'Account',
   render: ({ s }) => (
     <>
-      <div className="text-[12.5px] text-dk truncate">{s.account || '—'}</div>
-      <div className="text-[11px] text-gr truncate">{s.sales_rep?.full_name || 'Unknown'}</div>
+      <div className="text-[14px] text-dk truncate">{s.account || '—'}</div>
+      <div className="text-[12px] text-gr truncate">{s.sales_rep?.full_name || 'Unknown'}</div>
     </>
   ),
 };
@@ -770,25 +770,25 @@ const colFlags = {
 };
 
 const ORDERED_COLS = {
-  grid: 'sm:grid-cols-[128px_minmax(0,1fr)_64px_132px_minmax(0,auto)_14px]',
+  grid: 'sm:grid-cols-[148px_minmax(0,1fr)_76px_152px_minmax(0,auto)_16px]',
   cells: [
     colOrder,
     colAccount,
     {
       label: 'Items',
       render: ({ items }) => (
-        <span className="text-[12px] text-gr whitespace-nowrap">
+        <span className="text-[14px] text-gr whitespace-nowrap">
           {items.length} · {items.reduce((n, i) => n + (i.qty || 0), 0)}
         </span>
       ),
     },
     {
       label: 'Deliver by',
-      render: ({ s, due }) => !s.required_by ? <span className="text-[12px] text-gr">—</span> : (
+      render: ({ s, due }) => !s.required_by ? <span className="text-[14px] text-gr">—</span> : (
         <div className="whitespace-nowrap">
-          <span className="text-[12px] text-dk">{s.required_by}</span>
+          <span className="text-[14px] text-dk">{s.required_by}</span>
           {due && (
-            <span className={`ml-1.5 text-[10.5px] font-bold ${due.overdue ? 'text-red-700' : due.dueSoon ? 'text-amber-700' : 'text-gr'}`}>
+            <span className={`ml-1.5 text-[12px] font-bold ${due.overdue ? 'text-red-700' : due.dueSoon ? 'text-amber-700' : 'text-gr'}`}>
               {due.label}
             </span>
           )}
@@ -800,33 +800,33 @@ const ORDERED_COLS = {
 };
 
 const SHIPPED_COLS = {
-  grid: 'sm:grid-cols-[128px_minmax(0,1fr)_88px_minmax(0,116px)_minmax(0,166px)_58px_14px]',
+  grid: 'sm:grid-cols-[148px_minmax(0,1fr)_100px_minmax(0,132px)_minmax(0,190px)_68px_16px]',
   cells: [
     colOrder,
     colAccount,
     {
       label: 'Shipped',
       render: ({ s }) => (
-        <span className="text-[12px] text-dk whitespace-nowrap">
+        <span className="text-[14px] text-dk whitespace-nowrap">
           {s.shipped_at ? new Date(s.shipped_at).toLocaleDateString() : '—'}
         </span>
       ),
     },
     {
       label: 'Carrier',
-      render: ({ s }) => <span className="text-[12px] text-gr truncate block">{s.service || s.carrier || '—'}</span>,
+      render: ({ s }) => <span className="text-[14px] text-gr truncate block">{s.service || s.carrier || '—'}</span>,
     },
     {
       label: 'Tracking',
       render: ({ s }) => s.tracking_number
-        ? <span className="text-[11.5px]"><TrackingLink number={s.tracking_number} carrier={s.carrier} /></span>
-        : <span className="text-[12px] text-gr">—</span>,
+        ? <span className="text-[14px]"><TrackingLink number={s.tracking_number} carrier={s.carrier} /></span>
+        : <span className="text-[14px] text-gr">—</span>,
     },
     {
       label: 'Cost',
       cls: 'sm:text-right',
       render: ({ s }) => (
-        <span className="text-[12px] text-dk whitespace-nowrap">
+        <span className="text-[14px] text-dk whitespace-nowrap">
           {s.shipping_cost != null ? `$${Number(s.shipping_cost).toFixed(2)}` : '—'}
         </span>
       ),
@@ -835,7 +835,7 @@ const SHIPPED_COLS = {
 };
 
 const EXCEPTION_COLS = {
-  grid: 'sm:grid-cols-[128px_minmax(0,1fr)_minmax(0,220px)_14px]',
+  grid: 'sm:grid-cols-[148px_minmax(0,1fr)_minmax(0,220px)_16px]',
   cells: [
     colOrder,
     colAccount,
@@ -905,21 +905,21 @@ function MissionView({ data }) {
   const Section = ({ title, note, rows, total, empty, cols }) => (
     <div className="mb-5">
       <div className="flex items-baseline gap-2 mb-2">
-        <h3 className="text-[13px] font-extrabold text-dk uppercase tracking-[.4px]">{title}</h3>
-        <span className="text-[11.5px] text-gr">
+        <h3 className="text-[15px] font-extrabold text-dk uppercase tracking-[.4px]">{title}</h3>
+        <span className="text-[14px] text-gr">
           {rows.length}{windowed && total > rows.length ? ` of ${total}` : ''}
           {note ? ` · ${note}` : ''}
         </span>
       </div>
       {rows.length === 0 ? (
-        <div className="text-[12.5px] text-gr italic py-4 px-3 bg-cd border border-lt rounded-xl">{empty}</div>
+        <div className="text-[14px] text-gr italic py-4 px-3 bg-cd border border-lt rounded-xl">{empty}</div>
       ) : (
         <>
           {/* Desktop-only header. On mobile the rows stack and label themselves,
               so a header here would caption columns that are not there. */}
           <div className={`hidden sm:grid gap-x-3 px-3 pb-1 ${cols.grid}`}>
             {cols.cells.map((c) => (
-              <div key={c.label} className={`text-[9.5px] text-gr uppercase font-bold tracking-[.5px] ${c.cls || ''}`}>
+              <div key={c.label} className={`text-[12px] text-gr uppercase font-bold tracking-[.5px] ${c.cls || ''}`}>
                 {c.label}
               </div>
             ))}
@@ -942,23 +942,23 @@ function MissionView({ data }) {
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search order no., account or rep"
           aria-label="Search shipments by order number, account or salesperson"
-          className="px-2.5 py-1.5 rounded-lg border border-lt text-[12.5px] bg-cd w-[240px]"
+          className="px-2.5 py-1.5 rounded-lg border border-lt text-[14px] bg-cd w-[240px]"
         />
         {q && (
-          <button onClick={() => setQ('')} className="text-[11.5px] text-pk font-semibold">Clear</button>
+          <button onClick={() => setQ('')} className="text-[14px] text-pk font-semibold">Clear</button>
         )}
-        <span className="text-[11.5px] text-gr uppercase ml-1">Salesperson</span>
-        <select value={sp} onChange={(e) => setSp(e.target.value)} className="px-2 py-1 rounded border border-lt text-[12.5px] bg-cd">
+        <span className="text-[14px] text-gr uppercase ml-1">Salesperson</span>
+        <select value={sp} onChange={(e) => setSp(e.target.value)} className="px-2 py-1 rounded border border-lt text-[14px] bg-cd">
           <option value="All">All</option>
           {data.salespeople.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
         </select>
         <div className="flex-1" />
-        <button onClick={toggleAll} className="text-[11.5px] font-semibold px-2.5 py-1.5 rounded-lg border border-lt bg-cd text-gr hover:text-pk">
+        <button onClick={toggleAll} className="text-[14px] font-semibold px-2.5 py-1.5 rounded-lg border border-lt bg-cd text-gr hover:text-pk">
           {allOpen ? 'Collapse all' : 'Expand all'}
         </button>
         <button
           onClick={() => setShowAll((v) => !v)}
-          className={`text-[11.5px] font-semibold px-2.5 py-1.5 rounded-lg border ${showAll ? 'border-pk bg-pk text-white' : 'border-lt bg-cd text-gr hover:text-pk'}`}
+          className={`text-[14px] font-semibold px-2.5 py-1.5 rounded-lg border ${showAll ? 'border-pk bg-pk text-white' : 'border-lt bg-cd text-gr hover:text-pk'}`}
         >
           {showAll ? `All time` : `Last ${RECENT_DAYS} days`}
         </button>
@@ -968,13 +968,13 @@ function MissionView({ data }) {
           saying so, the absence of any control reads as a missing feature
           rather than a deliberate boundary — and the salesperson sits waiting
           for a change nobody has been asked to make. */}
-      <div className="text-[11.5px] text-gr bg-cd border border-lt rounded-lg px-3 py-2 mb-3">
+      <div className="text-[14px] text-gr bg-cd border border-lt rounded-lg px-3 py-2 mb-3">
         Status comes from ShipStation and cannot be changed here.
         <b className="text-dk"> To change, hold or cancel an order, contact the Dirty Cookie team.</b>
       </div>
 
       {query && (
-        <div className="text-[11.5px] text-gr mb-3">
+        <div className="text-[14px] text-gr mb-3">
           Searching all orders for “{q.trim()}” — the {RECENT_DAYS}-day window is ignored while searching.
         </div>
       )}
@@ -1036,11 +1036,11 @@ function ShipmentCard({ s, cols, open, onToggle }) {
           <div key={c.label} className={`min-w-0 ${c.cls || ''}`}>
             {/* The header row is desktop-only, so on mobile each cell carries
                 its own label — otherwise the stacked view is unlabelled values. */}
-            <div className="sm:hidden text-[9.5px] text-gr uppercase font-semibold tracking-[.4px]">{c.label}</div>
+            <div className="sm:hidden text-[12px] text-gr uppercase font-semibold tracking-[.4px]">{c.label}</div>
             {c.render(ctx)}
           </div>
         ))}
-        <span className="text-gr text-[13px] hidden sm:block justify-self-end">{open ? '▾' : '▸'}</span>
+        <span className="text-gr text-[15px] hidden sm:block justify-self-end">{open ? '▾' : '▸'}</span>
       </button>
 
       {open && (
@@ -1049,7 +1049,7 @@ function ShipmentCard({ s, cols, open, onToggle }) {
               order greys every dot (indexOf → -1) and reads as "stuck at the
               start", which is worse than saying plainly what happened. */}
           {EXCEPTION_STATUSES.includes(s.status) ? (
-            <div className={`mb-3 px-2.5 py-2 rounded-lg border text-[12px] ${s.status === 'cancelled' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
+            <div className={`mb-3 px-2.5 py-2 rounded-lg border text-[14px] ${s.status === 'cancelled' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
               <span className="font-bold">{s.status === 'cancelled' ? 'Cancelled' : 'On hold'} in ShipStation.</span>{' '}
               {s.status === 'cancelled'
                 ? 'This shipment will not go out. Raise a new request if it is still needed.'
@@ -1061,7 +1061,7 @@ function ShipmentCard({ s, cols, open, onToggle }) {
               {SHIP_STATUSES.map((p, i) => (
                 <div key={p} className="flex items-center gap-1">
                   <span className={`w-2 h-2 rounded-full ${i < stIdx ? 'bg-green-500' : i === stIdx ? 'bg-pk' : 'bg-lt'}`} />
-                  <span className={`text-[10.5px] ${i === stIdx ? 'font-bold text-dk' : 'text-gr'}`}>
+                  <span className={`text-[12px] ${i === stIdx ? 'font-bold text-dk' : 'text-gr'}`}>
                     {p === 'shipped' ? 'in transit' : p}
                   </span>
                   {i < SHIP_STATUSES.length - 1 && <span className="w-4 h-px bg-lt mx-1" />}
@@ -1074,7 +1074,7 @@ function ShipmentCard({ s, cols, open, onToggle }) {
                 arriving; it would now be a lie. What is still worth saying is
                 when the carrier expects it, and that only while in transit. */}
             {s.status === 'delivered' && s.delivered_at && (
-              <div className="text-[10.5px] text-gr mt-1">
+              <div className="text-[12px] text-gr mt-1">
                 Delivered {new Date(s.delivered_at).toLocaleDateString()}
               </div>
             )}
@@ -1089,7 +1089,7 @@ function ShipmentCard({ s, cols, open, onToggle }) {
             <KV label="Deliver by">{s.required_by || '—'}</KV>
             <KV label="Collateral">
               {(s.collateral || []).length ? (s.collateral || []).map((c) => (
-                <span key={c} className="inline-block text-[10.5px] font-semibold px-2 py-px rounded bg-bg border border-lt mr-1 mb-1">{c}</span>
+                <span key={c} className="inline-block text-[12px] font-semibold px-2 py-px rounded bg-bg border border-lt mr-1 mb-1">{c}</span>
               )) : '—'}
             </KV>
             <KV label="Billing">
@@ -1107,16 +1107,16 @@ function ShipmentCard({ s, cols, open, onToggle }) {
           </div>
 
           <div className="mt-3">
-            <div className="text-[10.5px] text-gr uppercase font-bold tracking-wider mb-1">Samples</div>
+            <div className="text-[12px] text-gr uppercase font-bold tracking-wider mb-1">Samples</div>
             <div className="divide-y divide-bg border border-lt rounded-lg">
               {items.map((i) => (
                 <div key={i.id || i.product_code || i.custom_spec} className="flex justify-between items-center px-2 py-1.5">
-                  <span className="text-[12.5px] text-dk">
-                    {i.custom && <span className="text-[10.5px] font-semibold px-1.5 py-px rounded bg-pink-100 text-pk mr-1">Custom</span>}
+                  <span className="text-[14px] text-dk">
+                    {i.custom && <span className="text-[12px] font-semibold px-1.5 py-px rounded bg-pink-100 text-pk mr-1">Custom</span>}
                     {i.description || i.product_code || i.custom_spec}
-                    {i.project_no ? <span className="text-[10.5px] text-gr"> (proj {i.project_no})</span> : null}
+                    {i.project_no ? <span className="text-[12px] text-gr"> (proj {i.project_no})</span> : null}
                   </span>
-                  <span className="text-[12.5px] font-bold text-dk">×{i.qty}</span>
+                  <span className="text-[14px] font-bold text-dk">×{i.qty}</span>
                 </div>
               ))}
             </div>
@@ -1124,12 +1124,12 @@ function ShipmentCard({ s, cols, open, onToggle }) {
 
           {s.notes && (
             <div className="mt-3">
-              <div className="text-[10.5px] text-gr uppercase font-bold tracking-wider mb-1">Notes</div>
-              <div className="text-[12.5px] text-dk">{s.notes}</div>
+              <div className="text-[12px] text-gr uppercase font-bold tracking-wider mb-1">Notes</div>
+              <div className="text-[14px] text-dk">{s.notes}</div>
             </div>
           )}
 
-          <div className="text-[10.5px] text-gr mt-3">
+          <div className="text-[12px] text-gr mt-3">
             Status is set by ShipStation — <span className="font-semibold">submitted</span> on creation, <span className="font-semibold">shipped</span> when the co-man buys a label.
           </div>
         </div>
@@ -1141,8 +1141,8 @@ function ShipmentCard({ s, cols, open, onToggle }) {
 function KV({ label, children }) {
   return (
     <div>
-      <div className="text-[10.5px] text-gr uppercase font-bold tracking-wider mb-0.5">{label}</div>
-      <div className="text-[12.5px] text-dk">{children}</div>
+      <div className="text-[12px] text-gr uppercase font-bold tracking-wider mb-0.5">{label}</div>
+      <div className="text-[14px] text-dk">{children}</div>
     </div>
   );
 }
@@ -1183,14 +1183,14 @@ function AddressView({ data, refresh, canWrite, setToast }) {
   return (
     <div>
       <div className="flex justify-between items-center mb-2">
-        <div className="text-[10.5px] font-bold uppercase tracking-wider text-pk">Ship-to addresses ({data.addresses.length})</div>
-        <button onClick={() => setAdding((v) => !v)} className="text-[11.5px] font-semibold px-2 py-0.5 rounded border border-pk text-pk">{adding ? 'Cancel' : '+ New'}</button>
+        <div className="text-[12px] font-bold uppercase tracking-wider text-pk">Ship-to addresses ({data.addresses.length})</div>
+        <button onClick={() => setAdding((v) => !v)} className="text-[14px] font-semibold px-2 py-0.5 rounded border border-pk text-pk">{adding ? 'Cancel' : '+ New'}</button>
       </div>
 
       {/* The boundary, stated where someone would otherwise go looking for an
           edit button. Addresses are copied into ShipStation at import, so
           nothing here reaches an order that has already been placed. */}
-      <div className="text-[11.5px] text-gr bg-cd border border-lt rounded-lg px-3 py-2 mb-2">
+      <div className="text-[14px] text-gr bg-cd border border-lt rounded-lg px-3 py-2 mb-2">
         Wrong address? Remove it and add a corrected one — removing hides it from
         the picker and leaves past shipments untouched.
         <b className="text-dk"> To change or cancel an order that has already been submitted, contact the Dirty Cookie team.</b>
@@ -1201,33 +1201,33 @@ function AddressView({ data, refresh, canWrite, setToast }) {
         {data.addresses.map((a) => (
           <div key={a.id} className="bg-cd border border-lt rounded-lg p-3">
             <div className="flex items-start justify-between gap-2">
-              <div className="text-[12.5px] font-bold text-dk min-w-0 truncate">{a.nickname || a.company}</div>
+              <div className="text-[14px] font-bold text-dk min-w-0 truncate">{a.nickname || a.company}</div>
               {canWrite && confirmId !== a.id && (
                 <button
                   onClick={() => setConfirmId(a.id)}
                   aria-label={`Remove ${a.nickname || a.company}`}
-                  className="text-[11px] text-gr hover:text-red-600 font-semibold shrink-0 py-1 px-1"
+                  className="text-[12px] text-gr hover:text-red-600 font-semibold shrink-0 py-1 px-1"
                 >Remove</button>
               )}
             </div>
-            <div className="text-[11.5px] text-gr">{a.contact_name} · {a.company}</div>
-            <div className="text-[11.5px] text-gr">{a.street}, {a.city}, {a.state} {a.zip}</div>
+            <div className="text-[14px] text-gr">{a.contact_name} · {a.company}</div>
+            <div className="text-[14px] text-gr">{a.street}, {a.city}, {a.state} {a.zip}</div>
 
             {/* Inline, not a window.confirm: it can say what actually happens. */}
             {confirmId === a.id && (
               <div role="alert" className="mt-2 border border-red-200 bg-red-50 rounded-lg p-2">
-                <div className="text-[11.5px] text-red-700 mb-1.5">
+                <div className="text-[14px] text-red-700 mb-1.5">
                   Remove from the picker? Shipments already sent to this address keep it.
                 </div>
                 <div className="flex gap-1.5">
-                  <button onClick={() => setConfirmId(null)} className="flex-1 border border-lt bg-cd text-dk py-1 rounded text-[11.5px] font-semibold">Keep</button>
-                  <button onClick={() => retire(a)} className="flex-1 bg-red-600 text-white py-1 rounded text-[11.5px] font-semibold">Remove</button>
+                  <button onClick={() => setConfirmId(null)} className="flex-1 border border-lt bg-cd text-dk py-1 rounded text-[14px] font-semibold">Keep</button>
+                  <button onClick={() => retire(a)} className="flex-1 bg-red-600 text-white py-1 rounded text-[14px] font-semibold">Remove</button>
                 </div>
               </div>
             )}
           </div>
         ))}
-        {data.addresses.length === 0 && <div className="text-[12.5px] text-gr italic">No addresses yet — add one above or inline while building a shipment.</div>}
+        {data.addresses.length === 0 && <div className="text-[14px] text-gr italic">No addresses yet — add one above or inline while building a shipment.</div>}
       </div>
     </div>
   );
@@ -1237,7 +1237,7 @@ function AddressView({ data, refresh, canWrite, setToast }) {
 function Section({ title, children }) {
   return (
     <div className="bg-cd border border-lt rounded-xl p-3">
-      <div className="text-[10.5px] font-bold uppercase tracking-wider text-pk mb-2">{title}</div>
+      <div className="text-[12px] font-bold uppercase tracking-wider text-pk mb-2">{title}</div>
       {children}
     </div>
   );
@@ -1245,7 +1245,7 @@ function Section({ title, children }) {
 function Labeled({ label, children }) {
   return (
     <div>
-      <div className="text-[10.5px] text-gr uppercase mb-0.5">{label}</div>
+      <div className="text-[12px] text-gr uppercase mb-0.5">{label}</div>
       {children}
     </div>
   );
