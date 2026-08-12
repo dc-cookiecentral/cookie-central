@@ -5,10 +5,10 @@ import SearchSelect from '../components/SearchSelect';
 import { useDialog } from '../hooks/useDialog';
 import {
   useSampleCentral, addAddress, retireAddress, createShipment, saveTemplate, deleteTemplate,
-  saveShipmentIssue,
+  saveShipmentIssue, setSetting,
 } from '../hooks/useSampleCentral';
 import {
-  flavorFamily, derivedTemp, effectiveTemp, groupCatalog,
+  flavorFamily, derivedTemp, effectiveTemp, tempReason, groupCatalog,
   SHIP_STATUSES, EXCEPTION_STATUSES, OPEN_STATUSES, RECENT_DAYS,
   COLLATERAL_OPTIONS, RUSH_NOTICE,
   pipelineIndex, deliverByState,
@@ -83,7 +83,8 @@ export default function SampleCentral() {
     [cart, productByCode]
   );
   const cartCount = cartLines.reduce((n, l) => n + l.qty, 0);
-  const temp = effectiveTemp(header.temp_override, cartLines.map((l) => ({ code: l.code })), productByCode);
+  const coldSeason = data?.settings?.cold_chain_season === true;
+  const temp = effectiveTemp(header.temp_override, cartLines.map((l) => ({ code: l.code })), productByCode, coldSeason);
 
   // Clamped at both ends. The upper bound is a typo guard, not a business rule —
   // see MAX_LINE_QTY. Without it a stray keypress in the quantity box orders
@@ -201,6 +202,8 @@ export default function SampleCentral() {
         </div>
       )}
 
+      <ColdSeasonBar on={coldSeason} profile={profile} refresh={refresh} setToast={setToast} />
+
       <main className="flex-1 px-6 py-5">
         {/* The live region is ALWAYS mounted. A region that appears at the same
             moment as its text is frequently missed by screen readers — they
@@ -239,7 +242,7 @@ export default function SampleCentral() {
         <CartDrawer
           data={data} cart={cart} setCart={setCart} cartLines={cartLines} setQty={setQty}
           customItems={customItems} setCustomItems={setCustomItems} header={header} setHeader={setHeader}
-          temp={temp} productByCode={productByCode} profile={profile} canWrite={canWrite}
+          temp={temp} productByCode={productByCode} profile={profile} canWrite={canWrite} coldSeason={coldSeason}
           onClose={() => setCartOpen(false)} onAddAddress={refresh} refresh={refresh}
           submit={requestSubmit} setToast={setToast} invalid={invalid}
         />
@@ -386,6 +389,55 @@ function ConfirmSubmit({ rep, addr, header, cartLines, customItems, temp, submit
   );
 }
 
+// ── Cold-chain season ───────────────────────────────────────────────────────
+// A live switch (sample_settings.cold_chain_season), not a date range: the
+// season does not start on the same day each year, and the person who notices
+// the weather is not necessarily the person who can deploy.
+//
+// Shown to EVERYONE when on, because it changes what every new order says about
+// its own handling and the Cortina account needs to know why its ambient-looking
+// box is marked Cold. Only admin/ops can flip it — RLS enforces that too, so a
+// cortina user pressing it would get an error rather than a silent no-op, which
+// is why the control is not rendered for them at all.
+//
+// Deliberately NOT sent to ShipStation: only temp_override reaches the export
+// (CustomField3) and ADR-037 keeps that blank unless a HUMAN overrode. The
+// ShipStation half is a blanket seasonal automation rule, which needs no
+// per-order flag precisely because it applies to everything.
+function ColdSeasonBar({ on, profile, refresh, setToast }) {
+  const [busy, setBusy] = useState(false);
+  const canToggle = ['admin', 'ops'].includes(profile?.role);
+  if (!on && !canToggle) return null;
+
+  const flip = async () => {
+    setBusy(true);
+    const { error } = await setSetting('cold_chain_season', !on, profile?.id);
+    setBusy(false);
+    if (error) return setToast({ err: error.message });
+    await refresh();
+    setToast({ ok: !on ? 'Cold-chain season ON — new orders default to Cold.' : 'Cold-chain season off.' });
+  };
+
+  return (
+    <div className={`border-b text-[12px] px-6 py-1.5 flex items-center gap-3 ${on ? 'bg-sky-100 text-sky-900 border-sky-300' : 'bg-bg text-gr border-lt'}`}>
+      <span className="font-bold">
+        {on ? 'COLD-CHAIN SEASON — every new order defaults to Cold' : 'Cold-chain season is off — temp follows the items in the box'}
+      </span>
+      {canToggle && (
+        <button
+          onClick={flip} disabled={busy}
+          className={`font-semibold px-2 py-0.5 rounded border disabled:opacity-50 ${on ? 'border-sky-400 text-sky-900 hover:bg-sky-200' : 'border-lt text-pk hover:bg-pc'}`}
+        >
+          {busy ? '…' : on ? 'Turn off' : 'Turn on'}
+        </button>
+      )}
+      {/* Existing orders keep the temp they were created with — it is a stored
+          snapshot of a decision (ADR-026), not a live attribute. */}
+      {on && <span className="text-sky-800">Orders already placed keep the temp they were created with.</span>}
+    </div>
+  );
+}
+
 // ── Catalog (Prep → Tier → Size) ────────────────────────────────────────────
 function CatalogView({ data, filter, setFilter, cart, setQty, addToCart }) {
   const items = data.catalog.filter((c) => {
@@ -452,7 +504,7 @@ function CatalogView({ data, filter, setFilter, cart, setQty, addToCart }) {
 // ── Build Shipment drawer (prototype's cart panel) ──────────────────────────
 function CartDrawer({
   data, cart, setCart, cartLines, setQty, customItems, setCustomItems, header, setHeader,
-  temp, productByCode, profile, canWrite, onClose, onAddAddress, refresh, submit, setToast, invalid,
+  temp, productByCode, profile, canWrite, onClose, onAddAddress, refresh, submit, setToast, invalid, coldSeason,
 }) {
   const [showAddr, setShowAddr] = useState(false);
   const ref = useRef(null);
@@ -464,7 +516,9 @@ function CartDrawer({
     : null);
   const set = (k, v) => setHeader((h) => ({ ...h, [k]: v }));
   const toggleCollateral = (c) => setHeader((h) => ({ ...h, collateral: h.collateral.includes(c) ? h.collateral.filter((x) => x !== c) : [...h.collateral, c] }));
-  const overridden = !!header.temp_override && header.temp_override !== derivedTemp(cartLines.map((l) => ({ code: l.code })), productByCode);
+  const cartCodes = cartLines.map((l) => ({ code: l.code }));
+  const overridden = !!header.temp_override && header.temp_override !== derivedTemp(cartCodes, productByCode, coldSeason);
+  const reason = tempReason(cartCodes, productByCode, coldSeason);
   const addr = data.addresses.find((a) => a.id === header.address_id);
 
   return (
@@ -571,12 +625,16 @@ function CartDrawer({
           </Section>
 
           <Section title="Handling">
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2 mb-2">
               <TempBadge temp={temp} overridden={overridden} />
+              {/* "Cold because it is July" and "Cold because there is raw dough
+                  in the box" carry different consequences for someone deciding
+                  whether to override, so the badge says which. */}
+              {reason && !overridden && <span className="text-[12px] text-gr">from {reason}</span>}
             </div>
             <Labeled label="Temp override (deprioritized)">
               <select value={header.temp_override} onChange={(e) => set('temp_override', e.target.value)} className="w-full px-2 py-1 rounded border border-lt text-[14px] bg-bg">
-                <option value="">— auto from items ({derivedTemp(cartLines.map((l) => ({ code: l.code })), productByCode)}) —</option>
+                <option value="">— auto ({derivedTemp(cartCodes, productByCode, coldSeason)}{reason ? `, ${reason}` : ''}) —</option>
                 <option value="Ambient">Ambient</option>
                 <option value="Cold">Cold</option>
               </select>

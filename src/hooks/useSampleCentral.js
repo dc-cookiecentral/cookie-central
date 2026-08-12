@@ -13,7 +13,8 @@ export function useSampleCentral() {
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const [catalog, addresses, shipments, templates, salespeople] = await Promise.all([
+    // ⚠️ Order-sensitive: this destructuring must match the array below exactly.
+    const [catalog, addresses, shipments, templates, settings, salespeople] = await Promise.all([
       supabase
         .from('products')
         .select('code, description, flavor, outer_cookie, stuffing, tier, form, dough_oz, prep, allergens, ingredients, nutrition')
@@ -36,6 +37,7 @@ export function useSampleCentral() {
         .select('*, sales_rep:sales_reps!sales_rep_id ( id, full_name, email ), address:addresses!address_id ( * ), sample_shipment_items ( * )')
         .order('created_at', { ascending: false }),
       supabase.from('sample_templates').select('*').order('name'),
+      supabase.from('sample_settings').select('key, value'),
       // The Salesperson dropdown. Reads sales_reps, NOT user_profiles — a rep is
       // a name and an email to notify, not a login. Binding this to auth was
       // what forced an account per person (migration 20260807000500).
@@ -45,7 +47,7 @@ export function useSampleCentral() {
         .eq('active', true)
         .order('full_name'),
     ]);
-    const failed = [catalog, addresses, shipments, templates, salespeople].find((r) => r.error);
+    const failed = [catalog, addresses, shipments, templates, settings, salespeople].find((r) => r.error);
     if (failed) {
       setError(failed.error.message);
       setLoading(false);
@@ -57,6 +59,7 @@ export function useSampleCentral() {
       shipments: shipments.data ?? [],
       templates: templates.data ?? [],
       salespeople: salespeople.data ?? [],
+      settings: Object.fromEntries((settings.data ?? []).map((r) => [r.key, r.value])),
     });
     setError(null);
     setLoading(false);
@@ -169,5 +172,14 @@ export async function saveShipmentIssue(id, { flags, note }) {
       issue_at: logged ? new Date().toISOString() : null,
     })
     .eq('id', id);
+  return { error };
+}
+
+// Live switches (sample_settings). Written by admin/ops only — RLS enforces it,
+// so a cortina user calling this gets an error rather than a silent no-op.
+export async function setSetting(key, value, userId) {
+  const { error } = await supabase
+    .from('sample_settings')
+    .upsert({ key, value, updated_at: new Date().toISOString(), updated_by: userId || null }, { onConflict: 'key' });
   return { error };
 }
