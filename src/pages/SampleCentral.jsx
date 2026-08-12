@@ -1222,7 +1222,15 @@ function ShipmentCard({ s, cols, open, onToggle, canWrite, refresh, setToast }) 
             </div>
           )}
 
-          <IssuePanel s={s} canWrite={canWrite} refresh={refresh} setToast={setToast} />
+          {/* Delivered only. Every flag in the vocabulary — arrived late, damaged
+              in transit, packaging, wrong items — is something you can only know
+              once the box has landed, so offering the panel earlier invites a
+              guess. The `|| s.issue_at` keeps an already-logged issue visible
+              (and clearable) if an order somehow moves back out of delivered;
+              hiding a record that exists would be worse than showing it late. */}
+          {(s.status === 'delivered' || s.issue_at) && (
+            <IssuePanel s={s} canWrite={canWrite} refresh={refresh} setToast={setToast} />
+          )}
 
           <div className="text-[12px] text-gr mt-3">
             Status is set by ShipStation — <span className="font-semibold">submitted</span> on creation, <span className="font-semibold">shipped</span> when the co-man buys a label.
@@ -1340,8 +1348,9 @@ function AddressView({ data, refresh, canWrite, setToast }) {
 // existing once an order leaves Awaiting Shipment, which is exactly when an
 // issue becomes known.
 //
-// Editable at any status. A delay is often known while the parcel is still
-// moving, and waiting for `delivered` to record it loses the detail.
+// Rendered only for DELIVERED orders (see the call site). Every flag in the
+// vocabulary is a post-arrival judgement, so an earlier panel would collect
+// guesses rather than observations.
 function IssuePanel({ s, canWrite, refresh, setToast }) {
   const [open, setOpen] = useState(false);
   const [flags, setFlags] = useState(() => s.issue_flags || []);
