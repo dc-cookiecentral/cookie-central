@@ -4,6 +4,10 @@ Operational dashboard for Dirty Cookie's white-label retail business (Walmart + 
 
 **Stack:** React + Vite + Tailwind + Supabase + Vercel
 **Status:** Phase 1 demo shipped (June 2026); launch hardening in progress. All demo modules are live against Supabase, plus the `systems@` AI email agent (Day 10) and the Lot Traceability chain UI (Day 11). One ship blocker remains before Phase 1 is declared shipped: Cortina NetSuite real-file reconciliation (awaiting Harshita's export sample). See `docs/BUILD_PLAN.md`.
+
+**Also in this repo — a separate project.** The **Sample Ordering Site (Sample Central)**, where Cortina salespeople build sample shipments that flow to the co-manufacturer through ShipStation. Built July–August 2026 (ADR-025→042), deployed, and **not yet launched** — test mode is still on and there is no ShipStation sandbox, so test orders reach the co-man's real queue. It shares this repo, the Supabase project and some infrastructure, but its goals, data and decisions are separate; don't conflate the two.
+
+**Everything else in this README is the other project** — inventory, forecasting, POs, the weekly Retail Link reports and the **`systems@` Gmail agent** are *not* part of Sample Central. The one genuine overlap is `EDGE_CRON_BEARER` (Vault), the shared bearer for every pg_cron → Edge Function call in the repo. **Start any session on Sample Central from `sample-site/CLAUDE.md`**, and read `sample-site/docs/SAMPLE_CENTRAL_STATUS.md` for its current state.
 **Builder:** Caroline Friedrich
 **Users:** Shahira (CEO/admin), Marc (COO/ops), David + Paul (Biz Exec/admin), Maria (Ops — onboarding later)
 **Primary sign-in:** `systems@dirtycookie.com` (admin)
@@ -24,7 +28,11 @@ The login form supports both **magic link** (default) and **password** (fallback
 
 ## Migrations
 
-Migrations live in `supabase/migrations/`. The Supabase + GitHub integration is currently disabled; migrations are applied **manually** via the SQL editor by pasting the migration file contents and running them in filename order.
+Migrations live in `supabase/migrations/` — **57 files as of August 11, 2026**. The Supabase + GitHub integration is currently disabled; migrations are applied **manually**, either by pasting into the SQL editor or by POSTing to the Management API's `/database/query` endpoint (there is no Docker locally, so `supabase db push` and the local stack are unavailable — see `sample-site/CLAUDE.md`).
+
+⚠️ **The Management API executes SQL without writing a `supabase_migrations.schema_migrations` row**, so the remote ledger lags the folder. As of Aug 11 it tops out at `20260805050000` with five later migrations applied but unregistered. All five replay cleanly (`ON CONFLICT` or `IF EXISTS` throughout), but check before assuming the ledger reflects reality.
+
+The list below covers Phase 1 only (through June 2). The July–August files are the Sample Central / ShipStation extension track — see `sample-site/docs/SAMPLE_CENTRAL_STATUS.md`.
 
 ```
 20260521000000_initial_schema.sql              # 20 tables + RLS + triggers
@@ -57,12 +65,16 @@ cookie-central/
 │   ├── BUILD_PLAN.md            # Phase 1-3 task breakdown + status
 │   ├── ARCHITECTURE.md          # Data flow + tech stack + roles
 │   ├── DATA_MODEL.md            # Tables, columns, relationships
-│   ├── DECISIONS.md             # Architecture decision records (ADRs)
+│   ├── DECISIONS.md             # Architecture decision records — ADR-026…042 are Sample Central, earlier ones are not
 │   ├── RUNBOOK.md               # Launch operations: onboarding, troubleshooting, recovery
 │   └── PEOPLE.md                # Org chart + contacts + system emails
+├── sample-site/                 # Sample Central — SEPARATE PROJECT, docs only (code stays put)
+│   ├── CLAUDE.md                # Start sessions on that project here
+│   └── docs/                    # Status, ShipStation integration + setup checklist, email templates
 ├── supabase/
 │   ├── migrations/              # Forward-only schema migrations (manual apply)
-│   └── functions/               # Edge Functions (Gmail agent)
+│   └── functions/               # Edge Functions. `gmail-*` = this project's email agent.
+│                                #   `shipstation-*` = Sample Central, a DIFFERENT project (see above)
 ├── src/
 │   ├── App.jsx + main.jsx
 │   ├── pages/                   # Routes (one file per sidebar nav item)
