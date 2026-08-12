@@ -237,10 +237,13 @@ Status remains **read-only** (ADR-032).
 
 ## Loose ends
 
-- **`SMP-TEST-1053` is still forced to `delivered`** from the Aug 6 experiment,
-  with no `shipped_at`. It shows in the Shipped section. Revert when convenient.
-- **No ADR yet for the cancelled-resurrection loop.** It corrects ADR-040's
-  "cancelled sync works — verified end to end", which tested the sweep direction
-  but never an export landing in between.
+- ~~**`SMP-TEST-1053` is still forced to `delivered`**~~ — **resolved.** The row
+  no longer exists; it went with the purge. `sample_shipments` holds two rows as
+  of Aug 11, `SMP-TEST-1100` and `SMP-TEST-1101`, both `shipped` with a null
+  `shipstation_order_id` — the residue of the Aug 11 email proof run, where the
+  orders were **Marked as Shipped** by hand to fire the notification to David.
+  Expected state, not an anomaly.
+- ~~**No ADR yet for the cancelled-resurrection loop.**~~ — **resolved.** It is
+  **ADR-041**, which corrects ADR-040's "verified end to end".
 - **`DECISIONS.md` still says "Pending Shipments"** in ADR-030/032. Left alone
   deliberately — those record what was decided at the time.
