@@ -1,11 +1,15 @@
 # Cookie Central — Build Plan
 
 ## Timeline
-*(current as of July 28, 2026)*
+*(current as of August 11, 2026)*
 - **Start:** Wednesday May 21, 2026
 - **Phase 1 demo:** delivered June 2026 (Marc + David) ✅
 - **Phase 1 ship:** largely live. AI email reader (Day 10) ✅ and lot-traceability chain UI (Day 11) ✅ done. Remaining: Cortina NetSuite real-file reconciliation (waiting on Harshita's sample); DOT/QBO real-file reconciliation non-blocking.
-- **Extension track — Spec Sheet → Sample Central → ShipStation** (separate from the Operations/Financials phases below): built July 2026. Phase 1 Cookulator product spine (ADR-025) ✅, Phase 2 Sample Central (ADR-026) ✅, Phase 3 ShipStation Custom Store (ADR-028/029) ✅ **verified end-to-end July 27, 2026**; refined July 28 (ADR-030→033: prototype-aligned shell, rush flag replaces the shipping-speed selector, third-party billing, read-only status, shipnotify cost/label capture). Schema, Edge Function and frontend all deployed. **Current state + next steps: `sample-site/docs/SAMPLE_CENTRAL_STATUS.md`.**
+- **Extension track — Spec Sheet → Sample Central → ShipStation** (separate from the Operations/Financials phases below): built July 2026. Phase 1 Cookulator product spine (ADR-025) ✅, Phase 2 Sample Central (ADR-026) ✅, Phase 3 ShipStation Custom Store (ADR-028/029) ✅ **verified end-to-end July 27, 2026**; refined July 28 (ADR-030→033: prototype-aligned shell, rush flag replaces the shipping-speed selector, third-party billing, read-only status, shipnotify cost/label capture). Schema, Edge Function and frontend all deployed.
+
+  **August 2026 (ADR-034→042), in four strands:** the field contract settled (ADR-036→038 — salesperson/account/temp override in CustomField1/2/3, RUSH in InternalNotes, billing in Notes from Buyer, custom and collateral lines carrying no SKU); Deliver By moved to ShipStation's native field via an outbound V2 sweep, now on a 15-minute cron (ADR-034); status sync in from ShipStation, which surfaced that **V2 reports the label lifecycle, not order status** — so `cancelled` works, `on_hold` cannot without a V1 key, and `delivered` is one entitlement away (ADR-039→041); and **sales reps became a lookup list rather than user accounts (ADR-042)**, with the 25-person Cortina roster now live in the Salesperson dropdown and a selected rep's email flowing to `<BillTo><Email>`, which is what ShipStation notifies.
+
+  **Not yet launched.** `VITE_SAMPLE_TEST_MODE` is still on, and there is no sandbox — test orders reach the co-man's real queue. Go-live cleanup is §9 of the checklist. **Current state + next steps: `sample-site/docs/SAMPLE_CENTRAL_STATUS.md`**, which is kept more current than this file.
 - **Phase 2 — Operations:** upcoming (weeks following Phase 1 ship).
 - **Phase 3 — Financials + Rollout:** late summer 2026.
 
