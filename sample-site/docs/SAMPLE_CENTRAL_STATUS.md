@@ -232,7 +232,7 @@ Status remains **read-only** (ADR-032).
 | §3 rush automation rule | **done** (re-pointed to `Internal Notes contains RUSH`) |
 | §4 cold-chain product tags | **done** |
 | §1 store status mapping | verified correct as configured |
-| §A.1 Cortina user seeding | **narrowed, still outstanding.** The 25 reps need no seeds at all now — they are `sales_reps` rows, not logins. What remains is the **single Cortina ordering account**, and that is still not self-correcting: an unseeded user provisions as internal `ops`, and seeding afterwards does not fix it |
+| §A.1 Cortina user seeding | **done Aug 11.** The 25 reps needed no seeds — they are `sales_reps` rows, not logins. The single ordering account, `samplesmngmt@cortinafoods.com` ("Samples Management", role `cortina`), is seeded and verified (`20260811120000`). It has **not signed in yet**, which is precisely why the seed had to land first: an unseeded first sign-in provisions as internal `ops` and does not self-correct |
 | §9 go-live cleanup | **outstanding** — clear `VITE_SAMPLE_TEST_MODE`, redeploy, purge `SMP-TEST-%` in Supabase **and** cancel the matching orders in ShipStation |
 
 ## Loose ends
