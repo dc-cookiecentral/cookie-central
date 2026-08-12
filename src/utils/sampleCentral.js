@@ -6,15 +6,35 @@ export const flavorFamily = (p) =>
   p.stuffing ? `${p.outer_cookie} / ${p.stuffing}` : p.outer_cookie || p.description;
 
 // Ship temp derives from the cart: any Raw (frozen) item => Cold chain, else Ambient.
-export function derivedTemp(cart, productByCode) {
+// `coldSeason` forces Cold regardless of contents. Through the summer every
+// sample ships cold whatever is in the box, and without this the badge tells the
+// sales team "Ambient" about a parcel going out on ice. It is a live switch
+// (sample_settings.cold_chain_season), not a date range — the season does not
+// start on the same day every year, and the person who notices the weather is
+// not necessarily the person who can deploy.
+export function derivedTemp(cart, productByCode, coldSeason = false) {
+  if (coldSeason) return 'Cold';
   const anyRaw = cart.some((it) => {
     const p = productByCode.get(it.code);
     return p && String(p.prep || '').toLowerCase() === 'raw';
   });
   return anyRaw ? 'Cold' : 'Ambient';
 }
-export const effectiveTemp = (override, cart, productByCode) =>
-  override || derivedTemp(cart, productByCode);
+export const effectiveTemp = (override, cart, productByCode, coldSeason = false) =>
+  override || derivedTemp(cart, productByCode, coldSeason);
+
+// Why the derived value came out Cold — the badge says which, because "Cold
+// because it is July" and "Cold because there is raw dough in the box" carry
+// different consequences if someone is deciding whether to override.
+export function tempReason(cart, productByCode, coldSeason = false) {
+  const anyRaw = cart.some((it) => {
+    const p = productByCode.get(it.code);
+    return p && String(p.prep || '').toLowerCase() === 'raw';
+  });
+  if (anyRaw) return 'raw items';
+  if (coldSeason) return 'summer season';
+  return null;
+}
 
 // Prep -> Tier -> Size grouping for the catalog. Returns
 // [{ prep, storage, count, tiers: [{ tier, items:[...] }] }].
