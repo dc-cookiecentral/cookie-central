@@ -804,11 +804,14 @@ function ShipmentCard({ s, cols, open, onToggle }) {
                 </div>
               ))}
             </div>
-            {/* Nothing writes `delivered` yet, so a shipped order would sit on a
-                grey final dot forever and read as a stuck shipment. Say why. */}
-            {s.status === 'shipped' && (
+            {/* Delivery IS tracked now (ADR-043): the 15-minute sweep reads the
+                carrier's track log per label and promotes shipped → delivered.
+                The caption that used to sit here apologised for delivery never
+                arriving; it would now be a lie. What is still worth saying is
+                when the carrier expects it, and that only while in transit. */}
+            {s.status === 'delivered' && s.delivered_at && (
               <div className="text-[10.5px] text-gr mt-1">
-                Delivery is not tracked yet — this stays “in transit” until carrier tracking is wired up.
+                Delivered {new Date(s.delivered_at).toLocaleDateString()}
               </div>
             )}
           </div>

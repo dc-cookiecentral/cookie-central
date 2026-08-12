@@ -25,6 +25,7 @@ import {
   NO_EXPORT_STATUSES,
   ssStatus,
   syncedStatus,
+  deliveredFromTrack,
   tagValue,
   validState,
   validZip,
@@ -605,4 +606,92 @@ Deno.test('tagValue: returns null for a missing tag', () => {
 });
 Deno.test('tagValue: returns null for an empty element rather than empty string', () => {
   assertEquals(tagValue('<OrderNumber></OrderNumber>', 'OrderNumber'), null);
+});
+
+// ── deliveredFromTrack ──────────────────────────────────────────────────────
+// The source for `delivered`, added Aug 11 2026. `status_code` comes from
+// GET /v2/labels/{label_id}/track.
+
+Deno.test('deliveredFromTrack: DE on a shipped order delivers it, carrying the carrier timestamp', () => {
+  assertEquals(
+    deliveredFromTrack({ status_code: 'DE', actual_delivery_date: '2026-08-13T18:04:00Z' }, 'shipped'),
+    { status: 'delivered', delivered_at: '2026-08-13T18:04:00Z' },
+  );
+});
+
+Deno.test('deliveredFromTrack: delivered with no carrier timestamp stores null, NOT the sweep clock', () => {
+  // An invented timestamp is indistinguishable from a real one afterwards.
+  assertEquals(
+    deliveredFromTrack({ status_code: 'DE' }, 'shipped'),
+    { status: 'delivered', delivered_at: null },
+  );
+});
+
+Deno.test('deliveredFromTrack: in-transit codes leave the order alone', () => {
+  for (const code of ['UN', 'AC', 'IT', 'EX', 'AT', 'NY']) {
+    assertEquals(deliveredFromTrack({ status_code: code }, 'shipped'), null, `code ${code}`);
+  }
+});
+
+Deno.test('deliveredFromTrack: NY is not delivered — the live SMP-TEST-1101 case', () => {
+  // The real Aug 11 probe: label bought, UPS had not received the package.
+  assertEquals(
+    deliveredFromTrack(
+      { status_code: 'NY', status_detail_code: 'ELEC_ADVICE_RECD_BY_CARRIER', actual_delivery_date: null },
+      'shipped',
+    ),
+    null,
+  );
+});
+
+Deno.test('deliveredFromTrack: SP (collection point) is deliberately NOT delivered', () => {
+  // The parcel is in a locker; the rep does not have it. Telling the sales team
+  // it landed is the more expensive error.
+  assertEquals(
+    deliveredFromTrack({ status_code: 'SP', actual_delivery_date: '2026-08-13T18:04:00Z' }, 'shipped'),
+    null,
+  );
+});
+
+Deno.test('deliveredFromTrack: never promotes an order that has not shipped', () => {
+  // A stale label read must not resurrect a cancelled order or jump the queue.
+  for (const current of ['submitted', 'processing', 'cancelled', 'on_hold']) {
+    assertEquals(
+      deliveredFromTrack({ status_code: 'DE', actual_delivery_date: '2026-08-13T18:04:00Z' }, current),
+      null,
+      `current ${current}`,
+    );
+  }
+});
+
+Deno.test('deliveredFromTrack: never un-delivers — a delivered order is left alone', () => {
+  // Carriers do amend history; delivered → in transit would read as a lost parcel.
+  assertEquals(deliveredFromTrack({ status_code: 'IT' }, 'delivered'), null);
+  assertEquals(deliveredFromTrack({ status_code: 'DE' }, 'delivered'), null);
+});
+
+Deno.test('deliveredFromTrack: tolerates a missing or empty track log', () => {
+  assertEquals(deliveredFromTrack(null, 'shipped'), null);
+  assertEquals(deliveredFromTrack({}, 'shipped'), null);
+  assertEquals(deliveredFromTrack({ status_code: null }, 'shipped'), null);
+});
+
+Deno.test('deliveredFromTrack: status_code is matched case- and whitespace-insensitively', () => {
+  // Parsed leniently for the same reason the env flag is: a strict === on a
+  // value we do not control fails silently and looks like "never delivered".
+  for (const code of ['de', ' DE ', 'De']) {
+    assertEquals(
+      deliveredFromTrack({ status_code: code, actual_delivery_date: null }, 'shipped'),
+      { status: 'delivered', delivered_at: null },
+      `code '${code}'`,
+    );
+  }
+});
+
+Deno.test('deliveredFromTrack: syncedStatus refuses to undo it — the two agree', () => {
+  // The delivery poll and the bucket sync run in the same pass. If the sync
+  // could overwrite `delivered`, every delivery would flip back within 15 min.
+  assertEquals(syncedStatus('pending', 'delivered'), null);
+  assertEquals(syncedStatus('cancelled', 'delivered'), null);
+  assertEquals(syncedStatus('label_purchased', 'delivered'), null);
 });
