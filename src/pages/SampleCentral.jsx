@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import AppSwitcher from '../components/AppSwitcher';
 import {
@@ -11,6 +11,7 @@ import {
   pipelineIndex, deliverByState,
   TP_CARRIERS, TP_NOTICE, tpComplete,
   TEST_MODE, SHIPMENT_PREFIX, trackingUrl,
+  MAX_LINE_QTY, LARGE_ORDER_COOKIES, todayISO,
 } from '../utils/sampleCentral';
 
 // Sample Central runs OUTSIDE the shared Layout (App.jsx) so it can carry the
@@ -60,6 +61,9 @@ export default function SampleCentral() {
   const [customItems, setCustomItems] = useState([]); // [{ spec, qty, project_no }]
   const [header, setHeader] = useState(EMPTY_HEADER);
   const [toast, setToast] = useState(null);
+  const [confirming, setConfirming] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
 
   const productByCode = useMemo(() => new Map((data?.catalog || []).map((p) => [p.code, p])), [data]);
   const cartLines = useMemo(
@@ -69,7 +73,10 @@ export default function SampleCentral() {
   const cartCount = cartLines.reduce((n, l) => n + l.qty, 0);
   const temp = effectiveTemp(header.temp_override, cartLines.map((l) => ({ code: l.code })), productByCode);
 
-  const setQty = (code, qty) => setCart((c) => ({ ...c, [code]: Math.max(0, qty) }));
+  // Clamped at both ends. The upper bound is a typo guard, not a business rule —
+  // see MAX_LINE_QTY. Without it a stray keypress in the quantity box orders
+  // five figures of cookies, and the order cannot be recalled from this app.
+  const setQty = (code, qty) => setCart((c) => ({ ...c, [code]: Math.min(MAX_LINE_QTY, Math.max(0, qty)) }));
   const addToCart = (code) => setQty(code, (cart[code] || 0) + 1);
 
   const resetBuild = () => {
@@ -78,11 +85,33 @@ export default function SampleCentral() {
     setHeader(EMPTY_HEADER);
   };
 
+  // Validation is split out of submit() so the confirm sheet cannot open on an
+  // order that would fail anyway — and so submit() can re-check. The two are a
+  // moment apart, and the cart is still editable behind the sheet.
+  const validationError = () => {
+    if (!header.sales_rep_id) return 'Pick a salesperson first.';
+    if (!header.address_id) return 'Pick a ship-to address.';
+    if (cartLines.length === 0 && customItems.length === 0) return 'Add at least one cookie or custom line.';
+    if (!tpComplete(header)) return 'Third-party billing needs carrier, account number and postal code — the co-man cannot bill the account without all three.';
+    return null;
+  };
+
+  const requestSubmit = () => {
+    const err = validationError();
+    if (err) return setToast({ err });
+    setSubmitError(null);
+    setConfirming(true);
+  };
+
   const submit = async () => {
-    if (!header.sales_rep_id) return setToast({ err: 'Pick a salesperson first.' });
-    if (!header.address_id) return setToast({ err: 'Pick a ship-to address.' });
-    if (cartLines.length === 0 && customItems.length === 0) return setToast({ err: 'Add at least one cookie or custom line.' });
-    if (!tpComplete(header)) return setToast({ err: 'Third-party billing needs carrier, account number and postal code — the co-man cannot bill the account without all three.' });
+    const err = validationError();
+    if (err) { setConfirming(false); return setToast({ err }); }
+    setSubmitError(null);
+    // A submitted order cannot be recalled from this app, so a double-click must
+    // not become two shipments — and two inserts would also race for the same
+    // shipment_no, which is UNIQUE.
+    if (submitting) return;
+    setSubmitting(true);
     const items = [
       ...cartLines.map((l) => ({ product_code: l.code, custom: false, qty: l.qty, description: l.product?.description || l.code })),
       ...customItems.filter((c) => c.spec).map((c) => ({ product_code: null, custom: true, custom_spec: c.spec, project_no: c.project_no || null, qty: Number(c.qty) || 1, description: c.spec })),
@@ -97,9 +126,19 @@ export default function SampleCentral() {
       tp_postal_code: header.third_party_billing ? header.tp_postal_code.trim() : null,
     };
     const { error: e, shipment } = await createShipment(h, items, data.shipments);
-    if (e) return setToast({ err: e.message });
+    if (e) {
+      // Reported INSIDE the sheet, not via the toast. The toast renders at the
+      // top of <main>, which sits behind this sheet's overlay — the user would
+      // get a dimmed screen and no explanation, on the one action that most
+      // needs one. Stay open: the cart is intact and the error is usually
+      // actionable (a duplicate number, a dropped connection).
+      setSubmitting(false);
+      return setSubmitError(e.message);
+    }
     resetBuild();
     await refresh();
+    setSubmitting(false);
+    setConfirming(false);
     setCartOpen(false);
     setToast({ ok: `Shipment ${shipment.shipment_no} submitted.` });
     setTab('mission');
@@ -175,10 +214,123 @@ export default function SampleCentral() {
           customItems={customItems} setCustomItems={setCustomItems} header={header} setHeader={setHeader}
           temp={temp} productByCode={productByCode} profile={profile} canWrite={canWrite}
           onClose={() => setCartOpen(false)} onAddAddress={refresh} refresh={refresh}
-          submit={submit} setToast={setToast}
+          submit={requestSubmit} setToast={setToast}
+        />
+      )}
+
+      {confirming && (
+        <ConfirmSubmit
+          rep={data.salespeople.find((s) => s.id === header.sales_rep_id)}
+          addr={data.addresses.find((a) => a.id === header.address_id)}
+          header={header} cartLines={cartLines} customItems={customItems} temp={temp}
+          submitting={submitting} submitError={submitError}
+          onCancel={() => { setSubmitError(null); setConfirming(false); }}
+          onConfirm={submit}
         />
       )}
     </div>
+  );
+}
+
+// ── Confirm before submitting ───────────────────────────────────────────────
+// The last reversible moment. Once this insert lands, the order is exported to
+// the co-manufacturer's REAL ShipStation queue — there is no sandbox (ADR-029),
+// status is owned by ShipStation and read-only here (ADR-032), and the Cortina
+// ordering account has no ShipStation login. So the person who makes a mistake
+// is not the person who can fix it, and the fix happens in another system.
+//
+// This sheet therefore shows the four things that are expensive to get wrong and
+// invisible on the way in: WHO gets notified (the email, not just the name),
+// WHERE it ships, HOW MANY cookies, and whether it is going out cold.
+function ConfirmSubmit({ rep, addr, header, cartLines, customItems, temp, submitting, submitError, onCancel, onConfirm }) {
+  const cancelRef = useRef(null);
+  const cookies = cartLines.reduce((n, l) => n + l.qty, 0);
+  const customLines = customItems.filter((c) => c.spec);
+  const large = cookies >= LARGE_ORDER_COOKIES;
+
+  useEffect(() => {
+    // Focus lands on Cancel, not Confirm: a stray Enter on an already-open sheet
+    // should do the harmless thing.
+    cancelRef.current?.focus();
+    const onKey = (e) => { if (e.key === 'Escape' && !submitting) onCancel(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onCancel, submitting]);
+
+  const Row = ({ label, children, warn }) => (
+    <div className="flex gap-3 py-1.5 border-b border-bg last:border-0">
+      <div className="w-[92px] shrink-0 text-[11px] uppercase tracking-[.4px] text-gr font-semibold">{label}</div>
+      <div className={`text-[12.5px] min-w-0 ${warn ? 'text-amber-800 font-semibold' : 'text-dk'}`}>{children}</div>
+    </div>
+  );
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/50 z-[60]" />
+      <div
+        role="dialog" aria-modal="true" aria-labelledby="confirm-title"
+        className="fixed z-[70] inset-x-0 bottom-0 sm:inset-0 sm:m-auto sm:h-fit sm:max-w-[440px] bg-cd rounded-t-2xl sm:rounded-2xl shadow-2xl p-4"
+      >
+        <h2 id="confirm-title" className="text-[15px] font-extrabold text-dk mb-0.5">Send this shipment?</h2>
+        <p className="text-[11.5px] text-gr mb-3">
+          It goes straight to the co-manufacturer&rsquo;s queue. You cannot cancel it from here afterwards.
+        </p>
+
+        <div className="bg-bg border border-lt rounded-xl px-3 py-1.5 mb-3">
+          <Row label="Notify">
+            <div className="font-semibold truncate">{rep?.full_name || '—'}</div>
+            {/* The operative field. A wrong address here means the rep silently
+                never hears about their own sample. */}
+            <div className="text-[11.5px] text-gr break-all">{rep?.email || 'no email on file'}</div>
+          </Row>
+          <Row label="Ship to">
+            <div className="truncate">{addr?.contact_name} · {addr?.company}</div>
+            <div className="text-[11.5px] text-gr">{addr?.street}, {addr?.city}, {addr?.state} {addr?.zip}</div>
+          </Row>
+          {header.account && <Row label="Account">{header.account}</Row>}
+          <Row label="Contents" warn={large}>
+            {cookies} cookie{cookies === 1 ? '' : 's'} across {cartLines.length} line{cartLines.length === 1 ? '' : 's'}
+            {customLines.length > 0 && ` · ${customLines.length} custom`}
+            {large && <div className="text-[11px] font-normal">That is a large shipment — worth a second look.</div>}
+          </Row>
+          <Row label="Handling" warn={temp === 'Cold'}>
+            {temp === 'Cold' ? 'Cold chain — ships next-day' : 'Ambient'}
+            {header.rush && <span className="text-red-700 font-bold"> · RUSH</span>}
+            {header.required_by && <span className="text-gr font-normal"> · deliver by {header.required_by}</span>}
+          </Row>
+          {header.third_party_billing && (
+            <Row label="Billing">Third party — {header.tp_carrier} {header.tp_account}</Row>
+          )}
+        </div>
+
+        {TEST_MODE && (
+          <div className="text-[11px] text-amber-900 bg-amber-100 border border-amber-300 rounded-lg px-2.5 py-1.5 mb-3">
+            Test mode numbers this {SHIPMENT_PREFIX}#### — but it still reaches the co-man&rsquo;s real queue.
+          </div>
+        )}
+
+        {submitError && (
+          <div role="alert" className="text-[11.5px] text-red-700 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1.5 mb-3">
+            Not sent — {submitError}
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <button
+            ref={cancelRef} onClick={onCancel} disabled={submitting}
+            className="flex-1 border border-lt bg-bg text-dk py-2.5 rounded-lg text-[13px] font-bold disabled:opacity-50"
+          >
+            Keep editing
+          </button>
+          <button
+            onClick={onConfirm} disabled={submitting}
+            className="flex-1 bg-pk text-white py-2.5 rounded-lg text-[13px] font-bold hover:bg-pm disabled:opacity-60"
+          >
+            {submitting ? 'Sending…' : 'Send it'}
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -225,7 +377,13 @@ function CatalogView({ data, filter, setFilter, cart, setQty, addToCart }) {
                     <div className="text-[11.5px] text-gr whitespace-nowrap">{p.dough_oz}oz · 1 cookie · EA</div>
                     <div className="flex items-center gap-1">
                       <button onClick={() => setQty(p.code, (cart[p.code] || 0) - 1)} className="w-6 h-6 rounded border border-lt text-gr hover:text-pk">−</button>
-                      <input value={cart[p.code] || 0} onChange={(e) => setQty(p.code, parseInt(e.target.value, 10) || 0)} className="w-10 text-center border border-lt rounded text-[12.5px] py-0.5" />
+                      <input
+                        type="number" inputMode="numeric" min="0" max={MAX_LINE_QTY}
+                        aria-label={`Quantity — ${p.description || p.code}`}
+                        value={cart[p.code] || 0}
+                        onChange={(e) => setQty(p.code, parseInt(e.target.value, 10) || 0)}
+                        className="w-14 text-center border border-lt rounded text-[12.5px] py-0.5"
+                      />
                       <button onClick={() => addToCart(p.code)} className="w-6 h-6 rounded border border-pk bg-pk text-white">+</button>
                     </div>
                   </div>
@@ -268,7 +426,14 @@ function CartDrawer({
                     sends customer notifications to. Nothing to fill in here. */}
                 <select value={header.sales_rep_id} onChange={(e) => set('sales_rep_id', e.target.value)} className="w-full px-2 py-1 rounded border border-lt text-[12.5px] bg-bg">
                   <option value="">— select —</option>
-                  {data.salespeople.map((s) => <option key={s.id} value={s.id}>{s.full_name}</option>)}
+                  {/* Name AND email. The email is the operative field — it is what
+                      ShipStation notifies — and it is the one nobody can verify
+                      from a name alone. The roster has a shared mailbox under two
+                      names and three addresses that do not match their person, so
+                      showing it here is where those get caught. */}
+                  {data.salespeople.map((s) => (
+                    <option key={s.id} value={s.id}>{s.full_name}{s.email ? ` — ${s.email}` : ''}</option>
+                  ))}
                 </select>
               </Labeled>
               <Labeled label="Account">
@@ -337,7 +502,11 @@ function CartDrawer({
               </select>
             </Labeled>
             <div className="mt-2">
-              <Labeled label="Deliver by"><input type="date" value={header.required_by} onChange={(e) => set('required_by', e.target.value)} className="w-full px-2 py-1 rounded border border-lt text-[12.5px]" /></Labeled>
+              {/* `min` = today. A past deadline is overdue the instant it is
+                  submitted, and it is stamped onto ShipStation's native Deliver
+                  By field by the sweep — so it hands the co-man an impossible
+                  date and pollutes their sorting. */}
+              <Labeled label="Deliver by"><input type="date" min={todayISO()} value={header.required_by} onChange={(e) => set('required_by', e.target.value)} className="w-full px-2 py-1 rounded border border-lt text-[12.5px]" /></Labeled>
             </div>
             <label className={`flex items-start gap-2 mt-2 p-2 rounded-lg border cursor-pointer ${header.rush ? 'border-red-300 bg-red-50' : 'border-lt bg-bg'}`}>
               <input type="checkbox" checked={!!header.rush} onChange={(e) => set('rush', e.target.checked)} className="mt-0.5" />
@@ -389,7 +558,9 @@ function CartDrawer({
         </div>
 
         <footer className="px-4 py-3 border-t border-lt shrink-0">
-          <button onClick={submit} disabled={!canWrite} className="w-full bg-pk text-white py-2.5 rounded-lg text-[13px] font-bold hover:bg-pm disabled:opacity-50">Submit shipment</button>
+          {/* Opens the confirm sheet — it no longer submits directly. The label
+              says so, so the button does not promise an action it does not take. */}
+          <button onClick={submit} disabled={!canWrite} className="w-full bg-pk text-white py-2.5 rounded-lg text-[13px] font-bold hover:bg-pm disabled:opacity-50">Review &amp; submit</button>
           {!canWrite && <div className="text-[11.5px] text-gr text-center mt-1">Your role can view but not submit.</div>}
         </footer>
       </aside>
@@ -621,10 +792,19 @@ function MissionView({ data }) {
   // sitting right there, which is worse than no search at all.
   const windowed = !query && !showAll;
 
+  // Order number, account and salesperson. The number is what you search when
+  // you already have it in front of you; "everything we sent Whole Foods" and
+  // "what has Marci sent" are the questions people actually arrive with, and
+  // matching the number alone answered neither.
+  const matches = (s) => {
+    if (!query) return true;
+    return [s.shipment_no, s.account, s.sales_rep?.full_name, s.sales_rep?.email]
+      .some((f) => String(f || '').toLowerCase().includes(query));
+  };
+
   const visible = data.shipments.filter((s) => {
     if (sp !== 'All' && s.sales_rep?.id !== sp) return false;
-    if (query) return (s.shipment_no || '').toLowerCase().includes(query);
-    return true;
+    return matches(s);
   });
 
   // Two sections, because "what have I ordered" and "what has gone out" are
@@ -689,8 +869,9 @@ function MissionView({ data }) {
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search order no. (e.g. 1054)"
-          className="px-2.5 py-1.5 rounded-lg border border-lt text-[12.5px] bg-cd w-[210px]"
+          placeholder="Search order no., account or rep"
+          aria-label="Search shipments by order number, account or salesperson"
+          className="px-2.5 py-1.5 rounded-lg border border-lt text-[12.5px] bg-cd w-[240px]"
         />
         {q && (
           <button onClick={() => setQ('')} className="text-[11.5px] text-pk font-semibold">Clear</button>

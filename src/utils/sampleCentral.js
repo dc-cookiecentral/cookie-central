@@ -184,6 +184,33 @@ export const COLLATERAL_SKUS = {
 // 20260728130000 — box choice lives in ShipStation now.)
 export const RUSH_NOTICE = 'Flags the order as urgent and emails the team.';
 
+// ── Order guardrails ────────────────────────────────────────────────────────
+// A submitted order is UNRECALLABLE from inside this app. Status is owned by
+// ShipStation (ADR-032), there is no sandbox, and the Cortina ordering account
+// has no ShipStation login — so a mistake here can only be fixed by someone
+// else, in another system. These two constants exist to catch the two mistakes
+// that cost the most: a mistyped quantity, and a fat-fingered "submit".
+
+// Per-line ceiling. Not a business rule — a typo guard. A sample line is
+// normally 6–24 cookies; 999 is far above anything real and far below the
+// 100,000 that one stray keypress in a bare text input produces.
+export const MAX_LINE_QTY = 999;
+
+// Above this many cookies in one shipment, the confirm step says so out loud.
+// It does NOT block: big samples are legitimate (a full-line presentation to a
+// national account), they are just worth a second look, because this is real
+// COGS and real cold-chain freight leaving the building.
+export const LARGE_ORDER_COOKIES = 100;
+
+/** Today as yyyy-mm-dd in the BROWSER's timezone — matches what <input type="date"> means. */
+export function todayISO() {
+  const d = new Date();
+  // toISOString() would be UTC and hands anyone west of Greenwich a `min` of
+  // "tomorrow" for part of their day, silently rejecting a valid same-day rush.
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 // Third-party shipping billing. ShipStation's Custom Store XML has no billing
 // fields, so these ride CustomField3 + InternalNotes as text — the co-man keys
 // them in at label purchase. Nothing bills automatically; see ADR-032.
