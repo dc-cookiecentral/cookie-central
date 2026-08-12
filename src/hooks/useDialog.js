@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 // Focus management for a modal dialog: initial focus, a Tab trap, Escape, and
 // focus restored to whatever opened it.
@@ -28,6 +28,21 @@ const FOCUSABLE = [
  * @param onClose called on Escape; omit to make the dialog non-dismissable
  */
 export function useDialog(ref, onClose) {
+  // ⚠️ The callback is held in a ref and the effect depends ONLY on `ref`, which
+  // useRef keeps stable — so this runs once per mount.
+  //
+  // Depending on `onClose` directly was a real bug, shipped Aug 12: callers pass
+  // an inline arrow (`onClose={() => setCartOpen(false)}`), so its identity
+  // changes on EVERY render. Every keystroke in the drawer re-rendered the
+  // parent, tore this effect down, re-ran it, and called target.focus() again —
+  // throwing the caret out of whatever field you were typing in and onto the
+  // first focusable element, the × close button. One letter per attempt.
+  //
+  // The lesson generalises: an effect that grabs focus must never depend on a
+  // value that changes as the user types.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
     const node = ref.current;
     if (!node) return;
@@ -44,9 +59,11 @@ export function useDialog(ref, onClose) {
     target.focus?.();
 
     const onKey = (e) => {
-      if (e.key === 'Escape' && onClose) {
+      // Read through the ref: `undefined` here means non-dismissable, which is
+      // how the confirm sheet blocks Escape while its insert is in flight.
+      if (e.key === 'Escape' && onCloseRef.current) {
         e.stopPropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key !== 'Tab') return;
@@ -72,5 +89,5 @@ export function useDialog(ref, onClose) {
       // the tab switches underneath it).
       if (opener instanceof HTMLElement && document.contains(opener)) opener.focus();
     };
-  }, [ref, onClose]);
+  }, [ref]);
 }

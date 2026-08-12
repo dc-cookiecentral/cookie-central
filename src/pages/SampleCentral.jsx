@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import AppSwitcher from '../components/AppSwitcher';
+import SearchSelect from '../components/SearchSelect';
 import { useDialog } from '../hooks/useDialog';
 import {
   useSampleCentral, addAddress, retireAddress, createShipment, saveTemplate, deleteTemplate,
@@ -450,28 +451,25 @@ function CartDrawer({
 
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
           <Section title="Who & where">
-            <div className="grid grid-cols-2 gap-2">
-              <Labeled label="Salesperson *">
-                {/* The rep's email rides along invisibly: it is written to
-                    <BillTo><Email> on export, which is the address ShipStation
-                    sends customer notifications to. Nothing to fill in here. */}
-                <select
-                  value={header.sales_rep_id} onChange={(e) => set('sales_rep_id', e.target.value)}
-                  aria-invalid={invalid?.field === 'sales_rep_id' || undefined}
-                  className={`w-full px-2 py-1 rounded border text-[14px] bg-bg ${invalid?.field === 'sales_rep_id' ? 'border-red-500' : 'border-lt'}`}
-                >
-                  <option value="">— select —</option>
-                  {/* Name AND email. The email is the operative field — it is what
-                      ShipStation notifies — and it is the one nobody can verify
-                      from a name alone. The roster has a shared mailbox under two
-                      names and three addresses that do not match their person, so
-                      showing it here is where those get caught. */}
-                  {data.salespeople.map((s) => (
-                    <option key={s.id} value={s.id}>{s.full_name}{s.email ? ` — ${s.email}` : ''}</option>
-                  ))}
-                </select>
-                <Err field="sales_rep_id" />
-              </Labeled>
+            <Labeled label="Salesperson *">
+              {/* A combobox, not a <select>: 27 reps is past the point where
+                  scrolling an unsearchable list is reasonable. Filtering matches
+                  the EMAIL too — that is the field ShipStation notifies, and the
+                  roster holds two LiDestris plus three addresses that do not
+                  match their person, so the name alone is not enough to pick by.
+                  Full width, because a half-width row cannot show an email. */}
+              <SearchSelect
+                id="salesperson"
+                ariaLabel="Salesperson — search by name or email"
+                placeholder="Type a name or email"
+                value={header.sales_rep_id}
+                onChange={(id) => set('sales_rep_id', id)}
+                invalid={invalid?.field === 'sales_rep_id'}
+                options={data.salespeople.map((sp) => ({ id: sp.id, label: sp.full_name, sub: sp.email }))}
+              />
+              <Err field="sales_rep_id" />
+            </Labeled>
+            <div className="mt-2">
               <Labeled label="Account">
                 <input value={header.account} onChange={(e) => set('account', e.target.value)} placeholder="Whole Foods Market" className="w-full px-2 py-1 rounded border border-lt text-[14px]" />
               </Labeled>
