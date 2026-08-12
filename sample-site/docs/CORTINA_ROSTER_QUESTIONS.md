@@ -69,13 +69,11 @@ One side effect worth confirming: **`LiDestri` now displays as `Lidestri`** (Jes
 
 Short generic-looking addresses are sometimes aliases or shared mailboxes rather than a person's own inbox. Is this David Rahal's own address, and the right one to receive shipment notifications?
 
-## 8. Who is the ordering account?
+## 8. ~~Who is the ordering account?~~ — **answered Aug 11, no need to ask**
 
-Sample Central expects **one Cortina person** to enter sample orders on behalf of the reps — the reps themselves don't sign in and don't need accounts.
+`samplesmngmt@cortinafoods.com`, displayed as **Samples Management**. Seeded and ready; it can sign in whenever Cortina is ready to start. Sign-in is by **magic link** — no password.
 
-- Who is that person, and what email should their login use?
-
-*Why we need it before they first sign in:* an unseeded user is provisioned with the wrong internal role, and it does not correct itself afterwards — it needs a manual fix. Seeding first avoids that entirely.
+*Left here rather than deleted so the roster picture stays complete.*
 
 ## 9. Should anyone be copied on every shipment?
 

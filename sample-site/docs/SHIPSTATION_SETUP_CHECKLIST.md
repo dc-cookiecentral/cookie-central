@@ -43,10 +43,14 @@ Reps stopped being user accounts in migration `20260807000500` — they are rows
 `sales_reps`, a lookup list with no link to `auth.users`. Cortina has a single
 person entering samples on behalf of many reps; only that person needs a login.
 
-- [ ] Insert the Cortina **ordering account** into `user_role_seeds` **first**:
+- [x] Insert the Cortina **ordering account** into `user_role_seeds` **first** —
+  **DONE Aug 11, 2026.** The account is `samplesmngmt@cortinafoods.com`
+  ("Samples Management"), role `cortina`, seeded by migration
+  `20260811120000_seed_cortina_ordering_account.sql` and verified live. It has
+  **not signed in yet**; the seed is what makes that first sign-in safe.
 ```sql
 insert into user_role_seeds (email, full_name, role, title) values
-  ('someone@cortinafoods.com', 'Their Name', 'cortina', 'Sales')
+  ('samplesmngmt@cortinafoods.com', 'Samples Management', 'cortina', 'Cortina · sample ordering account')
 on conflict (email) do update set role = excluded.role;
 ```
 - [ ] Only then send the magic link (auth is magic-link only — there is no password path).
