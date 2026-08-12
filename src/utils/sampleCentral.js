@@ -182,6 +182,21 @@ export const COLLATERAL_SKUS = {
 // overnight one routine, and the co-man picks the actual service in ShipStation.
 // (Box spec and the shipping-speed tiers were retired by migration
 // 20260728130000 — box choice lives in ShipStation now.)
+// What can go wrong with a sample shipment. Deliberately short: a list nobody
+// can scan is a list nobody fills in, and every entry here has to be something
+// we could actually act on — chase a carrier, change a box, talk to the co-man.
+// The DB has no CHECK on these; adding a category is a one-line change.
+export const ISSUE_FLAGS = [
+  ['delay', 'Arrived late'],
+  ['damage', 'Damaged in transit'],
+  ['quality', 'Product quality'],
+  ['packaging', 'Packaging'],
+  ['wrong-items', 'Wrong items'],
+  ['address', 'Address / delivery problem'],
+  ['other', 'Other'],
+];
+export const issueLabel = (f) => (ISSUE_FLAGS.find(([k]) => k === f)?.[1] ?? f);
+
 export const RUSH_NOTICE = 'Flags the order as urgent and emails the team.';
 
 // ── Order guardrails ────────────────────────────────────────────────────────

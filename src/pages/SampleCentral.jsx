@@ -5,14 +5,16 @@ import SearchSelect from '../components/SearchSelect';
 import { useDialog } from '../hooks/useDialog';
 import {
   useSampleCentral, addAddress, retireAddress, createShipment, saveTemplate, deleteTemplate,
+  saveShipmentIssue,
 } from '../hooks/useSampleCentral';
 import {
   flavorFamily, derivedTemp, effectiveTemp, groupCatalog,
-  SHIP_STATUSES, EXCEPTION_STATUSES, OPEN_STATUSES, SHIPPED_STATUSES, RECENT_DAYS,
+  SHIP_STATUSES, EXCEPTION_STATUSES, OPEN_STATUSES, RECENT_DAYS,
   COLLATERAL_OPTIONS, RUSH_NOTICE,
   pipelineIndex, deliverByState,
   TP_CARRIERS, TP_NOTICE, tpComplete,
   TEST_MODE, SHIPMENT_PREFIX, trackingUrl,
+  ISSUE_FLAGS, issueLabel,
   MAX_LINE_QTY, LARGE_ORDER_COOKIES, todayISO,
 } from '../utils/sampleCentral';
 
@@ -227,7 +229,7 @@ export default function SampleCentral() {
         {!loading && !error && (
           <>
             {tab === 'shop' && <CatalogView data={data} filter={filter} setFilter={setFilter} cart={cart} setQty={setQty} addToCart={addToCart} />}
-            {tab === 'mission' && <MissionView data={data} />}
+            {tab === 'mission' && <MissionView data={data} canWrite={canWrite} refresh={refresh} setToast={setToast} />}
             {tab === 'address' && <AddressView data={data} refresh={refresh} canWrite={canWrite} setToast={setToast} />}
           </>
         )}
@@ -793,12 +795,20 @@ const colFlags = {
       <TempBadge temp={s.temp} overridden={!!s.temp_override} />
       {hasCustom && <span className={`${chip} bg-pink-100 text-pk`}>Custom</span>}
       {s.third_party_billing && <span className={`${chip} bg-violet-100 text-violet-700`}>3rd-party</span>}
+      {s.issue_at && <span className={`${chip} bg-amber-500 text-white`}>Issue</span>}
     </div>
   ),
 };
 
+// ⚠️ Every track is FIXED except one 1fr. The header row and the shipment rows
+// are separate grid containers that merely share this template — so any
+// content-sized track (`auto`, or a minmax whose max is a cap rather than a
+// width) resolves differently in each. `minmax(0,auto)` on Flags was as wide as
+// the word "Flags" in the header and as wide as three badges in the rows; the
+// 1fr absorbed the difference, and every column after Account drifted out from
+// under its own heading. Fixed tracks resolve identically in both grids.
 const ORDERED_COLS = {
-  grid: 'sm:grid-cols-[148px_minmax(0,1fr)_76px_152px_minmax(0,auto)_16px]',
+  grid: 'sm:grid-cols-[148px_minmax(0,1fr)_76px_152px_184px_16px]',
   cells: [
     colOrder,
     colAccount,
@@ -828,7 +838,7 @@ const ORDERED_COLS = {
 };
 
 const SHIPPED_COLS = {
-  grid: 'sm:grid-cols-[148px_minmax(0,1fr)_100px_minmax(0,132px)_minmax(0,190px)_68px_16px]',
+  grid: 'sm:grid-cols-[148px_minmax(0,1fr)_100px_132px_190px_68px_16px]',
   cells: [
     colOrder,
     colAccount,
@@ -862,8 +872,45 @@ const SHIPPED_COLS = {
   ],
 };
 
+// Delivered gets its own set: once the box has landed, "when did it ship" and
+// "what did it cost" stop being the question and "when did it arrive, and was
+// anything wrong with it" starts.
+const DELIVERED_COLS = {
+  grid: 'sm:grid-cols-[148px_minmax(0,1fr)_120px_190px_minmax(0,1fr)_16px]',
+  cells: [
+    colOrder,
+    colAccount,
+    {
+      label: 'Delivered',
+      render: ({ s }) => (
+        <span className="text-[14px] text-dk whitespace-nowrap">
+          {s.delivered_at ? new Date(s.delivered_at).toLocaleDateString() : '—'}
+        </span>
+      ),
+    },
+    {
+      label: 'Tracking',
+      render: ({ s }) => s.tracking_number
+        ? <span className="text-[14px]"><TrackingLink number={s.tracking_number} carrier={s.carrier} /></span>
+        : <span className="text-[14px] text-gr">—</span>,
+    },
+    {
+      label: 'Issues',
+      render: ({ s }) => !s.issue_at
+        ? <span className="text-[14px] text-gr">—</span>
+        : (
+          <div className="flex flex-wrap gap-1">
+            {(s.issue_flags || []).map((f) => (
+              <span key={f} className={`${chip} bg-amber-100 text-amber-800`}>{issueLabel(f)}</span>
+            ))}
+          </div>
+        ),
+    },
+  ],
+};
+
 const EXCEPTION_COLS = {
-  grid: 'sm:grid-cols-[148px_minmax(0,1fr)_minmax(0,220px)_16px]',
+  grid: 'sm:grid-cols-[148px_minmax(0,1fr)_220px_16px]',
   cells: [
     colOrder,
     colAccount,
@@ -878,7 +925,7 @@ const EXCEPTION_COLS = {
   ],
 };
 
-function MissionView({ data }) {
+function MissionView({ data, canWrite, refresh, setToast }) {
   const [sp, setSp] = useState('All');
   const [q, setQ] = useState('');
   const [showAll, setShowAll] = useState(false);
@@ -915,13 +962,20 @@ function MissionView({ data }) {
   // incompleteness that has cost this project real time elsewhere.
   const inWindow = (iso) => !windowed || !iso || Date.now() - new Date(iso).getTime() <= RECENT_DAYS * 86400000;
   const ordered = visible.filter((s) => OPEN_STATUSES.includes(s.status) && inWindow(s.created_at));
-  const shipped = visible.filter((s) => SHIPPED_STATUSES.includes(s.status) && inWindow(s.shipped_at));
+  // Shipped and delivered are now separate sections. They answer different
+  // questions — "is it still out there" vs "did it land, and how did it go" —
+  // and lumping them together was only ever a workaround for `delivered` having
+  // no source (it has one since ADR-043). Each keeps its own clock: in transit
+  // is recent by when it SHIPPED, delivered by when it ARRIVED.
+  const shipped = visible.filter((s) => s.status === 'shipped' && inWindow(s.shipped_at));
+  const delivered = visible.filter((s) => s.status === 'delivered' && inWindow(s.delivered_at || s.shipped_at));
   const exceptions = visible.filter((s) => EXCEPTION_STATUSES.includes(s.status));
 
   const totalOpen = visible.filter((s) => OPEN_STATUSES.includes(s.status)).length;
-  const totalShipped = visible.filter((s) => SHIPPED_STATUSES.includes(s.status)).length;
+  const totalShipped = visible.filter((s) => s.status === 'shipped').length;
+  const totalDelivered = visible.filter((s) => s.status === 'delivered').length;
 
-  const shown = [...ordered, ...shipped, ...exceptions];
+  const shown = [...ordered, ...shipped, ...delivered, ...exceptions];
   const allOpen = shown.length > 0 && shown.every((s) => openIds.has(s.id));
   const toggleAll = () => setOpenIds(allOpen ? new Set() : new Set(shown.map((s) => s.id)));
   const toggleOne = (id) => setOpenIds((prev) => {
@@ -954,7 +1008,10 @@ function MissionView({ data }) {
           </div>
           <div className="space-y-1.5">
             {rows.map((s) => (
-              <ShipmentCard key={s.id} s={s} cols={cols} open={openIds.has(s.id)} onToggle={() => toggleOne(s.id)} />
+              <ShipmentCard
+                key={s.id} s={s} cols={cols} open={openIds.has(s.id)}
+                onToggle={() => toggleOne(s.id)} canWrite={canWrite} refresh={refresh} setToast={setToast}
+              />
             ))}
           </div>
         </>
@@ -1016,12 +1073,20 @@ function MissionView({ data }) {
         empty={query ? 'No matching orders awaiting fulfilment.' : `Nothing ordered in the last ${RECENT_DAYS} days.`}
       />
       <Section
-        title="Shipped"
-        note="on its way or delivered"
+        title="In transit"
+        note="shipped, not yet delivered"
         cols={SHIPPED_COLS}
         rows={shipped}
         total={totalShipped}
         empty={query ? 'No matching shipped orders.' : `Nothing shipped in the last ${RECENT_DAYS} days.`}
+      />
+      <Section
+        title="Delivered"
+        note="arrived — log any issues here"
+        cols={DELIVERED_COLS}
+        rows={delivered}
+        total={totalDelivered}
+        empty={query ? 'No matching delivered orders.' : `Nothing delivered in the last ${RECENT_DAYS} days.`}
       />
       {/* Exceptions are never windowed away — a cancelled order the salesperson
           has not seen yet is exactly the thing that must not age off the screen. */}
@@ -1040,7 +1105,7 @@ function MissionView({ data }) {
 //
 // No status pill: the section heading already says it, and repeating it on every
 // row was noise carrying no signal.
-function ShipmentCard({ s, cols, open, onToggle }) {
+function ShipmentCard({ s, cols, open, onToggle, canWrite, refresh, setToast }) {
   const items = s.sample_shipment_items || [];
   const hasCustom = items.some((i) => i.custom);
   const addr = s.address || {};
@@ -1152,10 +1217,12 @@ function ShipmentCard({ s, cols, open, onToggle }) {
 
           {s.notes && (
             <div className="mt-3">
-              <div className="text-[12px] text-gr uppercase font-bold tracking-wider mb-1">Notes</div>
+              <div className="text-[12px] text-gr uppercase font-bold tracking-wider mb-1">Notes from the order</div>
               <div className="text-[14px] text-dk">{s.notes}</div>
             </div>
           )}
+
+          <IssuePanel s={s} canWrite={canWrite} refresh={refresh} setToast={setToast} />
 
           <div className="text-[12px] text-gr mt-3">
             Status is set by ShipStation — <span className="font-semibold">submitted</span> on creation, <span className="font-semibold">shipped</span> when the co-man buys a label.
@@ -1257,6 +1324,98 @@ function AddressView({ data, refresh, canWrite, setToast }) {
         ))}
         {data.addresses.length === 0 && <div className="text-[14px] text-gr italic">No addresses yet — add one above or inline while building a shipment.</div>}
       </div>
+    </div>
+  );
+}
+
+// ── Issue log ───────────────────────────────────────────────────────────────
+// What went wrong, recorded per shipment so the PATTERN is visible after twenty
+// orders rather than re-learned each time: which lane runs late, which packaging
+// arrives crushed, which co-man batch draws quality complaints.
+//
+// Site-owned. None of it goes to ShipStation, and migration 20260812150000
+// records why at length — the short version is that every outbound field is an
+// instruction sent BEFORE fulfilment and rewritten on each export, nothing but
+// shipnotify comes back, and the one real surface (shipment tags) stops
+// existing once an order leaves Awaiting Shipment, which is exactly when an
+// issue becomes known.
+//
+// Editable at any status. A delay is often known while the parcel is still
+// moving, and waiting for `delivered` to record it loses the detail.
+function IssuePanel({ s, canWrite, refresh, setToast }) {
+  const [open, setOpen] = useState(false);
+  const [flags, setFlags] = useState(() => s.issue_flags || []);
+  const [note, setNote] = useState(s.issue_note || '');
+  const [saving, setSaving] = useState(false);
+  const logged = !!s.issue_at;
+
+  const toggle = (f) => setFlags((v) => (v.includes(f) ? v.filter((x) => x !== f) : [...v, f]));
+
+  const save = async () => {
+    setSaving(true);
+    const { error } = await saveShipmentIssue(s.id, { flags, note });
+    setSaving(false);
+    if (error) return setToast({ err: error.message });
+    setOpen(false);
+    await refresh();
+    setToast({ ok: flags.length || note.trim() ? `Issue logged on ${s.shipment_no}.` : `Issue cleared on ${s.shipment_no}.` });
+  };
+
+  return (
+    <div className="mt-3">
+      <div className="flex items-center justify-between mb-1">
+        <div className="text-[12px] text-gr uppercase font-bold tracking-wider">Issues</div>
+        {canWrite && (
+          <button onClick={() => setOpen((v) => !v)} className="text-[12px] text-pk font-semibold py-1">
+            {open ? 'Cancel' : logged ? 'Edit' : '+ Log an issue'}
+          </button>
+        )}
+      </div>
+
+      {!open && (
+        logged ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2">
+            <div className="flex flex-wrap gap-1 mb-1">
+              {(s.issue_flags || []).map((f) => (
+                <span key={f} className={`${chip} bg-amber-500 text-white`}>{issueLabel(f)}</span>
+              ))}
+            </div>
+            {s.issue_note && <div className="text-[14px] text-amber-900">{s.issue_note}</div>}
+            <div className="text-[12px] text-amber-800 mt-0.5">Logged {new Date(s.issue_at).toLocaleDateString()}</div>
+          </div>
+        ) : (
+          <div className="text-[14px] text-gr italic">None recorded.</div>
+        )
+      )}
+
+      {open && (
+        <div className="rounded-lg border border-lt bg-bg p-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3">
+            {ISSUE_FLAGS.map(([key, label]) => (
+              <label key={key} className="flex items-center gap-1.5 text-[14px] text-dk py-0.5">
+                <input type="checkbox" checked={flags.includes(key)} onChange={() => toggle(key)} />
+                {label}
+              </label>
+            ))}
+          </div>
+          <textarea
+            value={note} onChange={(e) => setNote(e.target.value)} rows={2}
+            aria-label="Issue detail"
+            placeholder="What happened? Anything that would help avoid it next time."
+            className="w-full mt-2 px-2 py-1 rounded border border-lt text-[14px]"
+          />
+          <div className="flex gap-1.5 mt-2">
+            <button onClick={() => { setOpen(false); setFlags(s.issue_flags || []); setNote(s.issue_note || ''); }} className="flex-1 border border-lt bg-cd text-dk py-1.5 rounded text-[14px] font-semibold">Cancel</button>
+            <button onClick={save} disabled={saving} className="flex-1 bg-pk text-white py-1.5 rounded text-[14px] font-semibold disabled:opacity-60">
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+          {/* Clearing every box and the note removes the record entirely —
+              issue_at goes back to null, so reporting does not count a shipment
+              that turned out to be fine. */}
+          <div className="text-[12px] text-gr mt-1">Clear everything and save to remove the issue.</div>
+        </div>
+      )}
     </div>
   );
 }
