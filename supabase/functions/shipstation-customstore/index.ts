@@ -21,6 +21,7 @@ import {
   buildOrderXml,
   checkBasicAuth,
   NO_EXPORT_STATUSES,
+  SHIPSTATION_FULFILLER,
   ordersDocument,
   parseAmount,
   parseSSDate,
@@ -98,6 +99,9 @@ Deno.serve(async (req) => {
       // the sweep's own write bumps updated_at into the next window and the
       // export un-cancels the order it just recorded as cancelled.
       q = q.not('status', 'in', `(${NO_EXPORT_STATUSES.join(',')})`);
+      // Allowlist, not a denylist — see SHIPSTATION_FULFILLER. Cortina fulfils
+      // some samples themselves; those must never appear in the co-man's queue.
+      q = q.eq('fulfilled_by', SHIPSTATION_FULFILLER);
 
       const { data, count, error } = await q;
       if (error) return xml(`<Error>${error.message}</Error>`, 500);
