@@ -637,3 +637,78 @@ The premise was wrong from the start. **Cortina has ONE person entering samples 
 (d) Six reps carry `@onefrozen.com` addresses but are labelled `company = 'Cortina'`, One Frozen being treated as part of the Cortina group.
 
 **Carried forward.** The **single Cortina ordering account** still needs a `user_role_seeds` row with `role='cortina'` before first sign-in — that requirement survives this ADR unchanged, and remains not self-correcting. What no longer applies is ADR-026's carried-forward item (b) read as "seed every salesperson": there is exactly one account to seed, not twenty-five.
+
+## ADR-043: `delivered` is sourced from the per-label track endpoint (corrects ADR-034, ADR-039)
+
+**Date:** August 11, 2026
+**Status:** Built, deployed and exercised live. **Not yet observed on a real delivery** — see *Honest limits*.
+
+**The correction.** ADR-034 recorded `delivered` as unreachable because `GET /v2/tracking` returns 401 "You must upgrade your billing plan or add required features". ADR-039 and every status note since repeated it. The reading was wrong, and it cost the feature roughly a week of being written off.
+
+`GET /v2/tracking` is **ShipEngine's** path. It is not part of ShipStation V2's surface at all — the V2 release notes list exactly one operation under `/v2/tracking`, namely `POST /v2/tracking/stop`, and the getting-started page says a tracking endpoint is "coming soon". So the 401 means *this API does not offer that*, not *your plan is too small*. No amount of upgrading would have fixed it, and Caroline's account was never the problem.
+
+The endpoint that works is **per-label**, and has been available on every plan the whole time:
+
+```
+GET /v2/labels?tracking_number=…   → 200   label_id
+GET /v2/labels/{label_id}/track    → 200   status_code, actual_delivery_date, events[]
+```
+
+Verified live on Aug 11 against a real purchased label. `status_code` is the high-level enum (`UN` unknown, `AC` accepted, `IT` in transit, `DE` delivered, `EX` exception, `AT` attempt, `NY` not yet in system, `SP` delivered to collection location).
+
+**Why it was missed.** The probe tested one path, got a plausible-sounding billing message, and the conclusion was recorded as settled. Nothing re-tested it because the message *explained itself* — an error that gives a confident reason is far stickier than a vague one. The docs were only consulted properly when the question came back a third time.
+
+**What shipped.** Migration `20260811140000` adds `delivered_at` and `shipstation_label_id` (cached, so the steady-state poll is one call per shipped order rather than two — the same trick that took the Deliver By sweep from 17s to 3.9s). The sweep gains a third job over a different row set: `shipped` orders, which `TRACKED_STATUSES` deliberately excludes. Decision logic is the pure `deliveredFromTrack()` in `_shared/shipstation.ts`, with four tested invariants:
+
+1. **Only ever promotes `shipped` → `delivered`.** It cannot resurrect a cancelled order or race the bucket sync.
+2. **Never un-delivers.** Carriers amend history; `delivered` → in transit would read as a lost parcel.
+3. **Stores `null` rather than inventing a timestamp** when the carrier gives none. A sweep-clock value is indistinguishable from a real one afterwards.
+4. **`SP` is not delivered.** A parcel in a locker has not reached the rep, and telling the sales team it landed is the more expensive error.
+
+**A bug this nearly shipped with.** The sweep had an early `if (!rows.length) return 'nothing to track'`. Since the delivery poll reads `shipped` orders — a set `TRACKED_STATUSES` excludes — the sweep would have reported "nothing to track" and never looked at a tracking number, in exactly the state the system was in that day. Caught by invoking the function rather than trusting the deploy.
+
+**Honest limits.** The endpoint is verified, the write path is unit-tested (10 cases), and the poll has run live against two real labels — caching their ids and correctly declining to deliver them. But **no real `DE` has been observed**, because the test parcels were marked shipped by hand and never entered the carrier's network. The first genuine delivery is still the proof. Everything downstream was separately proven on Aug 6 by forcing `SMP-TEST-1053` to `delivered`.
+
+**Consequence.** The pipeline genuinely ends at `delivered` now, so the UI's "delivery is not tracked yet" caption was removed as untrue, and Delivered became its own section in the Shipments tab.
+
+## ADR-044: Two fulfilment routes, separated by an allowlist (extends ADR-029)
+
+**Date:** August 12, 2026
+**Status:** Built, applied and deployed.
+
+**Why.** Cortina ships some samples from their own warehouse. Those orders must never reach the co-manufacturer's ShipStation queue: nobody there will pack them, and an order sitting in Awaiting Shipment that no one will action is worse than no order at all — it ages, it clutters the queue, and the Deliver By sweep chases it every fifteen minutes forever.
+
+**One column, not a second table.** `sample_shipments.fulfilled_by` (migration `20260812190000`), defaulting to `'Dirty Cookie | Kukibell'`. A separate table was the stated request and the wrong shape: the monthly report has to see both routes in one query ("what shipped, on what accounts, what did it cost"), and a second table would duplicate the schema, the RLS, the items relation and every join needed to reunite them. The separation wanted is presentational — a "Cortina orders" section in the Shipments tab — and that costs nothing at the data layer.
+
+**The export filters on an ALLOWLIST.** It sends only rows exactly equal to `SHIPSTATION_FULFILLER`. This is the load-bearing detail: a typo, a rename, or a third fulfiller added later fails by **not** reaching the co-man, which is the direction that cannot hurt anyone. `!= 'Cortina'` would have failed the other way, and silently. The same filter is applied to the Deliver By sweep — without it every Cortina order lands in `unresolved` and pages ShipStation's bucket history every 15 minutes hunting a shipment that does not exist, which is precisely the unbounded scan the id cache was built to eliminate.
+
+**No CHECK constraint**, for the same reason the issue vocabulary has none: the list of fulfillers will change, and the allowlist already makes an unknown value harmless rather than dangerous.
+
+**Confirmation is manual, and the site makes that one click.** These orders get no ShipStation notification, so the rep would otherwise hear nothing. An automated sender is blocked on a transactional-email provider key and SPF/DKIM on `dirtycookie.com` — neither a code problem, both outside this repo. Meanwhile `src/utils/orderSheet.js` renders one order to **both** `text/html` and `text/plain` in a single `ClipboardItem` (so a Gmail paste keeps its formatting and a plain-text paste still reads), and to a print window whose "Save as PDF" destination does the PDF. No PDF library: a generator would add hundreds of kilobytes to produce a worse page.
+
+The sheet's footer points at **Cortina's Samples Management team**, not Dirty Cookie. Cortina packs, ships and holds these parcels; Dirty Cookie can do none of those, so routing a recipient there adds a hop and loses a day.
+
+**The existing Gmail integration is not the answer** and should not be reached for: its OAuth scope is deliberately `gmail.readonly` ("never send or modify"), and it belongs to the *other* project in this repo.
+
+**Reporting.** A Monthly Report tab spans both routes, windowed by ship date and falling back to order date for Cortina rows (which have no ship date and would otherwise never appear in any month). Cortina rows render `n/a` rather than `—` in carrier columns — "not applicable" rather than "not yet known" — and the on-time figure counts only rows with **both** a deliver-by and an actual delivery date, so Cortina orders do not appear as phantom failures in a measure they cannot participate in.
+
+## ADR-045: The site owns operational data ShipStation has no field for
+
+**Date:** August 12, 2026
+**Status:** Built, applied and deployed.
+
+**Two features, one boundary.** A per-shipment **issue log** (migration `20260812150000`) and a **cold-chain season** switch (`20260812170000`). Neither is sent to ShipStation, and the reasoning is the same in both cases — worth recording once so it is not re-litigated per feature.
+
+**Why nothing goes outbound.** Every field the Custom Store XML offers is already allocated *and points the wrong way*. `InternalNotes` carries `RUSH` plus the site note, `CustomerNotes` carries third-party billing, and `CustomField1/2/3` are salesperson / account / temp override (ADR-037). All of them are **instructions sent before fulfilment**, rewritten on every re-import — so a fact recorded afterwards is overwritten by the next export. Worse, writing one bumps `updated_at`, which schedules the row for re-export (ADR-041): a quality note would become a message to the co-man's queue.
+
+**Why nothing comes inbound.** `shipnotify` fires once, at label purchase. There is no second callback, so the co-man's own notes cannot reach the site.
+
+**The one surface that exists, and why it was rejected.** Shipment **tags** (`POST /v2/shipments/{id}/tags/{name}`) are available on every plan and are a direct API call rather than part of the export, so they carry no feedback-loop risk. But ShipStation destroys the shipment record once an order leaves Awaiting Shipment (ADR-039) — so tagging *after delivery*, which is exactly when an issue becomes known, is the case most likely to 404. Unreliable precisely when it matters.
+
+**So the division is:** ShipStation is the fulfilment system of record; the site is the quality log and the policy switch.
+
+**Issue log.** Seven flags plus free text, `issue_flags text[]` so an order can be both late and badly packed — the common case — and so reporting is a plain `unnest`. No CHECK constraint: the vocabulary will change as real problems appear, and a constraint turns adding a category into a migration. **Delivered orders only**, because every flag in the vocabulary is a post-arrival judgement and an earlier panel would collect guesses. Clearing everything nulls `issue_at`, so reporting never counts a shipment that turned out fine.
+
+**Cold-chain season.** Through summer every sample ships cold whatever is in the box, but the derived temp is Cold only when a Raw item is present — so the badge told the sales team "Ambient" about a parcel going out on ice. This is a **live switch in `sample_settings`**, not a `VITE_` flag and not a hard-coded date range: every other switch here is build-time and flipping one needs a redeploy, a season does not start on the same day each year, and the person who notices the weather is not necessarily the person who can deploy. Read by any signed-in user, written by admin/ops only. The badge now says *which* rule applied — "from raw items" versus "from summer season" — because those carry different consequences for someone deciding whether to override.
+
+⚠️ **The ShipStation half of the season is a blanket automation rule, and it is not built.** It needs no per-order signal precisely because it applies to everything — but until it exists, the site asserts Cold on orders ShipStation will not auto-upgrade (its cold-chain rules key off product tags on Raw SKUs). **The two systems currently disagree, and the site is the one making the claim.**
