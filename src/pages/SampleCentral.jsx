@@ -1482,10 +1482,10 @@ function AddressView({ data, refresh, canWrite, setToast }) {
 
 // ── Send this order on ──────────────────────────────────────────────────────
 // Cortina fulfils these themselves, so ShipStation never emails anyone about
-// them and the rep would otherwise hear nothing. Until an automated sender
-// exists — which needs a provider key and SPF/DKIM on the domain, neither of
-// them a code problem — the Cortina team sends it by hand. These two buttons
-// are the difference between that being one click and being a retyping job.
+// them and the rep would otherwise hear nothing. Cortina's Samples Management
+// team sends the confirmation by hand — deliberately, not pending automation
+// (ADR-044, amended Aug 13). These two buttons are the difference between that
+// being one click and being a retyping job.
 function OrderSheetActions({ s, setToast }) {
   const copy = async () => {
     const r = await copyOrderSheet(s);
