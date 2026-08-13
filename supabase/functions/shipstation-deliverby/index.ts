@@ -34,7 +34,7 @@ import { getSecret } from '../_shared/vault.ts';
 import { handleCors, json } from '../_shared/cors.ts';
 import {
   SS_ACTIVE_BUCKETS, SS_SCAN_BUCKETS, syncedStatus,
-  deliveredFromTrack, type TrackLog,
+  deliveredFromTrack, type TrackLog, SHIPSTATION_FULFILLER,
 } from '../_shared/shipstation.ts';
 
 const SS = 'https://api.shipstation.com';
@@ -228,7 +228,12 @@ Deno.serve(async (req) => {
     const { data, error } = await supabase
       .from('sample_shipments')
       .select('shipment_no, required_by, status, shipstation_order_id')
-      .in('status', TRACKED_STATUSES);
+      .in('status', TRACKED_STATUSES)
+      // Cortina-fulfilled orders have no ShipStation record at all. Without this
+      // they would never resolve, so every run would add them to `unresolved`
+      // and page the bucket history looking for something that does not exist —
+      // the exact unbounded scan the id cache was built to eliminate.
+      .eq('fulfilled_by', SHIPSTATION_FULFILLER);
     if (error) return json({ error: `read sample_shipments: ${error.message}` }, 500);
 
     const rows = (data ?? []) as Row[];
@@ -329,6 +334,7 @@ Deno.serve(async (req) => {
       .from('sample_shipments')
       .select('shipment_no, status, tracking_number, shipstation_label_id')
       .eq('status', 'shipped')
+      .eq('fulfilled_by', SHIPSTATION_FULFILLER)
       .not('tracking_number', 'is', null)
       .order('shipped_at', { ascending: false, nullsFirst: false })
       .limit(MAX_DELIVERY_POLLS + 1);

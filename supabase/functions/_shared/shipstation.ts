@@ -110,6 +110,16 @@ const SS_STATUS: Record<string, string> = {
 // be re-cancelled by an export firing before the next sweep corrects the site.
 export const NO_EXPORT_STATUSES = ['cancelled', 'on_hold'];
 
+// Who ships the box. ONLY this value is handed to ShipStation.
+//
+// An ALLOWLIST on purpose. Cortina fulfils some samples from their own
+// warehouse, and those must never reach the co-man's queue — nobody there will
+// pack them, and the order would age in Awaiting Shipment while the Deliver By
+// sweep chased it every fifteen minutes forever. Filtering `!= 'Cortina'` would
+// have let a typo, a rename or a third fulfiller through silently; this fails
+// the other way, which is the direction that cannot hurt anyone.
+export const SHIPSTATION_FULFILLER = 'Dirty Cookie | Kukibell';
+
 export function ssStatus(status: string | null | undefined): string {
   return SS_STATUS[status ?? 'submitted'] ?? 'paid';
 }

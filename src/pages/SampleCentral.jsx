@@ -15,6 +15,7 @@ import {
   TP_CARRIERS, TP_NOTICE, tpComplete,
   TEST_MODE, SHIPMENT_PREFIX, trackingUrl,
   ISSUE_FLAGS, issueLabel,
+  FULFILLERS, FULFILLER_DEFAULT, FULFILLER_CORTINA, isCortinaFulfilled,
   MAX_LINE_QTY, LARGE_ORDER_COOKIES, todayISO,
 } from '../utils/sampleCentral';
 
@@ -31,6 +32,7 @@ const TABS = [
   { key: 'shop', label: 'Order Samples' },
   { key: 'mission', label: 'Shipments' },
   { key: 'address', label: 'Address Book' },
+  { key: 'report', label: 'Monthly Report' },
 ];
 
 // Stable identity for a custom line, so React keys survive a mid-list delete.
@@ -38,6 +40,7 @@ const newLineId = () => (globalThis.crypto?.randomUUID?.() ?? `c${Date.now()}${M
 
 const EMPTY_HEADER = {
   sales_rep_id: '', account: '', address_id: '', temp_override: '',
+  fulfilled_by: FULFILLER_DEFAULT,
   required_by: '', rush: false, collateral: [], notes: '',
   third_party_billing: false, tp_carrier: '', tp_account: '', tp_postal_code: '',
 };
@@ -138,6 +141,7 @@ export default function SampleCentral() {
       sales_rep_id: header.sales_rep_id, account: header.account || null, address_id: header.address_id,
       temp, temp_override: header.temp_override || null, required_by: header.required_by || null, rush: !!header.rush,
       collateral: header.collateral, notes: header.notes || null, status: 'submitted',
+      fulfilled_by: header.fulfilled_by || FULFILLER_DEFAULT,
       third_party_billing: !!header.third_party_billing,
       tp_carrier: header.third_party_billing ? header.tp_carrier : null,
       tp_account: header.third_party_billing ? header.tp_account.trim() : null,
@@ -234,6 +238,7 @@ export default function SampleCentral() {
             {tab === 'shop' && <CatalogView data={data} filter={filter} setFilter={setFilter} cart={cart} setQty={setQty} addToCart={addToCart} />}
             {tab === 'mission' && <MissionView data={data} canWrite={canWrite} refresh={refresh} setToast={setToast} />}
             {tab === 'address' && <AddressView data={data} refresh={refresh} canWrite={canWrite} setToast={setToast} />}
+            {tab === 'report' && <ReportView data={data} />}
           </>
         )}
       </main>
@@ -317,6 +322,14 @@ function ConfirmSubmit({ rep, addr, header, cartLines, customItems, temp, submit
             <div className="text-[14px] text-gr">{addr?.street}, {addr?.city}, {addr?.state} {addr?.zip}</div>
           </Row>
           {header.account && <Row label="Account">{header.account}</Row>}
+          {/* Belongs on the last reversible screen: it decides whether this
+              order reaches the co-manufacturer at all. */}
+          <Row label="Shipped by" warn={header.fulfilled_by === FULFILLER_CORTINA}>
+            {header.fulfilled_by || FULFILLER_DEFAULT}
+            {header.fulfilled_by === FULFILLER_CORTINA && (
+              <div className="text-[12px] font-normal">Not sent to ShipStation — no tracking or delivery status.</div>
+            )}
+          </Row>
           <Row label="Contents" warn={large}>
             {cookies} cookie{cookies === 1 ? '' : 's'} across {cartLines.length} line{cartLines.length === 1 ? '' : 's'}
             {customLines.length > 0 && ` · ${customLines.length} custom`}
@@ -555,11 +568,28 @@ function CartDrawer({
               />
               <Err field="sales_rep_id" />
             </Labeled>
-            <div className="mt-2">
+            <div className="mt-2 grid grid-cols-2 gap-2">
               <Labeled label="Account">
                 <input value={header.account} onChange={(e) => set('account', e.target.value)} placeholder="Whole Foods Market" className="w-full px-2 py-1 rounded border border-lt text-[14px]" />
               </Labeled>
+              <Labeled label="Shipped by">
+                <select
+                  value={header.fulfilled_by} onChange={(e) => set('fulfilled_by', e.target.value)}
+                  className="w-full px-2 py-1 rounded border border-lt text-[14px] bg-bg"
+                >
+                  {FULFILLERS.map((f) => <option key={f} value={f}>{f}</option>)}
+                </select>
+              </Labeled>
             </div>
+            {/* Said plainly, because it changes where the order goes and there is
+                no undo: a Cortina order never reaches the co-man's queue and
+                gets no tracking, carrier or delivery date. */}
+            {header.fulfilled_by === FULFILLER_CORTINA && (
+              <div className="mt-1.5 text-[12px] text-sky-900 bg-sky-50 border border-sky-200 rounded-lg px-2.5 py-1.5">
+                Cortina ships this one. It will <b>not</b> go to ShipStation, so there is no
+                tracking or delivery status — a confirmation email is sent instead.
+              </div>
+            )}
             <div className="mt-2">
               <div className="flex justify-between items-center mb-0.5">
                 <div className="text-[12px] text-gr uppercase">Ship-to address *</div>
@@ -967,6 +997,37 @@ const DELIVERED_COLS = {
   ],
 };
 
+// Cortina fulfils these from their own warehouse, so there is no tracking, no
+// carrier and no delivery scan to show — and nothing will ever arrive to fill
+// those columns in. Showing them empty would read as "not shipped yet" forever.
+const CORTINA_COLS = {
+  grid: 'sm:grid-cols-[148px_minmax(0,1fr)_76px_152px_minmax(0,1fr)_16px]',
+  cells: [
+    colOrder,
+    colAccount,
+    {
+      label: 'Items',
+      render: ({ items }) => (
+        <span className="text-[14px] text-gr whitespace-nowrap">
+          {items.length} · {items.reduce((n, i) => n + (i.qty || 0), 0)}
+        </span>
+      ),
+    },
+    {
+      label: 'Deliver by',
+      render: ({ s }) => <span className="text-[14px] text-dk whitespace-nowrap">{s.required_by || '—'}</span>,
+    },
+    {
+      label: 'Placed',
+      render: ({ s }) => (
+        <span className="text-[14px] text-gr whitespace-nowrap">
+          {s.created_at ? new Date(s.created_at).toLocaleDateString() : '—'}
+        </span>
+      ),
+    },
+  ],
+};
+
 const EXCEPTION_COLS = {
   grid: 'sm:grid-cols-[148px_minmax(0,1fr)_220px_16px]',
   cells: [
@@ -1019,21 +1080,28 @@ function MissionView({ data, canWrite, refresh, setToast }) {
   // "nothing shipped" about an order that did ship — the same silent
   // incompleteness that has cost this project real time elsewhere.
   const inWindow = (iso) => !windowed || !iso || Date.now() - new Date(iso).getTime() <= RECENT_DAYS * 86400000;
-  const ordered = visible.filter((s) => OPEN_STATUSES.includes(s.status) && inWindow(s.created_at));
+  // Cortina orders come out FIRST, before every other bucket, so they cannot
+  // also appear under Ordered — they never leave `submitted`, because nothing
+  // exists to advance them.
+  const cortina = visible.filter((s) => isCortinaFulfilled(s) && inWindow(s.created_at));
+  const viaShipStation = visible.filter((s) => !isCortinaFulfilled(s));
+
+  const ordered = viaShipStation.filter((s) => OPEN_STATUSES.includes(s.status) && inWindow(s.created_at));
   // Shipped and delivered are now separate sections. They answer different
   // questions — "is it still out there" vs "did it land, and how did it go" —
   // and lumping them together was only ever a workaround for `delivered` having
   // no source (it has one since ADR-043). Each keeps its own clock: in transit
   // is recent by when it SHIPPED, delivered by when it ARRIVED.
-  const shipped = visible.filter((s) => s.status === 'shipped' && inWindow(s.shipped_at));
-  const delivered = visible.filter((s) => s.status === 'delivered' && inWindow(s.delivered_at || s.shipped_at));
-  const exceptions = visible.filter((s) => EXCEPTION_STATUSES.includes(s.status));
+  const shipped = viaShipStation.filter((s) => s.status === 'shipped' && inWindow(s.shipped_at));
+  const delivered = viaShipStation.filter((s) => s.status === 'delivered' && inWindow(s.delivered_at || s.shipped_at));
+  const exceptions = viaShipStation.filter((s) => EXCEPTION_STATUSES.includes(s.status));
 
-  const totalOpen = visible.filter((s) => OPEN_STATUSES.includes(s.status)).length;
-  const totalShipped = visible.filter((s) => s.status === 'shipped').length;
-  const totalDelivered = visible.filter((s) => s.status === 'delivered').length;
+  const totalOpen = viaShipStation.filter((s) => OPEN_STATUSES.includes(s.status)).length;
+  const totalShipped = viaShipStation.filter((s) => s.status === 'shipped').length;
+  const totalDelivered = viaShipStation.filter((s) => s.status === 'delivered').length;
+  const totalCortina = visible.filter(isCortinaFulfilled).length;
 
-  const shown = [...ordered, ...shipped, ...delivered, ...exceptions];
+  const shown = [...ordered, ...shipped, ...delivered, ...cortina, ...exceptions];
   const allOpen = shown.length > 0 && shown.every((s) => openIds.has(s.id));
   const toggleAll = () => setOpenIds(allOpen ? new Set() : new Set(shown.map((s) => s.id)));
   const toggleOne = (id) => setOpenIds((prev) => {
@@ -1146,6 +1214,17 @@ function MissionView({ data, canWrite, refresh, setToast }) {
         total={totalDelivered}
         empty={query ? 'No matching delivered orders.' : `Nothing delivered in the last ${RECENT_DAYS} days.`}
       />
+      {(cortina.length > 0 || totalCortina > 0) && (
+        <Section
+          title="Cortina orders"
+          note="shipped by Cortina — not in ShipStation"
+          cols={CORTINA_COLS}
+          rows={cortina}
+          total={totalCortina}
+          empty={query ? 'No matching Cortina orders.' : `No Cortina orders in the last ${RECENT_DAYS} days.`}
+        />
+      )}
+
       {/* Exceptions are never windowed away — a cancelled order the salesperson
           has not seen yet is exactly the thing that must not age off the screen. */}
       {exceptions.length > 0 && (
@@ -1483,6 +1562,117 @@ function IssuePanel({ s, canWrite, refresh, setToast }) {
           <div className="text-[12px] text-gr mt-1">Clear everything and save to remove the issue.</div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Monthly report ──────────────────────────────────────────────────────────
+// One month of samples: what went out, on whose account, what the freight cost,
+// what the deadline was, when it actually landed, and what went wrong with it.
+//
+// Both fulfilment routes in one table, because the question is "what did we send
+// in July" and splitting that by who packed the box makes it two questions. The
+// route is a column instead.
+//
+// Cortina rows are deliberately sparse: no cost, no actual delivery date. Those
+// orders never touch a carrier, so the site has nothing to report and inventing
+// a blank that looks like a missing value would be worse. The column shows "n/a"
+// rather than "—" to say "not applicable" rather than "not yet known".
+//
+// Windowed by the date the box SHIPPED, falling back to the order date for
+// Cortina rows — otherwise a Cortina order would never appear in any month.
+function ReportView({ data }) {
+  const months = useMemo(() => {
+    const set = new Map();
+    for (const s of data.shipments) {
+      const iso = s.shipped_at || s.created_at;
+      if (!iso) continue;
+      const d = new Date(iso);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      set.set(key, (set.get(key) || 0) + 1);
+    }
+    return [...set.keys()].sort().reverse();
+  }, [data.shipments]);
+
+  const [month, setMonth] = useState(() => months[0] || '');
+
+  const rows = useMemo(() => data.shipments.filter((s) => {
+    const iso = s.shipped_at || s.created_at;
+    if (!iso) return false;
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === month;
+  }), [data.shipments, month]);
+
+  const cost = rows.reduce((n, s) => n + (Number(s.shipping_cost) || 0), 0);
+  const cookies = rows.reduce((n, s) => n + (s.sample_shipment_items || []).reduce((m, i) => m + (i.qty || 0), 0), 0);
+  const withIssues = rows.filter((s) => s.issue_at).length;
+  const cortinaCount = rows.filter(isCortinaFulfilled).length;
+  // On-time is only meaningful where BOTH dates exist. Counting a missing
+  // delivery date as late would make Cortina orders look like failures.
+  const measurable = rows.filter((s) => s.required_by && s.delivered_at);
+  const onTime = measurable.filter((s) => new Date(s.delivered_at) <= new Date(`${s.required_by}T23:59:59`)).length;
+
+  const Stat = ({ label, value, sub }) => (
+    <div className="bg-cd border border-lt rounded-xl px-3 py-2">
+      <div className="text-[12px] text-gr uppercase font-bold tracking-[.4px]">{label}</div>
+      <div className="text-[18px] font-extrabold text-dk">{value}</div>
+      {sub && <div className="text-[12px] text-gr">{sub}</div>}
+    </div>
+  );
+
+  if (months.length === 0) return <div className="text-[14px] text-gr italic py-8 text-center">Nothing shipped yet.</div>;
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <span className="text-[12px] text-gr uppercase font-bold tracking-[.4px]">Month</span>
+        <select value={month} onChange={(e) => setMonth(e.target.value)} aria-label="Report month" className="px-2 py-1 rounded border border-lt text-[14px] bg-cd">
+          {months.map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+        <span className="text-[12px] text-gr">Windowed by ship date, or order date for Cortina orders.</span>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4">
+        <Stat label="Shipments" value={rows.length} sub={cortinaCount ? `${cortinaCount} via Cortina` : 'all via ShipStation'} />
+        <Stat label="Cookies" value={cookies} />
+        <Stat label="Freight" value={`$${cost.toFixed(2)}`} sub="ShipStation orders only" />
+        <Stat label="On time" value={measurable.length ? `${onTime}/${measurable.length}` : '—'} sub={measurable.length ? 'with both dates' : 'no delivery dates yet'} />
+        <Stat label="With issues" value={withIssues} />
+      </div>
+
+      <div className="overflow-x-auto border border-lt rounded-xl bg-cd">
+        <table className="w-full text-[14px]">
+          <thead>
+            <tr className="text-[12px] text-gr uppercase font-bold tracking-[.4px] border-b border-lt">
+              {['Order', 'Account', 'Salesperson', 'Shipped by', 'Shipped', 'Cost', 'Deliver by', 'Delivered', 'Issues'].map((h) => (
+                <th key={h} className="text-left font-bold px-2 py-1.5 whitespace-nowrap">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((s) => {
+              const cortinaRow = isCortinaFulfilled(s);
+              return (
+                <tr key={s.id} className="border-b border-bg last:border-0 align-top">
+                  <td className="px-2 py-1.5 font-mono font-bold text-dk whitespace-nowrap">{s.shipment_no}</td>
+                  <td className="px-2 py-1.5">{s.account || '—'}</td>
+                  <td className="px-2 py-1.5">{s.sales_rep?.full_name || '—'}</td>
+                  <td className="px-2 py-1.5 whitespace-nowrap">{cortinaRow ? <span className={`${chip} bg-sky-100 text-sky-800`}>Cortina</span> : 'Dirty Cookie'}</td>
+                  <td className="px-2 py-1.5 whitespace-nowrap">{s.shipped_at ? new Date(s.shipped_at).toLocaleDateString() : (cortinaRow ? 'n/a' : '—')}</td>
+                  <td className="px-2 py-1.5 whitespace-nowrap">{s.shipping_cost != null ? `$${Number(s.shipping_cost).toFixed(2)}` : (cortinaRow ? 'n/a' : '—')}</td>
+                  <td className="px-2 py-1.5 whitespace-nowrap">{s.required_by || '—'}</td>
+                  <td className="px-2 py-1.5 whitespace-nowrap">{s.delivered_at ? new Date(s.delivered_at).toLocaleDateString() : (cortinaRow ? 'n/a' : '—')}</td>
+                  <td className="px-2 py-1.5">
+                    {s.issue_at
+                      ? <div className="flex flex-wrap gap-1">{(s.issue_flags || []).map((f) => <span key={f} className={`${chip} bg-amber-100 text-amber-800`}>{issueLabel(f)}</span>)}</div>
+                      : <span className="text-gr">—</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

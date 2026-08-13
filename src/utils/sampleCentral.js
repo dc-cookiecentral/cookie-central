@@ -219,6 +219,17 @@ export const issueLabel = (f) => (ISSUE_FLAGS.find(([k]) => k === f)?.[1] ?? f);
 
 export const RUSH_NOTICE = 'Flags the order as urgent and emails the team.';
 
+// ── Who ships the box ───────────────────────────────────────────────────────
+// Cortina fulfils some samples from their own warehouse. Those orders are
+// deliberately withheld from the ShipStation export (the Edge Function
+// allowlists FULFILLER_DEFAULT — see SHIPSTATION_FULFILLER there), so they
+// carry no tracking, no carrier status and no delivery date. They are a
+// different kind of record that happens to live in the same table.
+export const FULFILLER_DEFAULT = 'Dirty Cookie | Kukibell';
+export const FULFILLER_CORTINA = 'Cortina';
+export const FULFILLERS = [FULFILLER_DEFAULT, FULFILLER_CORTINA];
+export const isCortinaFulfilled = (s) => s?.fulfilled_by === FULFILLER_CORTINA;
+
 // ── Order guardrails ────────────────────────────────────────────────────────
 // A submitted order is UNRECALLABLE from inside this app. Status is owned by
 // ShipStation (ADR-032), there is no sandbox, and the Cortina ordering account
