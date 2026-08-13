@@ -2,10 +2,15 @@
 //
 // Cortina fulfils some samples from their own warehouse. Those orders are
 // withheld from the ShipStation export, so ShipStation's own notification never
-// fires and the rep would otherwise hear nothing. Until an automated sender
-// exists (which needs a provider key and SPF/DKIM on dirtycookie.com), the
-// Cortina team sends the confirmation by hand — so the site's job is to make
-// that one click rather than a retyping exercise.
+// fires and nothing is sent automatically. Cortina's Samples Management team
+// sends the confirmation by hand — so the site's job is to make that one click
+// rather than a retyping exercise.
+//
+// The footer therefore points at Cortina, NOT at Dirty Cookie. These orders are
+// packed and shipped by Cortina; sending the recipient to a team that cannot see
+// the parcel, cannot hold it and cannot stop it would add a hop to every query
+// and lose a day. The Dirty Cookie routing on the ShipStation side of the site
+// is correct for those orders and wrong for these.
 //
 // Two outputs from one source, so the paste and the PDF can never drift:
 //   htmlSheet() → clipboard as text/html, and the print window
@@ -66,7 +71,7 @@ export function htmlSheet(s) {
   <table style="border-collapse:collapse;width:100%;margin:8px 0 16px">${lines}</table>
   ${(s.collateral || []).length ? `<p style="font-size:14px;margin:0 0 16px"><strong>Collateral:</strong> ${esc((s.collateral || []).join(', '))}</p>` : ''}
   ${s.notes ? `<div style="background:#FDF2F8;border:1px solid #E8E0F0;border-radius:8px;padding:10px 12px;font-size:14px;margin-bottom:16px"><strong>Notes:</strong> ${esc(s.notes)}</div>` : ''}
-  <p style="font-size:12px;color:#9990A8;border-top:1px solid #E8E0F0;padding-top:10px;margin:0">To change or cancel this order, contact the Dirty Cookie team — it cannot be changed from the sample site once submitted.</p>
+  <p style="font-size:12px;color:#9990A8;border-top:1px solid #E8E0F0;padding-top:10px;margin:0">To change or cancel this order, contact the Samples Management team at Cortina — it cannot be changed from the sample site once submitted.</p>
 </div>`;
 }
 
@@ -87,7 +92,7 @@ export function textSheet(s) {
   out.push(...items.map((i) => `  ${i.qty || 1}x ${itemName(i)}${i.custom ? ' (custom)' : ''}${i.project_no ? ` [${i.project_no}]` : ''}`));
   if ((s.collateral || []).length) out.push('', `Collateral: ${(s.collateral || []).join(', ')}`);
   if (s.notes) out.push('', `Notes: ${s.notes}`);
-  out.push('', 'To change or cancel this order, contact the Dirty Cookie team.');
+  out.push('', 'To change or cancel this order, contact the Samples Management team at Cortina.');
   return out.join('\n');
 }
 
