@@ -33,7 +33,7 @@ All paths below are relative to the repo root, `..` from here.
 | Deliver By sweep | `supabase/functions/shipstation-deliverby/` |
 | Pure helpers + tests | `supabase/functions/_shared/shipstation.ts`, `…_test.ts` |
 | Migrations | `supabase/migrations/2026071516*`, `2026072*`, `2026080412*` |
-| **ADRs** | `docs/DECISIONS.md` — **ADR-026 … ADR-042** are this project. Earlier ones are not. |
+| **ADRs** | `docs/DECISIONS.md` — **ADR-026 … ADR-045** are this project. Earlier ones are not. |
 
 ADRs stay in the shared file on purpose: the `supersedes` / `amends` chains cross
 into earlier ADRs, and renumbering would break them.
@@ -114,6 +114,19 @@ label says **"Deliver by"**. Deliberate — renaming the column wasn't worth the
   covers `_shared` only. A bug there (1,640 no-op UPDATEs, a 2-minute run)
   reached production and was caught by a live run. Verify changes by invoking
   the function, not by trusting `deno check`.
+- **A passing build proves nothing about the output.** Twice in one session a
+  change built cleanly and was absent or wrong in the artifact: a component that
+  was never rendered got tree-shaken out, and a mechanical class rewrite produced
+  valid CSS with the wrong values. **Grep the built bundle for a distinctive
+  string from the change.** Same for string-replace edits — they fail silently
+  when the anchor text has drifted.
+- **An effect that grabs focus must not depend on a value that changes as the
+  user types.** `useDialog` depended on an inline `onClose`, so every keystroke
+  re-ran it and threw the caret to the first focusable element. One character
+  per attempt, in every field of the drawer.
+- **Grid headers and rows are separate grid containers.** Tracks must be fixed
+  px or `minmax(0,1fr)`; `auto` or `minmax(0,Xpx)` size to each container's own
+  content, so the header drifts out from over its column.
 - **`cron.job_run_details.status = 'succeeded'` does NOT mean the job worked.**
   `net.http_post` is fire-and-forget; it only means the request was queued. The
   real outcome is in `net._http_response`. This masked a dead cron for hours.
@@ -151,6 +164,21 @@ said this was the pick-up point. It is done.)*
 
 **`on_hold` does NOT work and cannot** — V2's `shipment_status` is the label
 lifecycle, so an order On Hold still reads `pending`. Reaching it needs a V1 key.
+
+**`delivered` IS wired (ADR-043).** Not via `/v2/tracking` — that path is
+ShipEngine's, is not part of V2, and its 401 was misread as a billing wall for a
+week. The working pair is `GET /v2/labels?tracking_number=` → `label_id` →
+`GET /v2/labels/{id}/track`, available on every plan. No real carrier `DE` has
+been observed yet; that is the outstanding proof.
+
+**Two fulfilment routes (ADR-044).** `fulfilled_by` decides whether an order
+reaches ShipStation at all, and the export filters on an **allowlist** so an
+unknown value fails by staying off the co-man's queue. Cortina orders get no
+ShipStation email — the site offers copy/print instead.
+
+**Cold-chain season is ON (ADR-045)** and ShipStation does not know. Its rules
+key off product tags on Raw SKUs, so a Baked-only order says Cold here and is
+not auto-upgraded there until a blanket seasonal rule exists.
 
 ⚠️ **`delivered` is the live question — and it is nearly free.** Forcing
 `SMP-TEST-1053` to `delivered` on Aug 6 proved **every layer already handles it**:

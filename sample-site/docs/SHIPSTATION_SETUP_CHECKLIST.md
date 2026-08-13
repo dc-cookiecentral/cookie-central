@@ -148,6 +148,15 @@ Copy the sample-mgmt inbox on **all orders, shipments, deliveries** — two plac
 - [ ] Confirm a sample order lands in the dashboard with fields mapped: ship-to, **items (catalog SKUs + `CUSTOM` + `COLLATERAL-*`)**, **no ShippingMethod** (service falls to the store default), **CustomField1 = salesperson**, **CustomField2 = account**, **CustomField3 = `rush` when flagged**, InternalNotes (site note + third-party billing only).
 - [ ] Confirm an invalid address (bad State/zip) does **not** silently vanish — the export skips+logs it (check the function logs).
 - [ ] (Optional) Test a full ship: mark shipped in ShipStation → confirm `shipnotify` updates `sample_shipments` (tracking #, status → shipped).
+- [ ] 🚨 **Blanket cold-chain rule for the season (ADR-045).** The site now
+  forces every new order to Cold while `sample_settings.cold_chain_season` is on
+  — it is **on now** — but sends no per-order signal, by design. ShipStation's
+  existing cold handling keys off **product tags on Raw SKUs**, so a Baked-only
+  order is *not* auto-upgraded. Until an unconditional seasonal rule exists here,
+  the site claims something ShipStation is not acting on. *Caroline owns this.*
+- [ ] **Cortina-fulfilled orders never arrive (ADR-044).** `fulfilled_by =
+  'Cortina'` is withheld from the export by an allowlist. If one is ever expected
+  in the queue and missing, that is why — it is not a failed import.
 
 ## 8b. Internal stress test — TEST MODE 🧪
 
