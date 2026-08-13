@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import AppSwitcher from '../components/AppSwitcher';
 import SearchSelect from '../components/SearchSelect';
+import { copyOrderSheet, printOrderSheet } from '../utils/orderSheet';
 import { useDialog } from '../hooks/useDialog';
 import {
   useSampleCentral, addAddress, retireAddress, createShipment, saveTemplate, deleteTemplate,
@@ -1369,6 +1370,11 @@ function ShipmentCard({ s, cols, open, onToggle, canWrite, refresh, setToast }) 
             <IssuePanel s={s} canWrite={canWrite} refresh={refresh} setToast={setToast} />
           )}
 
+          {/* Cortina orders only. A ShipStation order already gets a
+              notification when the co-man buys the label; offering these there
+              would invite a second, conflicting confirmation. */}
+          {isCortinaFulfilled(s) && <OrderSheetActions s={s} setToast={setToast} />}
+
           <div className="text-[12px] text-gr mt-3">
             Status is set by ShipStation — <span className="font-semibold">submitted</span> on creation, <span className="font-semibold">shipped</span> when the co-man buys a label.
           </div>
@@ -1468,6 +1474,44 @@ function AddressView({ data, refresh, canWrite, setToast }) {
           </div>
         ))}
         {data.addresses.length === 0 && <div className="text-[14px] text-gr italic">No addresses yet — add one above or inline while building a shipment.</div>}
+      </div>
+    </div>
+  );
+}
+
+// ── Send this order on ──────────────────────────────────────────────────────
+// Cortina fulfils these themselves, so ShipStation never emails anyone about
+// them and the rep would otherwise hear nothing. Until an automated sender
+// exists — which needs a provider key and SPF/DKIM on the domain, neither of
+// them a code problem — the Cortina team sends it by hand. These two buttons
+// are the difference between that being one click and being a retyping job.
+function OrderSheetActions({ s, setToast }) {
+  const copy = async () => {
+    const r = await copyOrderSheet(s);
+    if (!r.ok) return setToast({ err: r.error });
+    setToast({
+      ok: r.rich
+        ? `${s.shipment_no} copied — paste it straight into an email.`
+        : `${s.shipment_no} copied as plain text (this browser has no rich clipboard).`,
+    });
+  };
+  const print = () => {
+    const r = printOrderSheet(s);
+    if (!r.ok) setToast({ err: r.error });
+  };
+  return (
+    <div className="mt-3 pt-3 border-t border-lt">
+      <div className="text-[12px] text-gr uppercase font-bold tracking-wider mb-1.5">Send to the customer</div>
+      <div className="flex flex-wrap gap-1.5">
+        <button onClick={copy} className="border border-pk text-pk font-semibold text-[14px] px-3 py-1.5 rounded-lg hover:bg-pc">
+          Copy for email
+        </button>
+        <button onClick={print} className="border border-lt text-dk font-semibold text-[14px] px-3 py-1.5 rounded-lg hover:bg-pc">
+          Print / Save as PDF
+        </button>
+      </div>
+      <div className="text-[12px] text-gr mt-1">
+        Copy pastes with formatting into Gmail. Print opens a one-page sheet — choose <b>Save as PDF</b> as the destination.
       </div>
     </div>
   );
