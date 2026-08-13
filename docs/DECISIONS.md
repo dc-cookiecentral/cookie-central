@@ -684,7 +684,11 @@ Verified live on Aug 11 against a real purchased label. `status_code` is the hig
 
 **No CHECK constraint**, for the same reason the issue vocabulary has none: the list of fulfillers will change, and the allowlist already makes an unknown value harmless rather than dangerous.
 
-**Confirmation is manual, and the site makes that one click.** These orders get no ShipStation notification, so the rep would otherwise hear nothing. An automated sender is blocked on a transactional-email provider key and SPF/DKIM on `dirtycookie.com` — neither a code problem, both outside this repo. Meanwhile `src/utils/orderSheet.js` renders one order to **both** `text/html` and `text/plain` in a single `ClipboardItem` (so a Gmail paste keeps its formatting and a plain-text paste still reads), and to a print window whose "Save as PDF" destination does the PDF. No PDF library: a generator would add hundreds of kilobytes to produce a worse page.
+**Confirmation is manual, and that is the decision — not a stopgap.** These orders get no ShipStation notification, so the rep would otherwise hear nothing.
+
+*Amended August 13, 2026: an automated sender was scoped against a transactional provider (Resend) and then **abandoned**, before any of it was wired up.* It would have cost a vendor account, an API key in Vault, and SPF/DKIM records on `dirtycookie.com` — the last of which is the awkward part, because the domain already sends through Google Workspace and a domain may carry only one SPF record, so the existing one would have had to be merged rather than added to. All of that to replace a button press, for a route that is the exception rather than the rule. The Cortina Samples Management team sends the confirmation, and the site's job is to make that one click.
+
+`src/utils/orderSheet.js` renders one order to **both** `text/html` and `text/plain` in a single `ClipboardItem` (so a Gmail paste keeps its formatting and a plain-text paste still reads), and to a print window whose "Save as PDF" destination does the PDF. No PDF library: a generator would add hundreds of kilobytes to produce a worse page.
 
 The sheet's footer points at **Cortina's Samples Management team**, not Dirty Cookie. Cortina packs, ships and holds these parcels; Dirty Cookie can do none of those, so routing a recipient there adds a hop and loses a day.
 

@@ -206,9 +206,12 @@ Save as PDF** (a print window; no PDF library). Both render from one builder in
 **Cortina's Samples Management team** — they pack, ship and hold these parcels;
 Dirty Cookie can do none of those.
 
-An automated sender is **parked**, blocked on a provider API key and SPF/DKIM on
-`dirtycookie.com`. The existing Gmail integration cannot be reused: scope is
-deliberately `gmail.readonly`, and it belongs to the other project in this repo.
+An automated sender was scoped and **abandoned** on Aug 13 (ADR-044) — a vendor
+account, a key in Vault and SPF/DKIM surgery on a domain that already sends
+through Google Workspace, all to replace a button press on the exception route.
+Manual is the decision, not a stopgap. *(The existing Gmail integration was
+never an option either: scope is deliberately `gmail.readonly`, and it belongs
+to the other project in this repo.)*
 
 ## Site-owned operational data (ADR-045)
 
