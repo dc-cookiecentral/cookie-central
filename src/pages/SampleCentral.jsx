@@ -588,7 +588,8 @@ function CartDrawer({
             {header.fulfilled_by === FULFILLER_CORTINA && (
               <div className="mt-1.5 text-[12px] text-sky-900 bg-sky-50 border border-sky-200 rounded-lg px-2.5 py-1.5">
                 Cortina ships this one. It will <b>not</b> go to ShipStation, so there is no
-                tracking or delivery status — a confirmation email is sent instead.
+                tracking or delivery status, and no automatic email — the <b>Samples Management
+                team at Cortina</b> sends the confirmation.
               </div>
             )}
             <div className="mt-2">
