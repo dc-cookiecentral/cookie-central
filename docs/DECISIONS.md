@@ -716,3 +716,26 @@ The sheet's footer points at **Cortina's Samples Management team**, not Dirty Co
 **Cold-chain season.** Through summer every sample ships cold whatever is in the box, but the derived temp is Cold only when a Raw item is present — so the badge told the sales team "Ambient" about a parcel going out on ice. This is a **live switch in `sample_settings`**, not a `VITE_` flag and not a hard-coded date range: every other switch here is build-time and flipping one needs a redeploy, a season does not start on the same day each year, and the person who notices the weather is not necessarily the person who can deploy. Read by any signed-in user, written by admin/ops only. The badge now says *which* rule applied — "from raw items" versus "from summer season" — because those carry different consequences for someone deciding whether to override.
 
 ⚠️ **The ShipStation half of the season is a blanket automation rule, and it is not built.** It needs no per-order signal precisely because it applies to everything — but until it exists, the site asserts Cold on orders ShipStation will not auto-upgrade (its cold-chain rules key off product tags on Raw SKUs). **The two systems currently disagree, and the site is the one making the claim.**
+
+## ADR-046: Custom lines are labelled "Requested Benchtop" in both the builder and the export
+
+**Date:** August 17, 2026
+**Status:** Built, tested (127 cases), **deployed and verified against the live export**. Branch `feat/requested-benchtop-label`.
+
+**Decision.** The builder section headed *"Custom requests (optional)"* is now **"Requested Benchtop"**, and the export prefixes every custom `<Item>`'s `<Name>` with the same words:
+
+```xml
+<Name><![CDATA[Requested Benchtop: Heart-shaped cookie (proj P-77)]]></Name>
+```
+
+The label lives in one place, `BENCHTOP_LABEL` in `_shared/shipstation.ts`, so the two surfaces cannot drift apart the way the section header and the co-man's view already had.
+
+**Why.** After ADR-037 moved `CustomField2` to the account name and ADR-038 dropped the synthetic `CUSTOM` SKU, **nothing in the exported order identified a custom line as custom.** It arrived as an `<Item>` with an empty `<SKU>` and a free-text `<Name>` — visually indistinguishable from a catalog product whose SKU had gone missing. ADR-038 said custom work "remains identifiable to a human by its `<Name>`", which was true only if that human already knew bespoke lines have no SKU. The label makes it legible without that inference.
+
+**⚠️ Presentation only — this does NOT reopen the automation question.** The label rides `<Name>`, which is not rule criteria, so the `custom-request` signal ADR-036 lost and ADR-038 confirmed gone is *still gone*. An **Order Tag** remains the only safe route to manual-review routing, and it remains unbuilt. The constant carries this warning in a comment, because a plausible-looking label is exactly the kind of thing a future reader mistakes for a routing hook.
+
+**Empty specs degrade to the bare label**, never a dangling `"Requested Benchtop: "`. A spec-less line yields `Requested Benchtop`; a line with a project but no spec yields `Requested Benchtop: (proj P-12)`. The builder already filters spec-less lines before submit, so these are defensive, but the export is the wrong place to emit a trailing colon.
+
+**Verified.** 127 `Deno.test` cases pass (3 new, 2 rewritten), including one asserting the label never appears on a catalog or collateral line. Confirmed **on the deployed function, not just in tests** — the live export of `SMP-TEST-1200` returned `Requested Benchtop: CUSTOM REQUEST (proj 123)` with its product and collateral lines unchanged.
+
+**Sequencing note, recorded because it is a standing hazard.** `functions deploy` bypasses git, so the export half went live before the PR carrying it was merged; the UI half waits on Vercel. Between those two moments the systems disagree about what this section is called. That is the normal shape of every change here that spans both halves — the export is always the one that ships first.

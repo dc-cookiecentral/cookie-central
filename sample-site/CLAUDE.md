@@ -62,7 +62,7 @@ curl -s -X POST "https://api.supabase.com/v1/projects/$REF/database/query" \
 
 | ShipStation field | Carries |
 |---|---|
-| `<Items>` | catalog products **with** SKU; custom lines and collateral with an **empty** `<SKU></SKU>` |
+| `<Items>` | catalog products **with** SKU; custom lines and collateral with an **empty** `<SKU></SKU>`. Custom lines are name-prefixed `Requested Benchtop: ` (ADR-046) — a label, **not** a rule-matchable signal |
 | Deliver By (native) | `required_by`, stamped by the 15-min sweep |
 | `InternalNotes` | `RUSH` (leading, when flagged) + the site note |
 | `CustomerNotes` ("Notes from Buyer") | third-party billing |

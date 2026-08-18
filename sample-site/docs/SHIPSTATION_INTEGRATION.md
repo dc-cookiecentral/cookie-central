@@ -78,10 +78,22 @@ Basic HTTP Auth on both actions. Expected creds read from Vault via `get_secret`
       </ShipTo>
     </Customer>
     <Items>
-      <Item>                                             <!-- real lines only (product_code not null) -->
+      <Item>                                             <!-- catalog product (product_code not null) -->
         <SKU>{product_code}</SKU>
         <Name><![CDATA[{description}]]></Name>
         <Quantity>{qty}</Quantity>
+        <UnitPrice>0.00</UnitPrice>
+      </Item>
+      <Item>                                             <!-- custom line: SKU empty, label prefixed (ADR-046) -->
+        <SKU></SKU>
+        <Name><![CDATA[Requested Benchtop: {spec} (proj {project_no})]]></Name>
+        <Quantity>{qty}</Quantity>
+        <UnitPrice>0.00</UnitPrice>
+      </Item>
+      <Item>                                             <!-- collateral: SKU empty, quantity always 1 -->
+        <SKU></SKU>
+        <Name><![CDATA[{collateral piece}]]></Name>
+        <Quantity>1</Quantity>
         <UnitPrice>0.00</UnitPrice>
       </Item>
     </Items>
@@ -89,7 +101,8 @@ Basic HTTP Auth on both actions. Expected creds read from Vault via `get_secret`
 </Orders>
 ```
 - **`<Country>` = `US`** — required by ShipStation's `ShipTo` schema; a missing Country makes ShipStation reject the whole import batch. Samples are US-only.
-- **Custom lines** (`custom = true`, no `product_code`) **are** emitted as `<Item>` with an **empty `<SKU></SKU>`**; the spec + `project_no` carry in `<Name>`. *(ADR-035, revised by ADR-038.)*
+- **Custom lines** (`custom = true`, no `product_code`) **are** emitted as `<Item>` with an **empty `<SKU></SKU>`**; the spec + `project_no` carry in `<Name>`, behind the label **`Requested Benchtop: `** — e.g. `Requested Benchtop: Heart-shaped cookie (proj P-77)`. The label matches the builder's section header and is defined once, as `BENCHTOP_LABEL`. A spec-less line degrades to the bare label, never a dangling colon. *(ADR-035, revised by ADR-038, labelled by ADR-046.)*
+  - ⚠️ The label is **presentation only**. It rides `<Name>`, which is **not** automation-rule criteria — it does not restore the `custom-request` signal lost in ADR-036/037. Manual-review routing still needs an **Order Tag**, still unbuilt.
 - **Collateral** is one `<Item>` per piece, quantity 1, also **SKU-less**, and is **not** written to `InternalNotes`.
 - ⚠️ **The `<SKU>` element is always emitted, empty for non-products.** ShipStation's Custom Store Development Guide shows exactly this shape (`<Item><SKU></SKU><Name><![CDATA[$10 OFF]]></Name>…`). Do **not** omit the element — a missing required field rejects the **whole batch**, silently.
 - Only **catalog SKUs** reach ShipStation, so the cold-chain product-tag match is unaffected and no junk product records are created.

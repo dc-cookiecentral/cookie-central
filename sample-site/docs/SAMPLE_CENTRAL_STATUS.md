@@ -24,7 +24,7 @@ disagrees with an ADR about *what is true now*, this file wins.
 
 | Element | Carries |
 |---|---|
-| `<Items>` | catalog products **with** SKU; custom lines and collateral with an **empty** `<SKU></SKU>` |
+| `<Items>` | catalog products **with** SKU; custom lines and collateral with an **empty** `<SKU></SKU>`. Custom lines are name-prefixed `Requested Benchtop: ` (ADR-046) — a human-readable label, **not** rule criteria |
 | Deliver By (native) | `required_by`, stamped by the 15-min sweep |
 | `InternalNotes` | `RUSH` (leading, when flagged) + the site note |
 | `CustomerNotes` ("Notes from Buyer") | third-party billing |

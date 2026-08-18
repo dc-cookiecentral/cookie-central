@@ -303,6 +303,16 @@ export function tempOverrideField(s: Shipment): string {
 
 // ── Order XML ───────────────────────────────────────────────────────────────
 
+// The co-man-facing name for a custom line. Mirrors the "Requested Benchtop"
+// section in the builder, so a rep and a packer are looking at the same words.
+//
+// ⚠️ Presentation only. This does NOT restore the rule-matchable custom-request
+// signal that ADR-037 (CustomField2) and ADR-038 (the synthetic CUSTOM SKU)
+// removed — it rides <Name>, which is not automation-rule criteria, and item
+// rules are unsafe on multi-item orders anyway. Routing custom work to manual
+// review still needs an Order Tag, still unbuilt.
+export const BENCHTOP_LABEL = 'Requested Benchtop';
+
 // Custom lines and collateral carry NO SKU (ADR-038). They are not catalog
 // products, and a synthetic SKU would make ShipStation auto-create a product
 // record for each one, cluttering the co-man's catalog with rows nobody
@@ -342,10 +352,18 @@ export function buildOrderXml(s: Shipment): string {
   }
 
   // 2. Custom-made lines — no SKU. The spec and project number are what the
-  //    co-man needs to read, and they carry in <Name>.
+  //    co-man needs to read, and they carry in <Name>, behind the BENCHTOP_LABEL
+  //    prefix. Without it a bespoke line reads as an ordinary catalog product
+  //    that happens to be missing its SKU; the label is the only thing on the
+  //    order page that says "somebody has to make this". It is presentation
+  //    only — it is NOT a rule-matchable signal (see the note on the constant).
   for (const i of all.filter((i) => i.custom)) {
-    const spec = i.custom_spec ?? 'Custom item';
-    lines.push(itemXml('', i.project_no ? `${spec} (proj ${i.project_no})` : spec, Number(i.qty) || 1));
+    const detail = [
+      (i.custom_spec ?? '').trim(),
+      i.project_no ? `(proj ${i.project_no})` : '',
+    ].filter(Boolean).join(' ');
+    // Label alone when there is no detail — never a dangling "Label: ".
+    lines.push(itemXml('', detail ? `${BENCHTOP_LABEL}: ${detail}` : BENCHTOP_LABEL, Number(i.qty) || 1));
   }
 
   // 3. Collateral — no SKU, and a checklist, so quantity is always 1 per type.

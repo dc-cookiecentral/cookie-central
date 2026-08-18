@@ -476,19 +476,38 @@ Deno.test('buildOrderXml: emits custom lines as Items with an EMPTY sku', () => 
   // for non-product lines; omitting it risks a whole-batch rejection.
   assertStringIncludes(xml, '<SKU></SKU>');
   assertFalse(xml.includes('<SKU>CUSTOM</SKU>'));
-  assertStringIncludes(xml, 'Bespoke (proj P-9)');
+  assertStringIncludes(xml, '<Name><![CDATA[Requested Benchtop: Bespoke (proj P-9)]]></Name>');
   assertStringIncludes(xml, '<Quantity>3</Quantity>');
   // The spec now lives ONLY on the line item — no longer echoed into notes.
   assertFalse((el(xml, 'InternalNotes') ?? '').includes('Bespoke'));
 });
-Deno.test('buildOrderXml: a custom line with no spec still gets a usable Name', () => {
+Deno.test('buildOrderXml: a custom line with no spec falls back to the bare label', () => {
   const xml = buildOrderXml(shipment({
     collateral: [],
     sample_shipment_items: [
       { product_code: null, custom: true, custom_spec: null, project_no: null, qty: 1, description: null },
     ],
   }));
-  assertStringIncludes(xml, 'Custom item');
+  // The bare label, NOT a dangling "Requested Benchtop: ".
+  assertStringIncludes(xml, '<Name><![CDATA[Requested Benchtop]]></Name>');
+});
+Deno.test('buildOrderXml: a custom line with a project but no spec omits the empty gap', () => {
+  const xml = buildOrderXml(shipment({
+    collateral: [],
+    sample_shipment_items: [
+      { product_code: null, custom: true, custom_spec: '   ', project_no: 'P-12', qty: 1, description: null },
+    ],
+  }));
+  assertStringIncludes(xml, '<Name><![CDATA[Requested Benchtop: (proj P-12)]]></Name>');
+});
+Deno.test('buildOrderXml: the benchtop label goes only on custom lines', () => {
+  const xml = buildOrderXml(shipment({
+    collateral: ['Line sheet'],
+    sample_shipment_items: [
+      { product_code: 'CC-2OZ-BAK-G', custom: false, custom_spec: null, project_no: null, qty: 1, description: 'Gourmet CC' },
+    ],
+  }));
+  assertFalse(xml.includes('Requested Benchtop'));
 });
 Deno.test('buildOrderXml: emits each collateral piece as a SKU-less Item, quantity 1', () => {
   const xml = buildOrderXml(shipment({
