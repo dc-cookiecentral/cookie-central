@@ -29,11 +29,13 @@ All paths below are relative to the repo root, `..` from here.
 | Sample builder UI | `src/pages/SampleCentral.jsx` |
 | Its hook / helpers | `src/hooks/useSampleCentral.js`, `src/utils/sampleCentral.js` |
 | Router entry | `src/App.jsx` *(shared with other projects — edit carefully)* |
+| Cortina copy/print order sheet | `src/utils/orderSheet.js` *(one builder for both — paste and PDF cannot drift)* |
 | ShipStation export + shipnotify | `supabase/functions/shipstation-customstore/` |
 | Deliver By sweep | `supabase/functions/shipstation-deliverby/` |
+| Read-only inspector | `supabase/functions/shipstation-probe/` |
 | Pure helpers + tests | `supabase/functions/_shared/shipstation.ts`, `…_test.ts` |
-| Migrations | `supabase/migrations/2026071516*`, `2026072*`, `2026080412*` |
-| **ADRs** | `docs/DECISIONS.md` — **ADR-026 … ADR-045** are this project. Earlier ones are not. |
+| Migrations | `supabase/migrations/20260715 16–18*`, `202607 2*`, and everything from `20260804*` on |
+| **ADRs** | `docs/DECISIONS.md` — **ADR-026 … ADR-046** are this project. Earlier ones are not. |
 
 ADRs stay in the shared file on purpose: the `supersedes` / `amends` chains cross
 into earlier ADRs, and renumbering would break them.
@@ -41,15 +43,28 @@ into earlier ADRs, and renumbering would break them.
 ## Running things
 
 ```bash
-deno test --allow-all supabase/functions/_shared/shipstation_test.ts   # 112 cases
+deno test --allow-all supabase/functions/_shared/shipstation_test.ts
 deno check --import-map=supabase/functions/import_map.json supabase/functions/_shared/shipstation.ts
 npx supabase functions deploy shipstation-customstore                  # bypasses git — deploys immediately
 npm run build
 ```
 
-`deno` is at `~/.deno/bin/deno` (not on PATH by default). There is **no Docker**,
-so `supabase db dump` / local stack do not work. For read-only SQL against the
-live database, use the Management API with the CLI's stored token:
+`deno` lives at `~/.deno/bin/deno`; call it by full path if your shell's PATH
+does not have it. There is **no Docker**, so `supabase db dump` / local stack do
+not work.
+
+⚠️ **The remote migration ledger is behind the repo.**
+`supabase_migrations.schema_migrations` tops out at `20260805050000`, because the
+no-Docker workflow runs SQL through the Management API and that does not record a
+history row. **12 repo migrations are applied to the database but unregistered.**
+They all replay cleanly (every one is `ON CONFLICT DO UPDATE`, `IF NOT EXISTS` or
+otherwise guarded), so a `db push` would be safe — but do not read `migration
+list` as the truth about what is applied. The current list is in
+`docs/SAMPLE_CENTRAL_STATUS.md`.
+
+For read-only SQL against the live database — and for *applying* a migration,
+which is how every one since `20260805050000` has gone in — use the Management
+API with the CLI's stored token:
 
 ```bash
 TOK=$(cat ~/.supabase/access-token); REF=$(cat supabase/.temp/project-ref)
@@ -58,7 +73,7 @@ curl -s -X POST "https://api.supabase.com/v1/projects/$REF/database/query" \
   -d '{"query":"select 1;"}'
 ```
 
-## The ShipStation field contract (as of Aug 4 2026 — ADR-037, ADR-038)
+## The ShipStation field contract (ADR-037, ADR-038 — current as of Aug 14 2026)
 
 | ShipStation field | Carries |
 |---|---|
@@ -67,6 +82,7 @@ curl -s -X POST "https://api.supabase.com/v1/projects/$REF/database/query" \
 | `InternalNotes` | `RUSH` (leading, when flagged) + the site note |
 | `CustomerNotes` ("Notes from Buyer") | third-party billing |
 | `CustomField1 / 2 / 3` | salesperson / account / **manual temp override** |
+| `<ShippingMethod>` | **nothing — deliberately not sent.** ShipStation owns service choice (ADR-031); the omission is enforced by a test, so do not "fix" the missing element |
 
 Naming quirk: the column is `required_by` everywhere in code; every **human-facing**
 label says **"Deliver by"**. Deliberate — renaming the column wasn't worth the churn.
@@ -84,7 +100,8 @@ label says **"Deliver by"**. Deliberate — renaming the column wasn't worth the
   order, and sample manifests are usually multi-item. Use product tags or order tags.
 - **No sandbox.** This is the production store. `VITE_SAMPLE_TEST_MODE=true`
   prefixes `SMP-TEST-####` but does **not** withhold orders from the co-man's
-  real queue.
+  real queue. **It is still `true` in the live bundle** — clearing it is an open
+  go-live item, not a done one.
 - **V2's shipments API does not reflect ORDER status.** `shipment_status` is the
   label lifecycle (`pending`/`processing`/`label_purchased`/`on_hold`/`cancelled`).
   An order in **Awaiting Payment** has no shipment record at all (ADR-039); an
@@ -110,8 +127,8 @@ label says **"Deliver by"**. Deliberate — renaming the column wasn't worth the
   code `"ups"`, and `Service` arrives decorated as `"UPS® Ground"`. Anything
   matching on carrier must normalise, or it will match nothing and fail
   invisibly.
-- **`shipstation-deliverby/index.ts` has no unit tests** — the 112-case suite
-  covers `_shared` only. A bug there (1,640 no-op UPDATEs, a 2-minute run)
+- **`shipstation-deliverby/index.ts` has no unit tests** — the suite covers
+  `_shared` only. A bug there (1,640 no-op UPDATEs, a 2-minute run)
   reached production and was caught by a live run. Verify changes by invoking
   the function, not by trusting `deno check`.
 - **A passing build proves nothing about the output.** Twice in one session a
@@ -143,69 +160,41 @@ service-role key (219 chars, 3 segments) and verified `200`.
 If a scheduled job ever looks dead, check **`net._http_response`** — not
 `cron.job_run_details`.
 
-## Current state
+## Current state — orientation only
+
+⚠️ **`docs/SAMPLE_CENTRAL_STATUS.md` is the authoritative current state.** What
+follows is only enough to orient; it is deliberately short, because the longer
+version of this section drifted out of agreement with STATUS.md — and with
+itself — within days. **If this section and STATUS.md disagree, STATUS.md wins,
+and this section is the bug.**
 
 **Live and verified:** the ShipStation export, the Deliver By sweep (15-min cron,
-unattended), the field contract, `shipstation-probe`, `cancelled` sync, and the
-rebuilt **Shipments** tab (renamed from "Pending Shipments").
+unattended, 3.9s — it caches `shipstation_order_id` and no longer pages history),
+the field contract, `shipstation-probe`, `cancelled` sync, both fulfilment routes
+(ADR-044), the issue log and cold-chain season (ADR-045), the Monthly Report tab,
+and the rebuilt **Shipments** tab.
 
-**The Salesperson dropdown holds 27 reps** (25 Cortina + Caroline and David
-Landeck) as of Aug 11. `sales_reps` is a lookup list, **not auth** — no rep has
-a login. The selected rep's email goes to `<BillTo><Email>`, which is the only
-address ShipStation notifies. Caveats — a shared mailbox carrying two names,
-three name/email mismatches, and a source file that may include non-sales
-contacts — are in `docs/SAMPLE_CENTRAL_STATUS.md`.
+**Statuses:** `submitted`, `shipped` and `cancelled` work end to end.
+`delivered` **is built and deployed** (ADR-043) via
+`GET /v2/labels?tracking_number=` → `GET /v2/labels/{id}/track` — the `/v2/tracking`
+401 that stalled this for a week was ShipEngine's path, not an entitlement wall.
+`on_hold` **cannot** work without a V1 key, and `processing` is written by
+nothing, ever.
 
-**The Deliver By sweep no longer pages ShipStation history.** It caches
-`shipstation_order_id` on first sight and resolves via `GET /v2/shipments/{id}`,
-scanning only for orders it cannot resolve and exiting once they are found.
-**~17s → 3.9s**, and it no longer grows with the account. *(The old note here
-said this was the pick-up point. It is done.)*
+**The three things actually outstanding:**
+- **A real carrier `DE` has never been observed.** Every layer is proven; the
+  first genuine delivery is the remaining proof for ADR-043.
+- **`VITE_SAMPLE_TEST_MODE` is still `true`** in the live bundle.
+- **No blanket seasonal cold rule in ShipStation** — the site asserts Cold on
+  every new order and ShipStation does not act on it, so the two disagree today.
 
-**`on_hold` does NOT work and cannot** — V2's `shipment_status` is the label
-lifecycle, so an order On Hold still reads `pending`. Reaching it needs a V1 key.
-
-**`delivered` IS wired (ADR-043).** Not via `/v2/tracking` — that path is
-ShipEngine's, is not part of V2, and its 401 was misread as a billing wall for a
-week. The working pair is `GET /v2/labels?tracking_number=` → `label_id` →
-`GET /v2/labels/{id}/track`, available on every plan. No real carrier `DE` has
-been observed yet; that is the outstanding proof.
-
-**Two fulfilment routes (ADR-044).** `fulfilled_by` decides whether an order
-reaches ShipStation at all, and the export filters on an **allowlist** so an
-unknown value fails by staying off the co-man's queue. Cortina orders get no
-ShipStation email — the site offers copy/print instead.
-
-**Cold-chain season is ON (ADR-045)** and ShipStation does not know. Its rules
-key off product tags on Raw SKUs, so a Baked-only order says Cold here and is
-not auto-upgraded there until a blanket seasonal rule exists.
-
-⚠️ **`delivered` is the live question — and it is nearly free.** Forcing
-`SMP-TEST-1053` to `delivered` on Aug 6 proved **every layer already handles it**:
-the sweep stops tracking it, the export reports it to ShipStation as `shipped`,
-`syncedStatus` refuses to overwrite it, the DB CHECK permits it, the UI renders
-it. The whole feature reduces to **one thing writing the column.** What is
-missing is only a source:
-
-- `GET /v2/tracking` → **401, entitlement wall.** Probed Aug 6; the message is
-  "upgrade your billing plan or add required features". `/v2/carriers` returns
-  200 from the same key, which is what proves it is entitlement and not auth.
-- `/v2/environment/webhooks` → **200, `[]`.** Webhooks are reachable with no
-  subscriptions. Whether the `track` event is gated by the same entitlement is
-  **untested** — it needs a POST, which the probe deliberately will not do.
-- **Carrier-direct** (UPS/USPS free tracking APIs) needs no ShipStation change at
-  all. `tracking_number` and `carrier` are already stored.
-
-**Open, undecided:**
-- The `delivered` source, above.
-- `processing` is written by **nothing, ever**, and cannot be sourced from V2 —
-  its `processing` bucket is the label lifecycle, not "the co-man is picking
-  this". It is removed from the UI pipeline but still legal in the DB CHECK.
-- `custom-request` has no rule-matchable home (no CustomField, no SKU). An
-  **Order Tag** is the only safe route. Unbuilt.
-
-**Read `sample-site/docs/SAMPLE_CENTRAL_STATUS.md` for the authoritative
-current state** — it is kept more current than this file.
+**Accounts and the roster.** `sales_reps` holds **28 reps** (25 Cortina + Caroline,
+David Landeck and Paul Hardy) — a lookup list, **not auth**. Logins are separate
+and far rarer: `user_role_seeds` + `user_profiles`. **Seed anyone before their
+first sign-in** — `COALESCE(seed.role, 'ops')` plus `ON CONFLICT (id) DO NOTHING`
+means an unseeded sign-in silently becomes internal `ops` and never self-corrects.
+Roster caveats (a shared mailbox under two names, three name/email mismatches, a
+source file that may include non-sales contacts) are in STATUS.md.
 
 ## Working agreement
 

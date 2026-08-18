@@ -60,8 +60,8 @@ select email, role from user_profiles order by role, email;
 ```
 - [ ] **Signing someone in does NOT put them in the salesperson picker.** That
   needs a `sales_reps` row — a separate, deliberate step. *(`user_profiles.active_in_dropdown`
-  used to control this; it drives nothing now.)* The picker holds 27 reps as of
-  Aug 11, 2026: 25 Cortina + Caroline and David Landeck. To add one:
+  used to control this; it drives nothing now.)* The picker holds 28 reps as of
+  Aug 14, 2026: 25 Cortina + Caroline, David Landeck and Paul Hardy. To add one:
 ```sql
 insert into sales_reps (full_name, email, company)
   values ('Their Name', 'someone@cortinafoods.com', 'Cortina')
@@ -74,6 +74,14 @@ on conflict (email) do update set active = true;
 never signed in provisions as **`ops`** if they aren't in `user_role_seeds` —
 broad internal access, granted silently. Seed DC testers with their intended
 role first if `ops` isn't what you want them to have.
+
+- [x] **Paul Hardy (President) — DONE Aug 14, 2026.** `paul@dirtycookie.com`,
+  role **`admin`** (he is meant to see everything, so not `ops` and not the
+  Sample-Central-only `cortina`), seeded by migration
+  `20260814120000_seed_paul_hardy.sql` and verified live. He has **not signed in
+  yet** — the seed is what makes that first sign-in safe. The same migration adds
+  his `sales_reps` row, since he places orders himself and the picker is a
+  separate table from auth.
 
 ### A.2 Seed the ship-to address book (optional but recommended)
 

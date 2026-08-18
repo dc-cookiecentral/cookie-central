@@ -1,7 +1,7 @@
 # Sample Central + ShipStation — Current State
 
-**As of August 13, 2026.** The authoritative answer to "what's built, what's live,
-what's next." Design *rationale* lives in `DECISIONS.md` (ADR-024→040);
+**As of August 17, 2026.** The authoritative answer to "what's built, what's live,
+what's next." Design *rationale* lives in `DECISIONS.md` (ADR-024→046);
 account-side setup lives in `SHIPSTATION_SETUP_CHECKLIST.md`. This file is state,
 not reasoning — if it disagrees with an ADR about *why*, the ADR wins. If it
 disagrees with an ADR about *what is true now*, this file wins.
@@ -12,7 +12,7 @@ disagrees with an ADR about *what is true now*, this file wins.
 
 | Layer | State |
 |---|---|
-| Schema | All migrations applied incl. `20260812190000` (fulfilled_by). **Remote ledger is NOT in sync** — see below |
+| Schema | All migrations applied incl. `20260814120000` (seed_paul_hardy). **Remote ledger is NOT in sync** — see below |
 | `shipstation-customstore` | Deployed. `verify_jwt=false`, Basic Auth. Export withholds exception statuses |
 | `shipstation-deliverby` | Deployed. 15-min cron. Resolves by cached `shipstation_order_id` — **3.9s**, no longer pages history |
 | `shipstation-probe` | Deployed. Read-only inspector; `shipment_no`, `export_hours`, `capabilities` |
@@ -31,7 +31,33 @@ disagrees with an ADR about *what is true now*, this file wins.
 | `CustomField1 / 2 / 3` | salesperson / account / manual temp override |
 | `ShippingMethod` | **not sent** — ShipStation owns service choice (ADR-031) |
 
-## Salesperson roster — loaded August 11
+## Accounts — who can sign in (August 14)
+
+Distinct from the roster below, and the distinction is the whole of ADR-042: a
+`sales_reps` row is a **name in a dropdown**, a `user_role_seeds` row is a
+**login**. Most people need exactly one of the two.
+
+| Account | Role | State |
+|---|---|---|
+| `systems@dirtycookie.com` | `admin` | canonical admin sign-in (ADR-020) |
+| `caroline@dirtycookie.com` | `admin` | seeded `20260806235500` |
+| `david@dirtycookie.com` | `admin` | seeded `20260601160000` |
+| `paul@dirtycookie.com` | `admin` | **Paul Hardy, President — seeded `20260814120000`, applied and verified live Aug 14.** Has not signed in yet |
+| `samplesmngmt@cortinafoods.com` | `cortina` | the one Cortina ordering account; seeded `20260811120000`, has not signed in yet |
+
+**Paul is `admin`, not `ops` or `cortina`, deliberately** — he is the President
+and is meant to see everything. `cortina` is gated to Sample Central alone by the
+InternalOnly wrapper, and `ops` reaches 34 tables but no admin surface. He also
+has a `sales_reps` row, because he places orders himself and the selected rep's
+address is what `<BillTo><Email>` notifies — the two rows are unrelated and both
+were needed.
+
+⚠️ **Seed before the magic link, every time.** `handle_new_auth_user` reads
+`COALESCE(seed.role, 'ops')` and inserts `ON CONFLICT (id) DO NOTHING`, so an
+unseeded first sign-in provisions as internal `ops` and **seeding afterwards does
+not fix it** — only a manual `UPDATE` does, once someone notices.
+
+## Salesperson roster — loaded August 11, extended August 14
 
 The Salesperson dropdown reads `sales_reps`, a plain lookup list with **no
 connection to auth** (ADR-042; migrations `20260807000500` /
@@ -39,10 +65,12 @@ connection to auth** (ADR-042; migrations `20260807000500` /
 login — modelling it as authentication was the earlier mistake, and it would
 have meant 25 dormant magic-link-capable accounts.
 
-**27 reps live: 25 Cortina + Caroline and David Landeck (Dirty Cookie).** The
-Cortina roster came from "Cortina OF Sales Mktg Innovations Supplier Partners
-List.xlsx" (Employee Directory, 26 rows) on Aug 11 and was applied via the
-Management API.
+**28 reps live: 25 Cortina + Caroline, David Landeck and Paul Hardy (Dirty
+Cookie).** The Cortina roster came from "Cortina OF Sales Mktg Innovations
+Supplier Partners List.xlsx" (Employee Directory, 26 rows) on Aug 11 and was
+applied via the Management API. Paul Hardy was added Aug 14
+(`20260814120000`) — he is the third Dirty Cookie entry and, unlike the Cortina
+25, also holds a login (see *Accounts* above).
 
 The selected rep's email is what ShipStation notifies:
 
@@ -53,7 +81,7 @@ The selected rep's email is what ShipStation notifies:
 | `CustomField1` | `sales_rep.full_name` |
 
 No app change was needed for any of that; `buildOrderXml` already emitted all
-three. Covered by two tests in the 115-case suite.
+three. Covered by two tests in the `_shared` suite (125 cases as of Aug 14).
 
 Three transforms were applied to the source file, all documented in the
 migration header:
@@ -82,7 +110,7 @@ shipment.
 ## Migration ledger drift
 
 `supabase_migrations.schema_migrations` tops out at **`20260805050000`** with 52
-rows registered. **11 repo migrations are applied to the database but
+rows registered. **12 repo migrations are applied to the database but
 unregistered**, because the no-Docker workflow runs SQL through the Management
 API, which executes without recording a history row:
 
@@ -93,6 +121,7 @@ API, which executes without recording a history row:
 20260807120000_seed_david_sales_rep       20260812170000_sample_settings
 20260810120000_seed_cortina_sales_reps    20260812190000_fulfilled_by
 20260811120000_seed_cortina_ordering_account
+20260814120000_seed_paul_hardy
 ```
 
 All of them replay cleanly — every one is `INSERT … ON CONFLICT DO UPDATE`,
@@ -294,8 +323,8 @@ Status remains **read-only** (ADR-032).
   Custom Store XML; the co-man keys the account in by hand.
 - **No sandbox.** Test mode labels orders but does not withhold them from the
   co-man's real queue.
-- **`shipstation-deliverby/index.ts` has no unit tests.** The 112-case suite
-  covers `_shared` only. A bug in the id-caching change (1,640 no-op UPDATEs)
+- **`shipstation-deliverby/index.ts` has no unit tests.** The suite covers
+  `_shared` only. A bug in the id-caching change (1,640 no-op UPDATEs)
   reached production and was caught by a live run, not by a test.
 
 ## Launch checklist

@@ -4,7 +4,7 @@
 **Source:** "Cortina OF Sales Mktg Innovations Supplier Partners List.xlsx" (Employee Directory, 26 rows), loaded into `sales_reps` as 25 rows on Aug 11.
 **Why it matters:** the Salesperson selected on a sample order supplies `<BillTo><Email>`, which is **the address ShipStation emails** when the shipment goes out. A wrong address means a rep silently never hears about their own sample; a wrong *name* only mislabels `CustomField1`. So the email questions below are the load-bearing ones.
 
-Current state: **27 reps live** — 25 Cortina + 2 Dirty Cookie (Caroline, David Landeck). Nothing here is blocking; the roster works as loaded. These are accuracy questions.
+Current state: **28 reps live** — 25 Cortina + 3 Dirty Cookie (Caroline, David Landeck, Paul Hardy). Nothing here is blocking; the roster works as loaded. These are accuracy questions.
 
 ---
 
