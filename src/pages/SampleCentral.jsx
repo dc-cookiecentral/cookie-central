@@ -638,7 +638,7 @@ function CartDrawer({
             )}
           </Section>
 
-          <Section title="Custom requests (optional)">
+          <Section title="Requested Benchtop">
             {customItems.map((c, i) => (
               // Keyed by identity, not index: deleting a line with index keys
               // hands the removed row's DOM node (and focus) to its neighbour.
