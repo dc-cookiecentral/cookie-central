@@ -7,9 +7,9 @@
 | Shahira Marei | CEO / Founder | shahira@dirtycookie.com | admin | Final sign-off |
 | Marc Bouthillette | COO | marc@dirtycookie.com | ops | Primary daily user, production planning |
 | David Landeck | Biz Exec | david@dirtycookie.com | admin | Payment visibility, strategy |
-| Paul | Biz Exec | paul@dirtycookie.com | admin | New hire, same access as David |
+| Paul Hardy | President | paul@dirtycookie.com | admin | Also a `sales_reps` entry — places sample orders himself (`20260814120000`) |
 | Maria Restrepo | Ops | TBD | ops | PO confirmation alongside Marc — onboarding later |
-| Caroline Friedrich | Consultant | systems@dirtycookie.com | admin | Builder, project lead — signs in via systems@ |
+| Caroline Friedrich | Consultant | caroline@dirtycookie.com | admin | Builder, project lead. Seeded `20260806235500`; also a `sales_reps` entry. **`systems@` is a separate system account, not her sign-in** |
 
 ## Cortina Foods (EDI Conduit / Financier)
 
@@ -37,13 +37,23 @@ select full_name, email, company from sales_reps where active order by full_name
 Two things worth knowing about those rows:
 
 - **They are not logins.** `sales_reps` is a lookup list with no link to
-  `auth.users` — a rep is a name to display and an email to notify. Only the
-  people in the tables above have accounts.
+  `auth.users` — a rep is a name to display and an email to notify. The only
+  accounts are the people in the table above plus the Cortina ordering account
+  below; the 25 Cortina reps have none.
 - **Six carry `@onefrozen.com` addresses** but are labelled `company = 'Cortina'`
   (One Frozen treated as part of the Cortina group).
 
-Caroline and David Landeck are also in `sales_reps`, as `company = 'Dirty Cookie'`
-— they are internal, and were added first as notification test recipients.
+Caroline, David Landeck and Paul Hardy are also in `sales_reps`, as
+`company = 'Dirty Cookie'` — they are internal. The first two were added as
+notification test recipients; Paul places sample orders himself. **28 active
+rows total: 25 Cortina + 3 Dirty Cookie.**
+
+**The one Cortina login is `samplesmngmt@cortinafoods.com`** ("Samples
+Management", role `cortina`, seeded `20260811120000`) — one person entering
+samples on behalf of all 25 reps. Seed anyone **before** their first sign-in:
+`handle_new_auth_user` uses `COALESCE(seed.role, 'ops')` with
+`ON CONFLICT (id) DO NOTHING`, so an unseeded first sign-in silently becomes
+internal `ops` and seeding afterwards does not correct it.
 
 ## Partners
 
@@ -60,7 +70,7 @@ Caroline and David Landeck are also in `sales_reps`, as `company = 'Dirty Cookie
 
 | Address | Purpose |
 |---------|---------|
-| systems@dirtycookie.com | Operational email — POs, BOLs, confirmations. CC'd on all PO threads. AI agent reads this. **Also the primary Cookie Central sign-in identity (admin role).** |
+| systems@dirtycookie.com | Operational email — POs, BOLs, confirmations. CC'd on all PO threads. AI agent reads this. **Also a Cookie Central admin account in its own right ("Systems (Dirty Cookie)") — a system identity, not any individual's sign-in.** |
 | orders@dirtycookie.com | Order-related CC |
 | support@dirtycookie.com | Maria's email for PO confirmations |
 | ap@branddetroit.com | Invoicing (BD Venture Studio) |
