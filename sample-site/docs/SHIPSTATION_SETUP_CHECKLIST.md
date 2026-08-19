@@ -28,7 +28,19 @@ launch has one list. (Origin: ADR-026 carried item b.)
 > Cortina salesperson is invited, and the hazard below is not self-correcting —
 > read it before sending that first magic link.
 
-### A.1 Seed every Cortina user BEFORE their first sign-in 🚦 blocking at Cortina onboarding
+### A.1 Seed every Cortina user BEFORE their first sign-in ✅ done — and it failed once, exactly as warned
+
+🔴 **THIS WENT WRONG FOR REAL ON AUG 19, 2026. Read this before creating any account.**
+An account was created by hand as `samplesmgmt@cortinafoods.com` — **no `n`** —
+while the seed is `samplesmngmt@cortinafoods.com`. The lookup is exact equality,
+so it missed; the account provisioned as internal **`ops`** and signed in.
+`InternalOnly` redirects only `cortina`, so it had purchase orders, payments,
+inventory, the Cookulator and the audit log. It owned no rows (every user-id
+column in the schema was checked) and was deleted; the correct account was
+re-created from the seed spelling and verified as `cortina`.
+**Copy-paste the address into the dashboard. Never retype it.** Two addresses one
+letter apart is the entire failure mode, and nothing in the system flags it —
+the wrong account simply works, with the wrong access.
 
 ⚠️ **Order matters and the mistake is not self-correcting.** The
 `handle_new_auth_user` trigger provisions a profile on first sign-in using
@@ -46,18 +58,36 @@ person entering samples on behalf of many reps; only that person needs a login.
 - [x] Insert the Cortina **ordering account** into `user_role_seeds` **first** —
   **DONE Aug 11, 2026.** The account is `samplesmngmt@cortinafoods.com`
   ("Samples Management"), role `cortina`, seeded by migration
-  `20260811120000_seed_cortina_ordering_account.sql` and verified live. It has
-  **not signed in yet**; the seed is what makes that first sign-in safe.
+  `20260811120000_seed_cortina_ordering_account.sql` and verified live.
+  **Provisioned and signed in Aug 19, 2026**, `role='cortina'` confirmed.
 ```sql
 insert into user_role_seeds (email, full_name, role, title) values
   ('samplesmngmt@cortinafoods.com', 'Samples Management', 'cortina', 'Cortina · sample ordering account')
 on conflict (email) do update set role = excluded.role;
 ```
-- [ ] Only then send the magic link (auth is magic-link only — there is no password path).
-- [ ] Verify after they sign in:
-```sql
-select email, role from user_profiles order by role, email;
+- [x] Only then provision the account. **Auth is no longer magic-link only** — the
+  Login page has a password mode, and password is currently the *recommended*
+  route: auth email is capped at **2 per hour, project-wide** (`rate_limit_email_sent = 2`,
+  no custom SMTP), which a shared inbox with a few retries exhausts immediately.
+  Dashboard **Add user → set password → Auto Confirm** sends no email at all and
+  fires the same trigger, so the seed still applies. To set a password on an
+  existing user the dashboard offers no direct field — use the Admin API:
+```bash
+curl -X PUT "https://<ref>.supabase.co/auth/v1/admin/users/<user-id>" \
+  -H "apikey: $SERVICE_ROLE" -H "Authorization: Bearer $SERVICE_ROLE" \
+  -H "Content-Type: application/json" -d '{"password":"…"}'
 ```
+- [x] Verify after provisioning — **this is the step that catches the spelling
+  bug**, and `ilike` is what makes a near-miss visible:
+```sql
+select u.email, p.role, p.full_name
+  from auth.users u join user_profiles p on p.id = u.id
+ where u.email ilike '%cortina%';
+```
+  Expect exactly **one** row at `role = cortina`. Two rows, or one reading `ops`,
+  means the address was mistyped: delete the auth user and re-create it from the
+  seed spelling rather than patching `user_profiles`, so the seed stays the
+  source of truth. (`user_profiles` cascades on delete.)
 - [ ] **Signing someone in does NOT put them in the salesperson picker.** That
   needs a `sales_reps` row — a separate, deliberate step. *(`user_profiles.active_in_dropdown`
   used to control this; it drives nothing now.)* The picker holds 28 reps as of
@@ -68,7 +98,7 @@ insert into sales_reps (full_name, email, company)
 on conflict (email) do update set active = true;
 ```
 
-*As of July 28, 2026: `user_profiles` holds 3 admins and **zero** `cortina` users.*
+*As of Aug 19, 2026: `user_profiles` holds 4 admins and **one** `cortina` user.*
 
 **Applies to the internal soft launch too.** Any Dirty Cookie tester who has
 never signed in provisions as **`ops`** if they aren't in `user_role_seeds` —
@@ -112,7 +142,7 @@ rules (§3), and whoever buys the label.
 - [ ] Confirm the store's **default shipping service** is sensible for an
       unspecified-service order, since every sample now arrives that way.
 
-## 3. Automation rules 🚦 LAUNCH-BLOCKING
+## 3. Automation rules ✅ done (rush rule + seasonal cold rule, Aug 19)
 Rule on **order tags / CustomFields — never on Item SKU** (SKU rules silently ignore multi-item orders):
 - [ ] `if order includes the cold-chain product tag` → refrigerated service + insulated box **+ upgrade to a next-day service** (this is how frozen products get expedited, overriding the requested tier — the app itself never expedites).
 - [ ] 🚨 **RE-POINT THE RUSH RULE (ADR-037).** Final mapping: **CF1 = salesperson, CF2 = account, CF3 = temp override**, and **rush lives in InternalNotes as the literal `RUSH`**. The July 28 rule reads `CustomField1 = rush` and matches nothing — rush orders notify no one, silently. Change it to **`Internal Notes` → `contains` → `RUSH`**. (Confirmed supported: ShipStation's *Automation Rules Criteria and Actions* lists Internal Notes with equal/contain/start/end/blank.) *Caroline owns this edit.*
@@ -121,7 +151,7 @@ Rule on **order tags / CustomFields — never on Item SKU** (SKU rules silently 
 - [x] ~~`if CustomField1 = rush` → team notification email~~ **Built July 28, 2026 — now mis-pointed, see above.** Confirms ShipStation's rule actions can send mail, so no app-side sender is needed. Note it fires on **import**, not on submit — so there is a lag of up to the import interval, and per ADR-027 rules run once on import, so a rush flag added after import will not re-trigger it.
 - [ ] (No service rule needed for speed — the app sends no `ShippingMethod` at all as of ADR-031.)
 
-## 4. Product tags — cold-chain (co-man owns this) 🚦 LAUNCH-BLOCKING — now live
+## 4. Product tags — cold-chain (co-man owns this) ✅ done; blanket seasonal rule added Aug 19
 - [ ] Create the product tag **`cold-chain`**.
 - [ ] Apply `cold-chain` to every **Raw** product record (the SKU→tag map). ShipStation auto-applies it to any imported order containing that product — the two-step indirection. Do **not** write SKU-based rules.
 - [ ] ⚠️ **This became blocking on July 28, 2026.** Migration `20260728120000` opened the catalog to all 27 products, including the **9 Raw** ones, so a salesperson can now build a frozen shipment (`derivedTemp` marks any cart with a Raw line as Cold). Until the tags and the §3 rule exist, a frozen sample imports as an ordinary ambient order and ships unrefrigerated — silently.
@@ -197,13 +227,45 @@ delete from sample_shipments where shipment_no like 'SMP-TEST-%';
 (`sample_shipment_items` cascades.) Cancel the matching orders in ShipStation too
 — deleting the row here does **not** retract an order already imported there.
 
-## 9. Go-live
+## 9. Go-live — ✅ COMPLETED August 19, 2026
 There is no sandbox→production swap (§0) — the store is already production, so
 go-live is about **clearing test state**, not migrating environments.
 
-- [ ] Import mapping + shipnotify writeback verified end-to-end.
-- [ ] **Remove `VITE_SAMPLE_TEST_MODE` (or set it to anything but `true`) and redeploy.** Confirm the amber banner is gone and a new order numbers as `SMP-####`.
-- [ ] Purge `SMP-TEST-%` rows (§8b) **and** cancel the matching orders in ShipStation.
-- [ ] Confirm §2 method-mapping, §3 automation rules and §4 product tags are all in place (they're per-store, and nothing warns you if they're missing).
-- [ ] Confirm every Cortina user resolves to `role='cortina'` (§A.1) — an unseeded user silently got internal `ops` access.
-- [ ] Note: **delivered** is not wired yet — the pipeline ends at *shipped* (no delivery polling).
+⚠️ **The order of these steps is load-bearing.** The shipment counter is derived
+from the table, so purging before the raised floor is *deployed* makes the next
+order reissue a burnt number — which lands on the old cancelled ShipStation order
+(it keys on OrderNumber) and re-imports it as `paid`, un-cancelling it into the
+co-man's queue. Run them in this order:
+
+- [x] Import mapping + shipnotify writeback verified end-to-end.
+- [x] **1. Raise `SHIPMENT_NO_FLOOR` above every burnt number and deploy it first.** 1200 → **1206** (PR #41). Verify in the artifact, not the build log.
+- [x] **2. Cancel the matching orders in ShipStation** (cancel, not delete — its UI offers no delete, and the records must remain).
+- [x] **3. Purge `SMP-TEST-%` rows** (§8b). Six orders, 26 items; `sample_shipment_items` cascades on the FK.
+- [x] **4. Remove `VITE_SAMPLE_TEST_MODE` from the Production scope and rebuild.** Kept on **Preview** deliberately — preview builds share this database and this store, so the prefix is what makes a branch-build order distinguishable.
+- [x] Confirm §2 method-mapping, §3 automation rules and §4 product tags are all in place (they're per-store, and nothing warns you if they're missing).
+- [x] Confirm every Cortina user resolves to `role='cortina'` (§A.1). **This one caught a real failure** — see §A.1.
+
+### Verifying the flip — do NOT grep for `SMP-TEST-`
+
+`TEST_MODE` is parsed at **runtime** (trim / lowercase / strip quotes / accept
+`true|1|yes|on`), so it is **not constant-folded** and the guarded strings stay in
+the bundle whether the flag is on or off. Grepping for `SMP-TEST-` shows a hit
+either way and reads as a failed flip.
+
+The reliable signal is the env literal Vite bakes in:
+
+```bash
+ASSET=$(curl -s https://cookiecentral.dirtycookie.com/ | grep -o 'assets/index-[A-Za-z0-9_-]*\.js' | head -1)
+curl -s "https://cookiecentral.dirtycookie.com/$ASSET" | grep -o 'const [A-Za-z$_]*="[^"]*"\.trim()\.toLowerCase()'
+```
+
+```
+const $S=""        → the variable never reached the build. Flag OFF. ✅
+const $S="true"    → arrived. Flag ON.
+const $S="true,"   → arrived malformed (the real July 28 2026 failure).
+```
+
+Verified Aug 19: bundle `index-B2OHn24_.js`, literal `""`, floor `1206`,
+`sample_shipments` empty.
+
+- [x] ~~Note: **delivered** is not wired yet~~ — superseded by **ADR-043**: delivery polling is built and deployed. The outstanding piece is a first *real* carrier `DE`, never yet observed.
