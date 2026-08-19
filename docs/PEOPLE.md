@@ -11,6 +11,22 @@
 | Maria Restrepo | Ops | TBD | ops | PO confirmation alongside Marc — onboarding later |
 | Caroline Friedrich | Consultant | caroline@dirtycookie.com | admin | Builder, project lead. Seeded `20260806235500`; also a `sales_reps` entry. **`systems@` is a separate system account, not her sign-in** |
 
+### Names used in the EOS tracker
+
+`/eos` owner fields are **free text, not account FKs** — a seat or Rock can name someone with no login. Mapping to the roster above:
+
+| EOS name | Roster entry |
+|----------|--------------|
+| Shahira | Shahira Marei |
+| Marc | Marc Bouthillette — the late-July L10 notes spelled him *Mark*; normalised in `20260818130000` |
+| Dave | David Landeck |
+| Paul / PJ | Paul Hardy |
+| Caroline / Caro | Caroline Friedrich — **both spellings are currently in use in the data**, not yet normalised |
+
+**Not in the roster above, and no Cookie Central account:** **Ellen** (finance — owns Cash Balance & Forecast and AP/AR on the scorecard; the July notes carry an open question about whether she should join the L10) and **Sean** (owns Rock 2, hiring the Biz Dev role).
+
+Named inside issues but not owners: Susie and Becky (Walmart CAPA / Bentonville requirements), Franz (Walmart system setup), Amit and Tim (Assemblers visit), John Lidestri. **Mark Cuban** appears in an issue title and is correctly spelled — unrelated to Marc Bouthillette.
+
 ## Cortina Foods (EDI Conduit / Financier)
 
 | Person | Role | Email | Notes |

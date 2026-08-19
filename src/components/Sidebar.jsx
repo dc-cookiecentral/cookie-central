@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 // elements that aren't routes.
 const NAV = [
   { to: '/weekly',     label: 'Weekly Report' },
+  { to: '/eos',        label: 'EOS' },
   { kind: 'divider' },
   { to: '/orders',     label: 'Product Orders' },
   { to: '/payments',   label: 'Payments' },
