@@ -1,7 +1,8 @@
 # Sample Central + ShipStation — Current State
 
-**As of August 17, 2026.** The authoritative answer to "what's built, what's live,
-what's next." Design *rationale* lives in `DECISIONS.md` (ADR-024→046);
+**As of August 19, 2026 — LAUNCHED.** Test mode is off, the table is empty and
+the first real order will number `SMP-1206`. The authoritative answer to "what's
+built, what's live, what's next." Design *rationale* lives in `DECISIONS.md` (ADR-024→046);
 account-side setup lives in `SHIPSTATION_SETUP_CHECKLIST.md`. This file is state,
 not reasoning — if it disagrees with an ADR about *why*, the ADR wins. If it
 disagrees with an ADR about *what is true now*, this file wins.
@@ -18,7 +19,8 @@ disagrees with an ADR about *what is true now*, this file wins.
 | `shipstation-probe` | Deployed. Read-only inspector; `shipment_no`, `export_hours`, `capabilities` |
 | Frontend | On `main`. **Vercel auto-deploys `main`** — merging is enough, no manual redeploy |
 | ShipStation Custom Store | Connected to the **production** store (no sandbox — ADR-029). One store id: `se-531764` |
-| Test mode | `VITE_SAMPLE_TEST_MODE=true` — orders are `SMP-TEST-####` but still reach the co-man's real queue |
+| Test mode | **OFF in Production since Aug 19.** The variable was removed from Vercel and the site rebuilt; the bundle's env literal reads `const $S=""`. Still set on **Preview** on purpose — preview builds share this database and this ShipStation store, so the prefix is what keeps a branch-build order distinguishable |
+| Shipment numbering | Floor **1206** (`SHIPMENT_NO_FLOOR`), deployed before the purge. Burnt: 1044–1061, 1100–1101, 1200–1205 |
 
 ## The field contract as built (ADR-037, ADR-038)
 
@@ -43,7 +45,7 @@ Distinct from the roster below, and the distinction is the whole of ADR-042: a
 | `caroline@dirtycookie.com` | `admin` | seeded `20260806235500` |
 | `david@dirtycookie.com` | `admin` | seeded `20260601160000` |
 | `paul@dirtycookie.com` | `admin` | **Paul Hardy, President — seeded `20260814120000`, applied and verified live Aug 14.** Has not signed in yet |
-| `samplesmngmt@cortinafoods.com` | `cortina` | the one Cortina ordering account; seeded `20260811120000`, has not signed in yet |
+| `samplesmngmt@cortinafoods.com` | `cortina` | the one Cortina ordering account; seeded `20260811120000`. **Provisioned and verified live Aug 19** — password sign-in, `role='cortina'` confirmed. Demonstrated to the Cortina team the same day |
 
 **Paul is `admin`, not `ops` or `cortina`, deliberately** — he is the President
 and is meant to see everything. `cortina` is gated to Sample Central alone by the
@@ -56,6 +58,16 @@ were needed.
 `COALESCE(seed.role, 'ops')` and inserts `ON CONFLICT (id) DO NOTHING`, so an
 unseeded first sign-in provisions as internal `ops` and **seeding afterwards does
 not fix it** — only a manual `UPDATE` does, once someone notices.
+
+⚠️ **This fired for real on Aug 19, 2026.** An account was created by hand as
+`samplesmgmt@cortinafoods.com` — **no `n`** — while the seed is
+`samplesmngmt@cortinafoods.com`. The lookup is exact equality, so it missed, the
+account provisioned as internal **`ops`**, and it signed in. `InternalOnly`
+redirects only `cortina`, so it reached POs, payments, inventory and the audit
+log. It owned no rows (checked every user-id column in the schema) and was
+deleted; the correct account was re-created from the seed spelling and verified.
+**Copy-paste the address into the dashboard — never retype it.** Two addresses
+one letter apart is the whole failure mode.
 
 ## Salesperson roster — loaded August 11, extended August 14
 
@@ -296,6 +308,39 @@ per-section columns; below `sm` they collapse to stacked label/value pairs.
 
 Status remains **read-only** (ADR-032).
 
+### Catalog SKU labels — August 19
+
+Catalog rows, cart lines and the pre-submit review sheet lead with the product
+**type**, with the SKU alone on the line beneath:
+
+```
+COOKIE SHOT | Gourmet - Chocolate Chip 2.0 oz - Baked
+CC-2OZ-BAK-G
+```
+
+`productType()` in `src/utils/sampleCentral.js` derives the three types from
+`form` + `prep` — **Raw is tested first**, because every raw row is
+`form=Stuffed` and reading `form` first would label all of them STUFFED COOKIE.
+The label is composed in the app, **not stored**: `products.description` is
+shared with the Spec Sheet and the `price_list` view, which belong to the other
+Cookie Central project.
+
+Two knock-on effects, both deliberate: the label is snapshotted into
+`sample_shipment_items.description` at submit, so it is also the ShipStation item
+`<Name>` and the Cortina order-sheet line (SKU codes and product tags are
+untouched, so no automation rule changes behaviour); and the drawer cart line and
+review list **wrap instead of truncating**, because the type prefix would
+otherwise clip the flavour off the front of the very list that exists to catch
+"the wrong cookie entirely".
+
+### The catalog is 12 SKUs, and that is correct
+
+`sample_eligible` is true on **12** products — 4 Gourmet Shot, 4 Classic
+Stuffed/Baked, 4 Classic Raw. No Gourmet stuffed, no 2.0 oz stuffed, no 1.5 oz
+shot. Note that migration `20260728120000` set the flag on all 27 and its verify
+comment still expects Baked 18/18 and Raw 9/9 — the catalog was narrowed after
+it. **Confirmed intentional by Caroline, Aug 19 2026.** Don't "fix" it back.
+
 ## Fixed August 6
 
 1. **Cancelled orders resurrected themselves.** `ssStatus()` had no entry for
@@ -321,8 +366,18 @@ Status remains **read-only** (ADR-032).
   the only safe route — unbuilt.
 - **Third-party billing is informational.** No billing elements exist in the
   Custom Store XML; the co-man keys the account in by hand.
-- **No sandbox.** Test mode labels orders but does not withhold them from the
-  co-man's real queue.
+- **No sandbox.** Test mode only ever labelled orders — it never withheld them
+  from the co-man's real queue. It is off in Production as of Aug 19 and remains
+  on for Preview builds, which share this database and this store.
+- **Auth email is capped at 2/hour, project-wide.** `rate_limit_email_sent = 2`
+  with no custom SMTP configured (`smtp_host` is null — Supabase's built-in
+  sender). Not per user, not per day: every magic link, confirmation and recovery
+  across the whole project shares it. Dashboard **Add user + password + Auto
+  Confirm** sends no email and sidesteps it. Custom SMTP is the real fix.
+- **`site_url` is `http://cookiecentral.dirtycookie.com/`** and the allow-list
+  carries `https://…/sample-central` but not the bare `https://` origin. Since
+  `signInWithEmail` passes `emailRedirectTo: window.location.origin`, an https
+  origin fails to match and falls back to the insecure site_url.
 - **`shipstation-deliverby/index.ts` has no unit tests.** The suite covers
   `_shared` only. A bug in the id-caching change (1,640 no-op UPDATEs)
   reached production and was caught by a live run, not by a test.
@@ -335,17 +390,26 @@ Status remains **read-only** (ADR-032).
 | §4 cold-chain product tags | **done** |
 | §1 store status mapping | verified correct as configured |
 | §A.1 Cortina user seeding | **done Aug 11.** The 25 reps needed no seeds — they are `sales_reps` rows, not logins. The single ordering account, `samplesmngmt@cortinafoods.com` ("Samples Management", role `cortina`), is seeded and verified (`20260811120000`). It has **not signed in yet**, which is precisely why the seed had to land first: an unseeded first sign-in provisions as internal `ops` and does not self-correct |
-| §9 go-live cleanup | **partly done.** `SMP-TEST-%` purged and labels voided Aug 11; counter floor raised 1100 → **1200** and deployed (burnt: 1044–1061, 1100–1101 — voiding a label does not free the number). **Still outstanding: clear `VITE_SAMPLE_TEST_MODE`** — it is still `true` in the live bundle |
-| §3/§4 seasonal cold rule | **outstanding, and now load-bearing** — the site asserts Cold on every new order (ADR-045); ShipStation will not act on it without a blanket rule |
+| §9 go-live cleanup | **done Aug 19.** Sequence was: raise the floor 1200 → **1206** and *deploy it*, cancel the ShipStation orders, purge the table, then remove `VITE_SAMPLE_TEST_MODE` and rebuild. Order matters — the counter derives from the table, so purging before the floor deploys reissues burnt numbers |
+| §3/§4 seasonal cold rule | **done Aug 19** — created in ShipStation by Caroline. ⚠️ Not verifiable from this repo: automation rules are not exposed by the V2 API and `shipstation-probe` reads orders only. If cold handling ever fails to fire, check the rule is keyed on **Raw SKU product tags**, not Item SKU — Item SKU rules are ignored on multi-item orders, and sample manifests usually are |
 
 ## Loose ends
 
 - ~~**`SMP-TEST-1053` is still forced to `delivered`**~~ — **resolved**, and
-  1100/1101 went with the Aug 11 purge too. The table now holds one row:
-  **`SMP-TEST-1200`**, placed Aug 12, `submitted`, awaiting the co-man's label.
-  Its export was verified clean via `shipstation-probe` `{"export_hours": 4}`.
+  1100/1101 went with the Aug 11 purge too.
+- ~~**`SMP-TEST-1200` is still live**~~ — **resolved Aug 19.** The go-live purge
+  removed all six test orders (1200–1205, 26 items; `sample_shipment_items`
+  cascades). `sample_shipments` is **empty**. 1201 and 1202 were **Cortina-fulfilled**
+  and had no ShipStation record at all, which is why the sweep only ever
+  `considered` three — it filters on `fulfilled_by = SHIPSTATION_FULFILLER`.
 - **The first real delivery is the outstanding proof** for ADR-043. Everything
-  else in that chain is built, deployed and unit-tested.
+  else in that chain is built, deployed and unit-tested. ⚠️ The purge removed
+  `SMP-TEST-1200`, the only order that ever carried a real tracking number, so
+  this now rides entirely on real traffic.
+- **Two cron runs returned no response** on Aug 19 (20:00 and 20:15 UTC:
+  `status_code` null in `net._http_response`), recovering unaided at 20:30. Watch
+  it. `cron.job_run_details` reports `succeeded` either way — `net._http_response`
+  is the table that tells the truth.
 - ~~**No ADR yet for the cancelled-resurrection loop.**~~ — **resolved.** It is
   **ADR-041**, which corrects ADR-040's "verified end to end".
 - **`DECISIONS.md` still says "Pending Shipments"** in ADR-030/032. Left alone

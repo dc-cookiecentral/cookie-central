@@ -5,7 +5,7 @@ Operational dashboard for Dirty Cookie's white-label retail business (Walmart + 
 **Stack:** React + Vite + Tailwind + Supabase + Vercel
 **Status:** Phase 1 demo shipped (June 2026); launch hardening in progress. All demo modules are live against Supabase, plus the `systems@` AI email agent (Day 10) and the Lot Traceability chain UI (Day 11). One ship blocker remains before Phase 1 is declared shipped: Cortina NetSuite real-file reconciliation (awaiting Harshita's export sample). See `docs/BUILD_PLAN.md`.
 
-**Also in this repo — a separate project.** The **Sample Ordering Site (Sample Central)**, where Cortina salespeople build sample shipments that flow to the co-manufacturer through ShipStation. Built July–August 2026 (ADR-025→045), deployed, and **not yet launched** — test mode is still on and there is no ShipStation sandbox, so test orders reach the co-man's real queue. It shares this repo, the Supabase project and some infrastructure, but its goals, data and decisions are separate; don't conflate the two.
+**Also in this repo — a separate project.** The **Sample Ordering Site (Sample Central)**, where Cortina salespeople build sample shipments that flow to the co-manufacturer through ShipStation. Built July–August 2026 (ADR-025→046) and **launched August 19, 2026** — test mode is off in Production, the table was purged, and the first real order numbers `SMP-1206`. There is still no ShipStation sandbox: **Preview** builds share the production database and store, so a branch-build order is a real order (kept `SMP-TEST-`-prefixed on purpose). It shares this repo, the Supabase project and some infrastructure, but its goals, data and decisions are separate; don't conflate the two.
 
 **Everything else in this README is the other project** — inventory, forecasting, POs, the weekly Retail Link reports and the **`systems@` Gmail agent** are *not* part of Sample Central. The one genuine overlap is `EDGE_CRON_BEARER` (Vault), the shared bearer for every pg_cron → Edge Function call in the repo. **Start any session on Sample Central from `sample-site/CLAUDE.md`**, and read `sample-site/docs/SAMPLE_CENTRAL_STATUS.md` for its current state.
 **Builder:** Caroline Friedrich
@@ -65,7 +65,7 @@ cookie-central/
 │   ├── BUILD_PLAN.md            # Phase 1-3 task breakdown + status
 │   ├── ARCHITECTURE.md          # Data flow + tech stack + roles
 │   ├── DATA_MODEL.md            # Tables, columns, relationships
-│   ├── DECISIONS.md             # Architecture decision records — ADR-026…045 are Sample Central, earlier ones are not
+│   ├── DECISIONS.md             # Architecture decision records — ADR-026…046 are Sample Central, earlier ones are not
 │   ├── RUNBOOK.md               # Launch operations: onboarding, troubleshooting, recovery
 │   └── PEOPLE.md                # Org chart + contacts + system emails
 ├── sample-site/                 # Sample Central — SEPARATE PROJECT, docs only (code stays put)
