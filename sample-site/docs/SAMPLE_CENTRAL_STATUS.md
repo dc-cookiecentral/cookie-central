@@ -44,8 +44,8 @@ Distinct from the roster below, and the distinction is the whole of ADR-042: a
 | `systems@dirtycookie.com` | `admin` | canonical admin sign-in (ADR-020) |
 | `caroline@dirtycookie.com` | `admin` | seeded `20260806235500` |
 | `david@dirtycookie.com` | `admin` | seeded `20260601160000` |
-| `paul@dirtycookie.com` | `admin` | **Paul Hardy, President — seeded `20260814120000`, applied and verified live Aug 14.** Has not signed in yet |
-| `samplesmngmt@cortinafoods.com` | `cortina` | the one Cortina ordering account; seeded `20260811120000`. **Provisioned and verified live Aug 19** — password sign-in, `role='cortina'` confirmed. Demonstrated to the Cortina team the same day |
+| `paul@dirtycookie.com` | `admin` | **Paul Hardy, President.** Auth user since Jun 2 2026 and signed in that day; `20260814120000` added his `sales_reps` row and re-asserted the seed. Role verified `admin` Aug 19 |
+| `samplesmngmt@cortinafoods.com` | `cortina` | the one Cortina ordering account; seeded `20260811120000`. **Provisioned Aug 19** with a password (not a magic link — see the 2/hour email cap), `role='cortina'` verified. ⚠️ `last_sign_in_at` is still **null** — nobody has signed in on this account yet |
 
 **Paul is `admin`, not `ops` or `cortina`, deliberately** — he is the President
 and is meant to see everything. `cortina` is gated to Sample Central alone by the
