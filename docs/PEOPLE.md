@@ -21,7 +21,7 @@
 | Marc | Marc Bouthillette — the late-July L10 notes spelled him *Mark*; normalised in `20260818130000` |
 | Dave | David Landeck |
 | Paul / PJ | Paul Hardy |
-| Caroline / Caro | Caroline Friedrich — **both spellings are currently in use in the data**, not yet normalised |
+| Caro | Caroline Friedrich — **`Caro` is the nickname and the name used throughout `/eos`** (normalised in `20260819120000`). Her full name stays here |
 
 **Not in the roster above, and no Cookie Central account:** **Ellen** (finance — owns Cash Balance & Forecast and AP/AR on the scorecard; the July notes carry an open question about whether she should join the L10) and **Sean** (owns Rock 2, hiring the Biz Dev role).
 

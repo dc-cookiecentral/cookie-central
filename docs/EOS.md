@@ -95,7 +95,7 @@ Seeded from `Dirty_Cookie_EOS_Foundation.pages` (the first EOS session) plus the
 - **10 measurables**, 4 primary (★): Weekly Sales, Sales Pipeline, Cash Balance & Forecast, Innovation Tracking. **No goals set** — baselining
 - **32 open issues + 17 parked**
 - **4 to-dos**
-- **1 meeting record** — week of 2026-07-27, held Tue Jul 28
+- **1 meeting record** — week of 2026-07-27, held Tue Jul 28 (Paul · Caro · Shahira · Dave · Marc)
 - **0 scorecard entries** — nothing has been logged yet
 
 ### On the source document
@@ -107,11 +107,16 @@ Two things read as gaps but are not:
 
 The extracted tables are exact — parsed from the `.pages` bundle's cell-offset maps, not from loose strings, which matters because a naive read shifts rows wherever a cell is empty and silently reassigns owners.
 
-### Open naming question
+### Names
 
-**Caroline vs Caro.** The foundation document uses `Caro` as the owner on four measurables and Rock 5; the issues seed and the July attendees use `Caroline`. Not yet normalised.
+Owner fields are **free text, not account FKs** — a seat or Rock can name someone with no login.
 
-`Mark` → `Marc` was normalised in `20260818130000`. Note that the issue **"Mark Cuban meeting debrief"** is a different person and is correctly spelled — any future normalisation must match exact array elements, not search text.
+Two normalisations, both done as follow-up `UPDATE` migrations rather than edits to the applied seed:
+
+- **`Caroline` → `Caro`** (`20260819120000`) — Caro is the nickname she goes by, and what the foundation document already used on four measurables and Rock 5. Five values across `eos_seats`, `eos_issues`, `eos_todos` and the July `eos_meetings` attendees. `docs/PEOPLE.md` keeps her full name; this is the owner field, not her identity.
+- **`Mark` → `Marc`** (`20260818130000`).
+
+Both match **whole values only, never substrings** — `Caro` is a prefix of `Caroline`, so a text-search rewrite would corrupt the rows already correct. Note that the issue **"Mark Cuban meeting debrief"** is a different person and is correctly spelled — any future normalisation must match exact array elements, not search text.
 
 Three EOS owners — **PJ**, **Sean**, **Ellen** — have no entry in `docs/PEOPLE.md`. Owner fields are free text and are not tied to accounts, so this is a documentation gap rather than a functional one.
 
