@@ -129,16 +129,17 @@ export const SHIPMENT_PREFIX = TEST_MODE ? 'SMP-TEST-' : 'SMP-';
 // Raise this floor whenever the table is purged again — the burnt range only
 // ever grows, because cancelling never frees a number.
 //
-// Burnt so far: 1044–1061 (Aug 6 purge) and 1100–1101 (Aug 11 purge, ahead of
-// the end-to-end delivery test). Voiding the LABELS does not free the numbers
-// either — a voided label leaves the order record behind, and it is the
-// OrderNumber that collides.
+// Burnt so far: 1044–1061 (Aug 6 purge), 1100–1101 (Aug 11 purge, ahead of
+// the end-to-end delivery test) and 1200–1205 (Aug 19 purge, at go-live —
+// the pre-launch demo and the Cortina walkthrough). Voiding the LABELS does
+// not free the numbers either — a voided label leaves the order record behind,
+// and it is the OrderNumber that collides.
 //
 // ⚠️ BUILD-TIME. This is baked into the bundle, exactly like
 // VITE_SAMPLE_TEST_MODE, so raising it here changes nothing until the site is
 // REDEPLOYED. Purging the table before that redeploy lands leaves the live
-// bundle issuing from 1100 — straight back onto the burnt numbers.
-const SHIPMENT_NO_FLOOR = 1200;
+// bundle issuing from 1200 — straight back onto the burnt numbers.
+const SHIPMENT_NO_FLOOR = 1206;
 
 export function nextShipmentNo(existing) {
   const max = existing.reduce((m, s) => {
