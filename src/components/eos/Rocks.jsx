@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useRocks, useRockQuarters, createIssue } from '../../hooks/useEos';
 import { quarterOf, currentScorecardWeek } from '../../utils/eosWeek';
-import { formatDate } from '../../utils/dates';
+import { formatDateOnly } from '../../utils/dates';
 import { SectionCard, InlineText, BTN, BTN_PK, StatusToggle } from './bits';
 
 // Rocks — the 3–7 things that must be done by quarter-end.
@@ -143,7 +143,7 @@ export default function Rocks({ canEdit }) {
                       className="border border-lt rounded px-1 py-0.5 text-[9px] w-full outline-none focus:border-pk"
                     />
                   ) : (
-                    <span className="text-[10px] text-md">{r.due_date ? formatDate(r.due_date) : '—'}</span>
+                    <span className="text-[10px] text-md">{r.due_date ? formatDateOnly(r.due_date) : '—'}</span>
                   )}
                 </td>
                 <td className="px-2 py-2.5 w-[220px]">
