@@ -13,6 +13,7 @@ import WeeklyReport from './pages/WeeklyReport';
 import Reference from './pages/Reference';
 import SpecSheet from './pages/SpecSheet';
 import SampleCentral from './pages/SampleCentral';
+import Eos from './pages/Eos';
 
 // Role gate (Task 2.7): the Cortina sales role sees ONLY Sample Central.
 // InternalOnly wraps every internal route; HomeRedirect sends each role to its
@@ -66,6 +67,7 @@ export default function App() {
                   <Route path="orders" element={<ProductOrders />} />
                   <Route path="orders/:poNumber" element={<PurchaseOrderDetail />} />
                   <Route path="weekly" element={<WeeklyReport />} />
+                  <Route path="eos" element={<Eos />} />
                   <Route path="payments" element={<Payments />} />
                   <Route path="payments/:poNumber" element={<PaymentDetail />} />
                   <Route path="inventory" element={<Inventory />} />

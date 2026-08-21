@@ -497,3 +497,88 @@ One row per systems@ message — dedupe key + classification + an audit trail of
 
 - **`get_secret(name)` / `set_secret(name, value)`** — `SECURITY DEFINER`, service-role only. Read/write Vault secrets (`ANTHROPIC_API_KEY`, `GMAIL_OAUTH_CLIENT_ID/SECRET`, `GMAIL_REFRESH_TOKEN`) from Edge Functions, since the `vault` schema isn't exposed to PostgREST. (migration `20260602120000`)
 - **`link_parked_po_emails(p_po_id, p_po_number)`** — `SECURITY DEFINER`, returns count. Attaches parked `po_emails` + their `po_lot_numbers` (po_id null) to a PO, matched by `po_number`. Called by the NetSuite parser per upserted PO so email extractions that arrived before the PO back-fill automatically. (migration `20260602160000`)
+
+## EOS tables (`/eos` — live)
+
+Seven tables backing the weekly Level 10 meeting. Design reasoning is in **ADR-047**; the project doc is `docs/EOS.md`. All seven carry `id uuid PK`, `created_at`, `updated_at` (trigger-maintained via `update_updated_at()`), and RLS.
+
+**RLS is uniform across all seven and stricter than the rest of this schema:** one `FOR ALL` policy granting `admin` / `finance` / `ops`, with no public read. The `cortina` role is excluded entirely.
+
+### `eos_seats` — Accountability Chart
+| Column | Type | Notes |
+|--------|------|-------|
+| `major_function` | text NOT NULL | Leadership / Sales / Operations / Finance. **Not** `function` — too close to reserved for PostgREST |
+| `seat` | text NOT NULL | Unique together with `major_function` |
+| `owner` | text | Free text, not an account FK. `OPEN` / `HIRE` / `TBD` render highlighted |
+| `accountable_for` | text | |
+| `gwc_get`, `gwc_want`, `gwc_capacity` | boolean | **Nullable** — unset is distinct from "no" |
+| `sort_order` | int | |
+| `active` | boolean | Removal is a soft delete |
+
+### `eos_rocks` — 90-day priorities
+| Column | Type | Notes |
+|--------|------|-------|
+| `quarter` | text NOT NULL | Label, e.g. `'2026-Q3'` |
+| `seq` | int | Number within the quarter |
+| `title`, `owner`, `notes` | text | |
+| `status` | text | `on_track` / `off_track` / `done` / `dropped` |
+| `due_date` | date | |
+
+Indexed on `(quarter, sort_order)`.
+
+### `eos_scorecard_metrics` — the measurables
+| Column | Type | Notes |
+|--------|------|-------|
+| `name` | text NOT NULL UNIQUE | |
+| `owner`, `notes` | text | |
+| `unit` | text | `number` / `usd` / `percent` / `days` / `ratio` |
+| `goal_value` | numeric | **Nullable, and NULL on every seeded row** — the team baselines 3–4 weeks before locking goals |
+| `goal_max` | numeric | Upper bound when `goal_direction = 'between'` |
+| `goal_direction` | text | `gte` / `lte` / `between` |
+| `is_primary` | boolean | The ★ metric — leadership reacts first |
+| `active`, `sort_order` | | |
+
+**There is no status column.** R/Y/G is derived at render by `scoreEntry()` in `src/utils/eosWeek.js`, so setting a goal re-scores all history.
+
+### `eos_scorecard_entries` — one number, one week
+| Column | Type | Notes |
+|--------|------|-------|
+| `metric_id` | uuid FK → `eos_scorecard_metrics` | ON DELETE CASCADE |
+| `week_start` | date NOT NULL | **CHECK `EXTRACT(ISODOW FROM week_start) = 1`** — always a Monday |
+| `value` | numeric | |
+| `note` | text | |
+| `entered_by` | uuid FK → `user_profiles` | |
+
+`UNIQUE (metric_id, week_start)`; indexed `(week_start DESC, metric_id)`. **Clearing a value deletes the row** rather than writing NULL, so "never entered" and "cleared" remain the same state.
+
+### `eos_issues` — the IDS list
+| Column | Type | Notes |
+|--------|------|-------|
+| `title`, `detail`, `owner` | text | |
+| `status` | text | `open` / `solved` / `dropped` / `parked` (`parked` = the Parking Lot) |
+| `raised_week`, `solved_week` | date | Mondays, so they join against the scorecard |
+| `solution` | text | |
+| `priority` | int | `CHECK (NULL OR BETWEEN 1 AND 3)` — the **weekly top-three IDS pick**, not a severity grade |
+
+Indexed on `(status, priority NULLS LAST, sort_order)`.
+
+### `eos_todos` — seven-day commitments
+| Column | Type | Notes |
+|--------|------|-------|
+| `title`, `owner` | text | |
+| `created_week`, `due_week` | date | |
+| `done` | boolean | `done_at` timestamptz alongside |
+| `issue_id` | uuid FK → `eos_issues` | ON DELETE SET NULL — preserves the trail from "we discussed this" to "someone did something" |
+
+Partial index on `(due_week) WHERE NOT done`.
+
+### `eos_meetings` — one row per week held
+| Column | Type | Notes |
+|--------|------|-------|
+| `week_start` | date NOT NULL **UNIQUE** | CHECKed to a Monday. Its presence is what marks a week "held" |
+| `held_on` | date | The actual Tuesday |
+| `rating` | numeric | `CHECK (NULL OR BETWEEN 1 AND 10)` — the standard EOS close-out |
+| `attendees` | text[] NOT NULL DEFAULT `'{}'` | |
+| `notes` | text | |
+
+**The V/TO is not in this schema.** The 5-year, 3-year and 1-year plans, core values and core focus live in `src/data/eosVto.js` — annual prose, not meeting data. See ADR-047.

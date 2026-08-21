@@ -275,15 +275,35 @@ Anything jumping → click through to the page that owns it.
 
 ## 7 · Migrations
 
-Apply order is **filename order**. The current list lives in `supabase/migrations/`. To apply a new one:
+Apply order is **filename order**. The current list lives in `supabase/migrations/` — 68 files as of Aug 19, 2026, ledger in sync.
+
+### Preferred: `db push`
+
+**This works, despite what the docs used to say.** `db push` connects straight to the remote database; Docker is needed only for the *local* stack (`supabase start`, `db diff`, `db reset`).
 
 1. Author the file as `YYYYMMDDhhmmss_short_name.sql`
-2. Commit + push (does not auto-deploy; GitHub integration off)
-3. Paste contents into **Supabase SQL editor → Run**
+2. `npx supabase db push --dry-run` — **always.** It prints exactly which files would apply. If that list is longer than what you just wrote, stop and read the drift section below
+3. `npx supabase db push --yes`
 4. Verify with the matching `SELECT` (each migration has one in its header or tail)
-5. If it fails halfway, fix and rerun — DDL inside the editor is transactional unless explicitly committed
+5. Commit + push to git (does not auto-deploy; GitHub integration off)
 
-NEVER edit a migration that has been applied. If a fix is needed, write a follow-up that adjusts the earlier one's effect (DROP CONSTRAINT + ADD CONSTRAINT, etc.).
+### Fallback: by hand
+
+Pasting into **Supabase SQL editor → Run**, or POSTing to the Management API's `/database/query`, both still work — fine for a one-off or when the CLI is unavailable. DDL in the editor is transactional unless explicitly committed, so a half-failed migration rolls back.
+
+⚠️ **Neither writes a `supabase_migrations.schema_migrations` row.** Anything applied by hand is invisible to the CLI, and a later `db push` will try to **replay** it. This is how 12 unregistered Sample Central migrations accumulated by Aug 14.
+
+### Repairing ledger drift
+
+When `db push --dry-run` lists files you know are already live:
+
+1. **Verify they really are.** Do not take the folder's word for it. Probe the live schema — `GET /rest/v1/<table>?select=<column>&limit=1` with the anon key returns `200` if a table and column exist, `404`/`400` if not. Confirm dropped columns are actually gone
+2. `npx supabase migration repair --status applied <version> <version> ...` — corrects the ledger only; **runs no SQL**
+3. `db push --dry-run` again to confirm the list has narrowed to just your new file
+
+Worked example in **ADR-047**.
+
+NEVER edit a migration that has been applied. If a fix is needed, write a follow-up that adjusts the earlier one's effect (DROP CONSTRAINT + ADD CONSTRAINT, etc.). The EOS `Mark` → `Marc` correction in `20260818130000` is a small example — a follow-up `UPDATE`, not an edit to the seed.
 
 ---
 

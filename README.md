@@ -7,6 +7,8 @@ Operational dashboard for Dirty Cookie's white-label retail business (Walmart + 
 
 **Also in this repo — a separate project.** The **Sample Ordering Site (Sample Central)**, where Cortina salespeople build sample shipments that flow to the co-manufacturer through ShipStation. Built July–August 2026 (ADR-025→046) and **launched August 19, 2026** — test mode is off in Production, the table was purged, and the first real order numbers `SMP-1206`. There is still no ShipStation sandbox: **Preview** builds share the production database and store, so a branch-build order is a real order (kept `SMP-TEST-`-prefixed on purpose). It shares this repo, the Supabase project and some infrastructure, but its goals, data and decisions are separate; don't conflate the two.
 
+**Also in this repo — a third project.** The **EOS Tracker** at `/eos`, the standing record for the weekly Level 10 leadership meeting (Scorecard, Issues, Rocks, To-Dos, Accountability Chart, V/TO). Built August 17–19, 2026 (ADR-047). **Its database is live; its frontend is built but not deployed** — all three projects ship from one Vite bundle, so merging it redeploys Sample Central. See `docs/EOS.md`.
+
 **Everything else in this README is the other project** — inventory, forecasting, POs, the weekly Retail Link reports and the **`systems@` Gmail agent** are *not* part of Sample Central. The one genuine overlap is `EDGE_CRON_BEARER` (Vault), the shared bearer for every pg_cron → Edge Function call in the repo. **Start any session on Sample Central from `sample-site/CLAUDE.md`**, and read `sample-site/docs/SAMPLE_CENTRAL_STATUS.md` for its current state.
 **Builder:** Caroline Friedrich
 **Users:** Shahira (CEO/admin), Marc (COO/ops), David + Paul (Biz Exec/admin), Maria (Ops — onboarding later)
@@ -28,9 +30,15 @@ The login form supports both **magic link** (default) and **password** (fallback
 
 ## Migrations
 
-Migrations live in `supabase/migrations/` — **63 files as of August 13, 2026**. The Supabase + GitHub integration is currently disabled; migrations are applied **manually**, either by pasting into the SQL editor or by POSTing to the Management API's `/database/query` endpoint (there is no Docker locally, so `supabase db push` and the local stack are unavailable — see `sample-site/CLAUDE.md`).
+Migrations live in `supabase/migrations/` — **68 files as of August 19, 2026**. The Supabase + GitHub integration is currently disabled, so nothing auto-applies on push.
 
-⚠️ **The Management API executes SQL without writing a `supabase_migrations.schema_migrations` row**, so the remote ledger lags the folder. As of Aug 11 it tops out at `20260805050000` (52 registered) with **11** later migrations applied but unregistered. All five replay cleanly (`ON CONFLICT` or `IF EXISTS` throughout), but check before assuming the ledger reflects reality.
+**`npx supabase db push` works.** This README previously said it did not, on the grounds that there is no Docker locally. That was wrong: `db push` connects straight to the remote database and needs Docker only for the *local* stack (`supabase start`, `db diff`, `db reset`). Use `db push --dry-run` first — it prints exactly which files would apply — then `db push --yes`. Pasting into the SQL editor and POSTing to the Management API's `/database/query` endpoint both still work and are still fine for one-offs.
+
+✅ **The ledger is in sync as of August 19, 2026** — all 68 files registered.
+
+⚠️ **It drifts whenever you apply SQL by hand.** The Management API and the SQL editor execute statements without writing a `supabase_migrations.schema_migrations` row, so anything applied that way is invisible to the CLI — and a later `db push` will try to **replay** it. This had accumulated to 12 unregistered Sample Central migrations before being repaired (ADR-047).
+
+If it happens again: verify the objects actually exist in the live schema first, then `npx supabase migration repair --status applied <version> ...` to correct the ledger without re-running the SQL. Always `db push --dry-run` before `db push` — the dry run is what shows you the replay list.
 
 The list below covers Phase 1 only (through June 2). The July–August files are the Sample Central / ShipStation extension track — see `sample-site/docs/SAMPLE_CENTRAL_STATUS.md`.
 

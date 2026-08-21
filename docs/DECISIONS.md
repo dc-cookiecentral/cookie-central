@@ -739,3 +739,30 @@ The label lives in one place, `BENCHTOP_LABEL` in `_shared/shipstation.ts`, so t
 **Verified.** 127 `Deno.test` cases pass (3 new, 2 rewritten), including one asserting the label never appears on a catalog or collateral line. Confirmed **on the deployed function, not just in tests** — the live export of `SMP-TEST-1200` returned `Requested Benchtop: CUSTOM REQUEST (proj 123)` with its product and collateral lines unchanged.
 
 **Sequencing note, recorded because it is a standing hazard.** `functions deploy` bypasses git, so the export half went live before the PR carrying it was merged; the UI half waits on Vercel. Between those two moments the systems disagree about what this section is called. That is the normal shape of every change here that spans both halves — the export is always the one that ships first.
+
+## ADR-047: The EOS tracker keys everything to a Monday week, and derives status rather than storing it
+
+**Date:** August 19, 2026
+**Status:** **Database live** (5 migrations, ledger in sync). **Frontend built but not deployed** — see the sequencing note below. Third project in this repo; full doc at `docs/EOS.md`.
+
+**Decision.** A `/eos` page backed by seven `eos_*` tables holds the weekly Level 10 meeting: Scorecard, Issues, Rocks, To-Dos, Accountability Chart, and a read-only V/TO. Four sub-decisions carry the weight.
+
+**1 · Weeks are Mondays; the meeting is Tuesday.** Every date column that means "a week" — `eos_scorecard_entries.week_start`, `eos_meetings.week_start`, `eos_issues.raised_week` — is a Monday, CHECKed as `EXTRACT(ISODOW FROM week_start) = 1` on the two that are identity. The L10 actually happens Tuesday, and the obvious alternative was to store the meeting date. That would have made the meeting day part of the primary key, so moving the meeting — which teams do — would orphan history or require a backfill. The Tuesday is derived for display by `meetingDateFor()`. **Meeting day is presentation; the week is identity.**
+
+**2 · Red/Yellow/Green is computed at render, never stored.** The foundation document instructs the team to baseline 3–4 weeks of real numbers *before* locking weekly goals, so `goal_value` is **nullable and ships NULL on all ten measurables**. A `status` column would have had to record something during that window, and whatever it recorded would be wrong: judging weeks against a goal that did not exist yet. Deriving it means setting a goal in week 5 **re-scores weeks 1–4 instantly**, which is exactly what baselining is for. `scoreEntry()` returns `none` when there is no goal — a first-class state, not a null-check afterthought.
+
+**3 · Clearing a value deletes the row.** `saveEntry` issues a DELETE rather than writing NULL. Two distinct nulls — "nobody has entered this yet" and "someone entered it and wiped it" — would otherwise have to be told apart by every consumer, and no consumer wants the difference. Sparklines skip gaps instead of plotting zero, which is the failure mode that makes a trend line lie.
+
+**4 · The V/TO renders from a code file; everything else is in the database.** `src/data/eosVto.js` holds the 5-year, 3-year and 1-year plans, core values and core focus. These are prose set in an annual planning session, revised roughly never, and read by everyone — a table plus edit UI plus RLS would be machinery for a document that changes once a year. The Accountability Chart, Rocks and Issues *are* in the database because they change inside the meeting itself.
+
+**Why the whole thing exists.** The point is not record-keeping, it is the chain: an off-goal measurable is one ⚑ click from being an Issue carrying its week and its number, and a solved Issue is one click from being a seven-day To-Do with an owner. A tracker that only stores numbers produces meetings that only discuss numbers.
+
+**RLS is stricter here than anywhere else in this schema.** One `FOR ALL` policy per table granting `admin` / `finance` / `ops`, with **no** `USING (true)` read. Most tables in this repo let any signed-in user read. EOS content is revenue targets, unfilled seats, hiring plans and issues named after individual people; the `cortina` sales login must not see it. The seven-table loop applies the same policy to all of them so none can be missed.
+
+**`priority` is the top-three IDS pick, not a severity grade.** `CHECK (priority IS NULL OR priority BETWEEN 1 AND 3)`. When the late-July notes arrived carrying their own P0/P1 labels, those went into the **title text** rather than this column — overloading it would have broken the weekly ranking it exists for.
+
+**The Accountability Chart column is `major_function`, not `function`.** Non-reserved in Postgres and it would work, but it is too close to the edge for a column read through PostgREST.
+
+**⚠️ Sequencing — the frontend is deliberately unshipped.** Cookie Central, Sample Central and EOS ship from **one Vercel project and one Vite bundle**. Merging EOS to `main` rebuilds and redeploys Sample Central, and this was built during Sample Central's launch week. So the halves were split the opposite way round from ADR-046's: **the database went first and the UI waits**, which is safe only because the tables are inert until something queries them. The one shared file is `AppSwitcher.jsx` — when the UI does ship, internal users gain a fourth waffle tile; `cortina` is filtered by `internalOnly: true`.
+
+**Ledger repair, recorded because it changed a standing hazard.** Applying these needed `supabase db push`, which the README and RUNBOOK both described as unavailable for want of Docker. **That was wrong** — `db push` talks to the remote database directly and needs Docker only for the local stack (`supabase start`). Before pushing, the 12 Sample Central migrations that the Management API had applied without registering were verified present in the live schema (every table and column probed through PostgREST, plus the one dropped column confirmed gone) and then `migration repair --status applied` corrected the ledger. **The remote ledger and `supabase/migrations/` are now in sync at 68 files** — the drift warning that stood in the README since Aug 11 is resolved.
