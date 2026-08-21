@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 // Waffle app-switcher. Role-aware: the Cortina sales role sees ONLY Sample
 // Central; internal roles (admin/finance/ops) see every app. Apps map to routes.
 const APPS = [
-  { key: 'dashboard', name: 'Cookie Central', tag: 'Ops dashboard', icon: '📦', bg: '#E7EEF5', to: '/orders', internalOnly: true },
+  { key: 'dashboard', name: 'Cookie Central', tag: 'Ops dashboard', icon: '📦', bg: '#E7EEF5', to: '/inventory', internalOnly: true },
   { key: 'spec', name: 'Spec Sheet', tag: 'BOM engine', icon: '📊', bg: '#F3ECDD', to: '/spec-sheet', internalOnly: true },
   { key: 'sample', name: 'Sample Central', tag: 'Cortina sampling', icon: '🍪', bg: '#FDF0F6', to: '/sample-central', internalOnly: false },
   { key: 'eos', name: 'EOS', tag: 'Level 10 tracker', icon: '🎯', bg: '#EDE9FE', to: '/eos', internalOnly: true },
