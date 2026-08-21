@@ -199,7 +199,7 @@ status fields route each value (samples are free — no "paid"). Configure:
 1. **No import acknowledgment** — the pull model gives no per-order confirmation the order reached ShipStation. The only signal is ShipStation hitting our GET export.
 2. **`delivered` not wired** — the pipeline ends at **shipped**; no carrier delivery-event polling yet.
 3. **Silent import rejection** — a malformed `State` (non-2-char) or `PostalCode` can be dropped by ShipStation with no error; the export validates and skips+logs bad rows.
-4. **Automation rules are launch-blocking** — the cold-chain, custom-request and rush behaviours don't exist until configured in ShipStation (see the setup checklist). Service mapping is no longer needed: the app sends no `ShippingMethod` (ADR-031).
+4. ~~**Automation rules are launch-blocking**~~ — **configured Aug 19 2026** (rush rule + the blanket seasonal cold rule). The cold-chain, custom-request and rush behaviours do not exist until they are set up in ShipStation, and nothing warns you if they are missing. ⚠️ Not verifiable from this repo: automation rules are not exposed by the V2 API. `custom-request` still has no rule-matchable home. Service mapping is no longer needed: the app sends no `ShippingMethod` (ADR-031).
 5. **Unmatched shipnotify** is logged, not dropped.
 
 ---
@@ -208,12 +208,12 @@ status fields route each value (samples are free — no "paid"). Configure:
 - Basic-Auth creds (`SHIPSTATION_CUSTOMSTORE_USER` / `_PASS`) in Supabase Vault via `set_secret`; reuse the `get_secret`/`set_secret` RPCs (ADR-021). Never in `VITE_*`.
 
 ## Account-side setup
-See **`SHIPSTATION_SETUP_CHECKLIST.md`** — connect the Custom Store, set the endpoint URL + Basic-Auth creds, map statuses + shipping methods, have the co-man tag Raw SKUs `cold-chain`, set the automation rules (launch-blocking), the email BCC, and the packing-slip token.
+See **`SHIPSTATION_SETUP_CHECKLIST.md`** — connect the Custom Store, set the endpoint URL + Basic-Auth creds, map statuses, have the co-man tag Raw SKUs `cold-chain`, set the automation rules, the email BCC, and the packing-slip token. **All of this was completed for the Aug 19 2026 launch**; the checklist now records the as-run go-live sequence in §9.
 
 ## Build order (Phase 3)
 1. ~~Sandbox/duplicate ShipStation store first.~~ **Abandoned** — the behaviours needing test aren't available in a sandbox store. Work runs against production, with app-side **test mode** (`VITE_SAMPLE_TEST_MODE`) as the safety net. See ADR-029 and checklist §8b.
 2. Lock the tag/field contract with the co-man (ADR-028).
 3. Edge Function `shipstation-customstore` (export + shipnotify; Basic Auth via Vault) + the writeback migration.
-4. Account-side config (setup checklist), incl. the launch-blocking automation rules + method-mapping.
+4. Account-side config (setup checklist), incl. the automation rules + method-mapping — **done**.
 5. Verify via a **manual store import** — confirm a sample order lands with fields mapped (no label purchase needed for the mapping test).
-6. Internal stress test under **test mode** (`VITE_SAMPLE_TEST_MODE=true`), then clear the flag and purge `SMP-TEST-%` on both sides at go-live — checklist §8b/§9.
+6. ~~Internal stress test under **test mode**, then clear the flag and purge `SMP-TEST-%` on both sides at go-live~~ — **done Aug 19 2026.** The order is load-bearing: raise `SHIPMENT_NO_FLOOR` **and deploy it** before purging, or the reset counter reissues a burnt number onto a cancelled ShipStation order. Checklist §9 has the as-run sequence.

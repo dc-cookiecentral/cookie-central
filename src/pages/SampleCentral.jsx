@@ -9,7 +9,7 @@ import {
   saveShipmentIssue, setSetting,
 } from '../hooks/useSampleCentral';
 import {
-  flavorFamily, derivedTemp, effectiveTemp, tempReason, groupCatalog,
+  productLabel, derivedTemp, effectiveTemp, tempReason, groupCatalog,
   SHIP_STATUSES, EXCEPTION_STATUSES, OPEN_STATUSES, RECENT_DAYS,
   COLLATERAL_OPTIONS, RUSH_NOTICE,
   pipelineIndex, deliverByState,
@@ -135,7 +135,7 @@ export default function SampleCentral() {
     if (submitting) return;
     setSubmitting(true);
     const items = [
-      ...cartLines.map((l) => ({ product_code: l.code, custom: false, qty: l.qty, description: l.product?.description || l.code })),
+      ...cartLines.map((l) => ({ product_code: l.code, custom: false, qty: l.qty, description: productLabel(l.product) || l.code })),
       ...customItems.filter((c) => c.spec).map((c) => ({ product_code: null, custom: true, custom_spec: c.spec, project_no: c.project_no || null, qty: Number(c.qty) || 1, description: c.spec })),
     ];
     const h = {
@@ -345,8 +345,8 @@ function ConfirmSubmit({ rep, addr, header, cartLines, customItems, temp, submit
               {cartLines.map((l) => (
                 <li key={l.code} className="flex gap-2 items-baseline">
                   <span className="w-9 shrink-0 text-right font-mono text-[12px] font-bold text-dk">{l.qty}×</span>
-                  <span className="min-w-0 truncate text-[12px] font-normal text-gr" title={l.product?.description || l.code}>
-                    {l.product?.description || l.code}
+                  <span className="min-w-0 break-words text-[12px] font-normal text-gr" title={productLabel(l.product) || l.code}>
+                    {productLabel(l.product) || l.code}
                   </span>
                 </li>
               ))}
@@ -489,20 +489,20 @@ function CatalogView({ data, filter, setFilter, cart, setQty, addToCart }) {
                 {t.items.map((p) => (
                   <div key={p.code} className="flex items-center gap-3 px-3 py-2">
                     <div className="flex-1 min-w-0">
-                      <div className="text-[15px] font-semibold text-dk truncate">{flavorFamily(p)}</div>
-                      <div className="text-[14px] text-gr truncate">{p.description} · <span className="font-mono">{p.code}</span></div>
+                      <div className="text-[15px] font-semibold text-dk truncate" title={productLabel(p)}>{productLabel(p)}</div>
+                      <div className="text-[14px] font-mono text-gr truncate">{p.code}</div>
                     </div>
-                    <div className="text-[14px] text-gr whitespace-nowrap">{p.dough_oz}oz · 1 cookie · EA</div>
+                    <div className="text-[14px] text-gr whitespace-nowrap">1 cookie · EA</div>
                     <div className="flex items-center gap-1">
-                      <button aria-label={`One fewer ${p.description || p.code}`} onClick={() => setQty(p.code, (cart[p.code] || 0) - 1)} className="w-6 h-6 rounded border border-lt text-gr hover:text-pk relative after:absolute after:-inset-[10px] after:content-['']">−</button>
+                      <button aria-label={`One fewer ${productLabel(p) || p.code}`} onClick={() => setQty(p.code, (cart[p.code] || 0) - 1)} className="w-6 h-6 rounded border border-lt text-gr hover:text-pk relative after:absolute after:-inset-[10px] after:content-['']">−</button>
                       <input
                         type="number" inputMode="numeric" min="0" max={MAX_LINE_QTY}
-                        aria-label={`Quantity — ${p.description || p.code}`}
+                        aria-label={`Quantity — ${productLabel(p) || p.code}`}
                         value={cart[p.code] || 0}
                         onChange={(e) => setQty(p.code, parseInt(e.target.value, 10) || 0)}
                         className="w-14 text-center border border-lt rounded text-[14px] py-0.5"
                       />
-                      <button aria-label={`One more ${p.description || p.code}`} onClick={() => addToCart(p.code)} className="w-6 h-6 rounded border border-pk bg-pk text-white relative after:absolute after:-inset-[10px] after:content-['']">+</button>
+                      <button aria-label={`One more ${productLabel(p) || p.code}`} onClick={() => addToCart(p.code)} className="w-6 h-6 rounded border border-pk bg-pk text-white relative after:absolute after:-inset-[10px] after:content-['']">+</button>
                     </div>
                   </div>
                 ))}
@@ -626,11 +626,11 @@ function CartDrawer({
               <div className="divide-y divide-bg">
                 {cartLines.map((l) => (
                   <div key={l.code} className="flex items-center gap-2 py-1.5">
-                    <div className="flex-1 min-w-0"><div className="text-[14px] font-semibold text-dk truncate">{l.product?.description || l.code}</div><div className="text-[12px] font-mono text-gr">{l.code}</div></div>
+                    <div className="flex-1 min-w-0"><div className="text-[14px] font-semibold text-dk break-words">{productLabel(l.product) || l.code}</div><div className="text-[12px] font-mono text-gr">{l.code}</div></div>
                     <div className="flex items-center gap-1">
-                      <button aria-label={`One fewer ${l.product?.description || l.code}`} onClick={() => setQty(l.code, l.qty - 1)} className="w-5 h-5 rounded border border-lt text-gr relative after:absolute after:-inset-[10px] after:content-['']">−</button>
+                      <button aria-label={`One fewer ${productLabel(l.product) || l.code}`} onClick={() => setQty(l.code, l.qty - 1)} className="w-5 h-5 rounded border border-lt text-gr relative after:absolute after:-inset-[10px] after:content-['']">−</button>
                       <span className="text-[14px] w-6 text-center">{l.qty}</span>
-                      <button aria-label={`One more ${l.product?.description || l.code}`} onClick={() => setQty(l.code, l.qty + 1)} className="w-5 h-5 rounded border border-pk bg-pk text-white relative after:absolute after:-inset-[10px] after:content-['']">+</button>
+                      <button aria-label={`One more ${productLabel(l.product) || l.code}`} onClick={() => setQty(l.code, l.qty + 1)} className="w-5 h-5 rounded border border-pk bg-pk text-white relative after:absolute after:-inset-[10px] after:content-['']">+</button>
                     </div>
                   </div>
                 ))}

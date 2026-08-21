@@ -5,6 +5,36 @@
 export const flavorFamily = (p) =>
   p.stuffing ? `${p.outer_cookie} / ${p.stuffing}` : p.outer_cookie || p.description;
 
+// What the product actually IS, which the SKU code does not say. `form` carries
+// Shot vs Stuffed and `prep` carries Baked vs Raw, but a raw item is never
+// pulled, packed or eaten as a cookie — it is frozen dough — so prep wins and
+// collapses the two axes into the three things a salesperson has to tell apart:
+//   form=Shot                -> COOKIE SHOT
+//   form=Stuffed, prep=Baked -> STUFFED COOKIE
+//   prep=Raw   (any form)    -> RAW DOUGH BALL
+// Raw is checked first deliberately: every raw row in the catalog is
+// form=Stuffed today, and reading `form` first would label all nine of them
+// STUFFED COOKIE.
+export function productType(p) {
+  if (String(p?.prep || '').toLowerCase() === 'raw') return 'RAW DOUGH BALL';
+  return String(p?.form || '').toLowerCase() === 'shot' ? 'COOKIE SHOT' : 'STUFFED COOKIE';
+}
+
+// The headline for a catalog row, a cart line and the ShipStation item Name:
+//   `COOKIE SHOT | Gourmet - Chocolate Chip 2.0 oz - Baked`
+// Type leads, in caps, because it is what a code like CC-2OZ-BAK-G hides —
+// nothing in that string says "shot", and it differs from the stuffed
+// CCH-2OZ-BAK-C by one letter and by an entire product. Size is always one
+// decimal (`2.0 oz`, not `2oz`) so the column reads as a column.
+// Not stored: `products.description` is shared with the Spec Sheet and the
+// price_list view, which are a different Cookie Central project.
+export function productLabel(p) {
+  if (!p) return '';
+  const oz = p.dough_oz == null || p.dough_oz === '' ? '' : `${Number(p.dough_oz).toFixed(1)} oz`;
+  const detail = [p.tier, [flavorFamily(p), oz].filter(Boolean).join(' '), p.prep].filter(Boolean).join(' - ');
+  return detail ? `${productType(p)} | ${detail}` : productType(p);
+}
+
 // Ship temp derives from the cart: any Raw (frozen) item => Cold chain, else Ambient.
 // `coldSeason` forces Cold regardless of contents. Through the summer every
 // sample ships cold whatever is in the box, and without this the badge tells the
@@ -99,16 +129,17 @@ export const SHIPMENT_PREFIX = TEST_MODE ? 'SMP-TEST-' : 'SMP-';
 // Raise this floor whenever the table is purged again — the burnt range only
 // ever grows, because cancelling never frees a number.
 //
-// Burnt so far: 1044–1061 (Aug 6 purge) and 1100–1101 (Aug 11 purge, ahead of
-// the end-to-end delivery test). Voiding the LABELS does not free the numbers
-// either — a voided label leaves the order record behind, and it is the
-// OrderNumber that collides.
+// Burnt so far: 1044–1061 (Aug 6 purge), 1100–1101 (Aug 11 purge, ahead of
+// the end-to-end delivery test) and 1200–1205 (Aug 19 purge, at go-live —
+// the pre-launch demo and the Cortina walkthrough). Voiding the LABELS does
+// not free the numbers either — a voided label leaves the order record behind,
+// and it is the OrderNumber that collides.
 //
 // ⚠️ BUILD-TIME. This is baked into the bundle, exactly like
 // VITE_SAMPLE_TEST_MODE, so raising it here changes nothing until the site is
 // REDEPLOYED. Purging the table before that redeploy lands leaves the live
-// bundle issuing from 1100 — straight back onto the burnt numbers.
-const SHIPMENT_NO_FLOOR = 1200;
+// bundle issuing from 1200 — straight back onto the burnt numbers.
+const SHIPMENT_NO_FLOOR = 1206;
 
 export function nextShipmentNo(existing) {
   const max = existing.reduce((m, s) => {

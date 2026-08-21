@@ -11,7 +11,7 @@
 
   **August 12–13 (ADR-043→045):** `delivered` finally has a source — not the `/v2/tracking` path everyone had written off as a billing wall, but the per-label track endpoint that was available all along (ADR-043). Orders split into **two fulfilment routes**, with Cortina-shipped samples withheld from the export by an allowlist and confirmed by hand via a copy/print order sheet (ADR-044). The site took ownership of data ShipStation has no field for — a per-shipment **issue log** and a live **cold-chain season** switch (ADR-045) — plus a monthly report spanning both routes. A pre-onboarding UX/PM review shipped in three batches: a confirm step on the unrecallable submit, keyboard-accessible dialogs, address retirement, and a four-step type scale.
 
-  **Not yet launched.** `VITE_SAMPLE_TEST_MODE` is still on, and there is no sandbox — test orders reach the co-man's real queue. Go-live cleanup is §9 of the checklist. **Current state + next steps: `sample-site/docs/SAMPLE_CENTRAL_STATUS.md`**, which is kept more current than this file.
+  **Launched August 19, 2026 (ADR-046).** Test mode is off in Production, the test orders were cancelled and purged, the counter floor is 1206, and the seasonal cold rule exists in ShipStation. The first real order numbers `SMP-1206`. There is still no sandbox — **Preview** builds share the production database and store, so a branch-build order is a real order (kept `SMP-TEST-`-prefixed deliberately). **Current state + next steps: `sample-site/docs/SAMPLE_CENTRAL_STATUS.md`**, which is kept more current than this file.
 - **Phase 2 — Operations:** upcoming (weeks following Phase 1 ship).
 - **Phase 3 — Financials + Rollout:** late summer 2026.
 

@@ -98,10 +98,16 @@ label says **"Deliver by"**. Deliberate — renaming the column wasn't worth the
   re-triggers them.
 - **Never write rules on Item SKU** — ShipStation ignores them on any multi-item
   order, and sample manifests are usually multi-item. Use product tags or order tags.
-- **No sandbox.** This is the production store. `VITE_SAMPLE_TEST_MODE=true`
-  prefixes `SMP-TEST-####` but does **not** withhold orders from the co-man's
-  real queue. **It is still `true` in the live bundle** — clearing it is an open
-  go-live item, not a done one.
+- **No sandbox.** This is the production store. `VITE_SAMPLE_TEST_MODE` only
+  ever prefixed `SMP-TEST-####`; it never withheld orders from the co-man's real
+  queue. **Off in Production since Aug 19**, still on for **Preview** — and
+  preview builds share this database and this store, so a branch-build order is
+  a real order with a distinguishable number.
+- **An unseeded first sign-in silently becomes internal `ops`, and this has
+  happened.** Aug 19: an account created as `samplesmgmt@…` (no `n`) missed the
+  `samplesmngmt@…` seed by one letter, provisioned as `ops`, and signed in with
+  access to POs, payments and inventory. Copy-paste addresses into the dashboard;
+  never retype them.
 - **V2's shipments API does not reflect ORDER status.** `shipment_status` is the
   label lifecycle (`pending`/`processing`/`label_purchased`/`on_hold`/`cancelled`).
   An order in **Awaiting Payment** has no shipment record at all (ADR-039); an
@@ -181,12 +187,19 @@ and the rebuilt **Shipments** tab.
 `on_hold` **cannot** work without a V1 key, and `processing` is written by
 nothing, ever.
 
-**The three things actually outstanding:**
+**LAUNCHED Aug 19 2026.** Test mode is off in Production, `sample_shipments` is
+empty, the counter floor is **1206**, and the seasonal cold rule exists in
+ShipStation. The first real order will number `SMP-1206`.
+
+**What is actually outstanding:**
 - **A real carrier `DE` has never been observed.** Every layer is proven; the
-  first genuine delivery is the remaining proof for ADR-043.
-- **`VITE_SAMPLE_TEST_MODE` is still `true`** in the live bundle.
-- **No blanket seasonal cold rule in ShipStation** — the site asserts Cold on
-  every new order and ShipStation does not act on it, so the two disagree today.
+  first genuine delivery is the remaining proof for ADR-043. The go-live purge
+  removed the only order that ever had a tracking number, so this now rides on
+  real traffic.
+- **No custom SMTP.** Auth email is capped at **2/hour, project-wide** — magic
+  link is unusable for anyone added later. Today's one Cortina account is
+  password-provisioned, so nothing is blocked. `site_url` is also `http://` and
+  the allow-list lacks the bare `https://` origin; fix both together.
 
 **Accounts and the roster.** `sales_reps` holds **28 reps** (25 Cortina + Caroline,
 David Landeck and Paul Hardy) — a lookup list, **not auth**. Logins are separate
