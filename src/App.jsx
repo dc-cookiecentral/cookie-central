@@ -36,6 +36,7 @@ import EomSnapshot from './pages/EomSnapshot';
 import LotTrace from './pages/LotTrace';
 import AuditLog from './pages/AuditLog';
 import PageStub from './pages/PageStub';
+import DemandPlanner from './pages/DemandPlanner';
 
 export default function App() {
   return (
@@ -67,6 +68,7 @@ export default function App() {
                 <Route index element={<HomeRedirect />} />
                 {/* Internal-only routes — Cortina role is redirected to Sample Central */}
                 <Route element={<InternalOnly />}>
+                  <Route path="demand-planner" element={<DemandPlanner />} />
                   <Route path="orders" element={<ProductOrders />} />
                   <Route path="orders/:poNumber" element={<PurchaseOrderDetail />} />
                   <Route path="weekly" element={<WeeklyReport />} />
