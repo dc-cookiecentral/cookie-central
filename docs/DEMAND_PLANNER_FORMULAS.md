@@ -287,10 +287,66 @@ POS-by-SKU-by-week. If the same reports arrive by another route (a manual
 download, a different mailbox, a Retail Link pull), the parsing work is largely
 done and only the transport changes.
 
-**⚠️ UNANSWERED, and it blocks everything: where does Retail Link POS come from
-now?** Nothing in the repo currently supplies it. Until that is decided, the
-schema cannot be designed sensibly — the grain of the feed determines the grain
-of the tables.
+## ✅ ANSWERED: Retail Link data arrives as an uploaded CSV / XLSX
+
+**Caroline, Aug 23 2026.** Not email, not an API — a **file upload**. That is a
+better fit than the email path would have been, and most of the machinery
+already exists.
+
+**`UploadPipeline` is already generic.** `src/components/UploadPipeline.jsx`
+does drag-drop → parse → preview → confirm → import, logs to `upload_log`
+(`upload_type`, `filename`, `row_count`, `status`, `errors`, `source`), and is
+driven entirely by a **parser config object**. Adding a feed means writing that
+config, not building an upload flow. The shape, from
+`src/parsers/ingredientMaster.js`:
+
+```js
+export default {
+  type: 'ingredient_master',          // → upload_log.upload_type
+  label: 'Ingredient Master',
+  accept: '.csv,.xlsx,.xls',
+  columns: [ { key, label }, … ],     // preview table
+  parse(rows),                        // 2D array → { records, errors }
+  importRecords(records, { uploadId, client }),
+  // parseFile(file) instead of parse(rows) ONLY for multi-sheet workbooks
+  // that need workbook structure the row-flattener destroys (see production.js)
+};
+```
+
+`parseFile` in `src/utils/csvParser.js` already handles **both CSV and XLSX** →
+rows, so the format question is settled by existing code.
+
+**And the Walmart parsers already take exactly that input.**
+`src/parsers/weeklyAttachments.js` exports six pure functions that accept
+`rows` — a single sheet as a 2D array from SheetJS `sheet_to_json(ws, {header: 1})`
+— which is precisely what `parseFile` produces. They were written transport-
+agnostic on purpose; its header says the caller "does the XLSX.read + sheet
+extraction". **The retirement of the weekly email cost the transport, not the
+parsing.**
+
+| Parser | Likely role for the demand planner |
+|---|---|
+| `parseSalesSummary` | the closest thing in the repo to **POS by SKU by week** — start here |
+| `parseScorecard` | weekly KPI roll-up |
+| `parseSupplyPlan` | forward order plan; possibly the forecast feed |
+| `parseOtifDetail` | per-PO OTIF, feeds fill rate / service level |
+| `parseMarkdown`, `parseItemMaster` | markdowns and item master |
+
+⚠️ **They have never been run against a real file in this pipeline** — only
+"the dev test". Verify each against an actual export before trusting its column
+matching, which is by name (exact then prefix) and tolerant of stray spaces.
+
+### What still needs deciding
+
+- **Which report(s) actually carry POS by SKU by week**, and at what grain.
+  `parseSalesSummary` is the candidate; confirm against a real file.
+- **The forecast feed's grain.** The engine needs **snapshot week × target
+  week** per row, because accuracy scoring uses the latest snapshot strictly
+  *before* the target. A file carrying only "the current forecast" cannot
+  reproduce `mape` — if the export is a single forward view, either snapshot it
+  on upload (stamp the upload week as `snap`) or accept that MAPE stays blank.
+- **Re-upload semantics.** Weekly files overlap. `importRecords` should upsert
+  on `(week, sku)` rather than insert, or a re-upload doubles a week.
 
 The Walmart *forecast* feed is a separate question with the same status. The
 engine wants a **snapshot week and a target week per row**, because accuracy
@@ -326,13 +382,16 @@ Learned the hard way; all of them cost real time at least once.
 
 ## Suggested first moves
 
-1. **Settle where POS data comes from now that the weekly email is retired.**
-   This is a business/process question, not a code one, and nothing downstream
-   can be designed without it.
-2. Read `src/parsers/weeklyAttachments.js` regardless — it records the real
-   column names and shapes of the Walmart BI reports, and most of that survives
-   a change of transport.
-3. Decide the forecast feed's grain (snapshot × target) before designing tables.
-4. Only then write migrations. Keep `SEED` in place until a real feed renders
-   the same numbers — it is the reference implementation, and the 23-check
-   validation is against it.
+1. **Get one real Retail Link export** and run `parseSalesSummary` against it.
+   That single step answers the grain question, validates the column matching,
+   and tells you whether POS by SKU by week is actually in there.
+2. Design the tables from what that file actually contains — not from `SEED`'s
+   shape, which is what the engine wants, not what the source provides. The gap
+   between the two is the real work.
+3. Settle the forecast feed's grain (snapshot × target) before writing
+   migrations; stamping the upload week as `snap` is the fallback.
+4. Write the parser config, point `UploadPipeline` at it from `/uploads`, and
+   make `importRecords` upsert rather than insert.
+5. Keep `SEED` in place until a live feed reproduces the same numbers — it is
+   the reference implementation, and the 23-check validation is against it.
+   Swap the data source last, not first.
