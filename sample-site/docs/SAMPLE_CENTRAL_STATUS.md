@@ -129,14 +129,19 @@ behind by exactly the count applied that way.
 - **Aug 11 → Aug 19:** 12 Sample Central migrations unregistered. Repaired in
   ADR-047 — each was probed in the live schema to confirm it was genuinely
   applied, then `migration repair --status applied` corrected the ledger.
-- **Aug 23 (now):** **69 registered, 72 files, 3 unregistered** — the three EOS
-  migrations applied that day (`20260823120000`, `20260823140000`,
-  `20260823160000`). All guarded and replay cleanly.
+- **Aug 23:** drifted by 3 — the EOS migrations applied that day through the
+  Management API (`20260823120000`, `20260823140000`, `20260823160000`) —
+  **and repaired the same day.**
+
+**Current state: 72 registered, 72 files, 0 unregistered. In sync.**
 
 ✅ **`supabase db push` works.** This doc and the README both used to say it did
 not, for want of Docker. That was wrong: `db push` talks to the remote database
-directly, and Docker is only needed for the local stack. Either push the three
-or repair them.
+directly, and Docker is only needed for the local stack (`supabase start`).
+
+**Use `migration repair --status applied <version>` when the SQL is already
+applied** — it registers without re-running. `db push` re-runs, which is safe
+for guarded migrations but is not the same operation. Both fix the ledger.
 
 ⚠️ Never read `migration list` as the truth about what is applied.
 

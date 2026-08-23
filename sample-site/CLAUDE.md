@@ -64,9 +64,15 @@ drift that stood from Aug 11 was repaired on **Aug 19** (`migration repair
 --status applied`, after probing the live schema to confirm each was genuinely
 present).
 
-**As of Aug 23 2026: 69 registered, 72 files, 3 unregistered** — the three EOS
-migrations from that day. Either `db push` them or `migration repair` them; do
-not read `migration list` as the truth about what is applied.
+**As of Aug 23 2026 the ledger is IN SYNC: 72 registered, 72 files, 0
+unregistered.** It drifted by 3 earlier the same day — the EOS migrations applied
+through the Management API — and was repaired with
+`npx supabase migration repair --status applied <version>`, which marks a
+migration registered **without re-running it**. That is the right tool when the
+SQL is already applied; `db push` would re-run it (safe here, since all are
+guarded, but it is not what happened).
+
+Do not read `migration list` as the truth about what is applied.
 
 **If you apply SQL through the Management API, you have just created drift.**
 Register it afterwards or write it down.
