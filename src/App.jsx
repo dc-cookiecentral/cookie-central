@@ -23,9 +23,12 @@ function InternalOnly() {
   if (profile?.role === 'cortina') return <Navigate to="/sample-central" replace />;
   return <Outlet />;
 }
+// `/orders` is hidden pending its rework (see Sidebar NAV), so it can no longer
+// be the internal landing page — the app would open on a page deliberately kept
+// out of the nav. Inventory is the substantive page that survived the cull.
 function HomeRedirect() {
   const { profile } = useAuth();
-  return <Navigate to={profile?.role === 'cortina' ? '/sample-central' : '/orders'} replace />;
+  return <Navigate to={profile?.role === 'cortina' ? '/sample-central' : '/inventory'} replace />;
 }
 import Payments from './pages/Payments';
 import PaymentDetail from './pages/PaymentDetail';

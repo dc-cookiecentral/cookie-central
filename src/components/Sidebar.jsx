@@ -4,16 +4,23 @@ import { useAuth } from '../contexts/AuthContext';
 
 // Mirrors prototype `navItems` order. `kind: 'divider' | 'spacer'` mark visual
 // elements that aren't routes.
+//
+// `hidden: true` keeps an item out of the sidebar while leaving its ROUTE
+// intact — the page is still reachable by typing the URL, which is what makes
+// it possible to rework one without shipping it to everyone first. Hidden
+// pending a rework (Aug 21 2026): Weekly Report, Product Orders, Payments,
+// EOM Snapshot, Lot Trace. Delete the flag to bring one back; nothing else
+// needs changing.
 const NAV = [
-  { to: '/weekly',     label: 'Weekly Report' },
+  { to: '/weekly',     label: 'Weekly Report', hidden: true },
   { to: '/eos',        label: 'EOS' },
   { kind: 'divider' },
-  { to: '/orders',     label: 'Product Orders' },
-  { to: '/payments',   label: 'Payments' },
+  { to: '/orders',     label: 'Product Orders', hidden: true },
+  { to: '/payments',   label: 'Payments', hidden: true },
   { kind: 'divider' },
   { to: '/inventory',  label: 'Inventory' },
-  { to: '/snapshot',   label: 'EOM Snapshot' },
-  { to: '/trace',      label: 'Lot Trace' },
+  { to: '/snapshot',   label: 'EOM Snapshot', hidden: true },
+  { to: '/trace',      label: 'Lot Trace', hidden: true },
   { kind: 'divider' },
   { to: '/spec-sheet',    label: 'Spec Sheet' },
   { to: '/sample-central', label: 'Sample Central' },
@@ -24,13 +31,26 @@ const NAV = [
   { to: '/uploads',    label: 'Uploads' },
 ];
 
+// Drop hidden items, then collapse the dividers they orphaned — hiding four of
+// the six routed items leaves runs of adjacent rules and a leading one, which
+// read as broken chrome rather than as deliberate grouping.
+function visibleNav(items) {
+  const kept = items.filter((n) => !n.hidden);
+  return kept.filter((n, i) => {
+    if (n.kind !== 'divider') return true;
+    const prev = kept.slice(0, i).reverse().find((x) => x.kind !== 'spacer');
+    const next = kept.slice(i + 1).find((x) => x.kind !== 'spacer');
+    return prev && next && prev.kind !== 'divider';
+  });
+}
+
 // The Cortina sales role sees only Sample Central (role gate, Task 2.7).
 const CORTINA_NAV = [{ to: '/sample-central', label: 'Sample Central' }];
 
 export default function Sidebar() {
   const { uom, setUom, options } = useUOM();
   const { profile, signOut } = useAuth();
-  const nav = profile?.role === 'cortina' ? CORTINA_NAV : NAV;
+  const nav = profile?.role === 'cortina' ? CORTINA_NAV : visibleNav(NAV);
 
   return (
     <aside className="w-[190px] bg-dk min-h-screen flex flex-col flex-shrink-0">
