@@ -4,7 +4,7 @@ import {
   weekLabel, weekSpanLabel, addWeeks, currentScorecardWeek, meetingDateFor,
   scoreEntry, formatMetricValue, formatGoal,
 } from '../../utils/eosWeek';
-import { formatDateOnly } from '../../utils/dates';
+import { formatDate } from '../../utils/dates';
 import { SCORE_CELL, SCORE_DOT, Sparkline, InlineText, SectionCard, BTN, BTN_PK } from './bits';
 
 // The Weekly Scorecard — the reason this page exists.
@@ -244,7 +244,7 @@ export default function Scorecard({ canEdit }) {
           <div>
             <div className="text-[13px] font-bold text-dk leading-tight">Week of {weekSpanLabel(endWeek)}</div>
             <div className="text-[9px] text-gr">
-              Level 10 · {formatDateOnly(meetingDateFor(endWeek))}
+              Level 10 · {formatDate(meetingDateFor(endWeek))}
               {isLatest ? ' · most recent closed week' : ''}
             </div>
           </div>

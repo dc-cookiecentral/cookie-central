@@ -1,9 +1,28 @@
 // Date helpers shared across PO views.
 
+// A Postgres `date` column arrives as a bare 'YYYY-MM-DD' with no timezone, and
+// `new Date('2026-08-18')` parses that as UTC midnight — which is the PREVIOUS
+// evening anywhere west of Greenwich. Everything downstream then reads a day
+// early: labels render the wrong date, and `daysUntil` returns one less than the
+// truth, so a PO due today reports as a day late.
+//
+// The match is anchored at BOTH ends on purpose. A prefix match would also catch
+// the leading date of an ISO timestamp ('2026-08-18T14:30:00Z') and strip the
+// time and zone off a value that was already correct. Only a bare date, alone,
+// takes the local-midnight branch; everything else goes through `new Date`,
+// which is right for anything carrying a zone.
+const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function toDate(value) {
+  if (value instanceof Date) return new Date(value.getTime());
+  const m = DATE_ONLY.exec(String(value).trim());
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(value);
+}
+
 // Whole days from today until `date` (negative = past). null-safe.
 export function daysUntil(date) {
   if (!date) return null;
-  const d = new Date(date);
+  const d = toDate(date);
   if (isNaN(d)) return null;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -12,24 +31,10 @@ export function daysUntil(date) {
 }
 
 // Short display: "May 28". Returns "--" for empty.
+// Correct for both a bare 'YYYY-MM-DD' and a real timestamp — see `toDate`.
 export function formatDate(date) {
   if (!date) return '--';
-  const d = new Date(date);
-  if (isNaN(d)) return '--';
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
-
-// Short display for a DATE-ONLY value: "May 28". Returns "--" for empty.
-//
-// Use this, not formatDate, for anything backed by a Postgres `date` column or
-// any bare 'YYYY-MM-DD' string. `new Date('2026-08-18')` parses as UTC midnight,
-// which is the *previous evening* anywhere west of Greenwich — so the date
-// renders a day early. Parsing the parts by hand pins it to local midnight.
-// `formatDate` stays correct for real timestamps, which carry a zone.
-export function formatDateOnly(value) {
-  if (!value) return '--';
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value));
-  const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(value);
+  const d = toDate(date);
   if (isNaN(d)) return '--';
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }

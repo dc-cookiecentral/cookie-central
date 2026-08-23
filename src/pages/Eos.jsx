@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { L10_AGENDA, L10_TOTAL_MINUTES } from '../data/eosVto';
 import { currentScorecardWeek, weekSpanLabel, meetingDateFor } from '../utils/eosWeek';
-import { formatDateOnly } from '../utils/dates';
+import { formatDate } from '../utils/dates';
 import Scorecard from '../components/eos/Scorecard';
 import Vto from '../components/eos/Vto';
 import AccountabilityChart from '../components/eos/AccountabilityChart';
@@ -80,7 +80,7 @@ export default function Eos() {
         <div>
           <h1 className="text-xl font-bold text-dk leading-tight">EOS</h1>
           <div className="text-[10px] text-gr">
-            Entrepreneurial Operating System · next Level 10 {formatDateOnly(meetingDateFor(week))} ·
+            Entrepreneurial Operating System · next Level 10 {formatDate(meetingDateFor(week))} ·
             {' '}reviewing the week of {weekSpanLabel(week)}
           </div>
         </div>
