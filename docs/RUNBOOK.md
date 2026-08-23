@@ -3,6 +3,8 @@
 Procedures and known-fixes for keeping Cookie Central live. Read top-to-bottom once; reach back when something specific breaks. Symptoms in **bold** mean "ctrl-F this when it happens."
 
 > ⚠️ **Five pages are hidden from the sidebar pending rework** (Aug 21 2026): Weekly Report, Product Orders, Payments, EOM Snapshot and Lot Trace. Procedures below that reference `/orders`, `/payments`, `/weekly`, `/snapshot` or `/trace` **still work — the routes are intact**, they are just not linked in the nav. Type the URL. The flag is `hidden: true` in `src/components/Sidebar.jsx`; deleting it brings a page back. Internal users now land on `/inventory` rather than `/orders`.
+>
+> **Product Orders and the BOL flow return around Oct 2026** with substantial changes, and the **`systems@` email reader is being kept** — the daily poll stays on and §9's procedures remain current. **The weekly Bentonville Retail Link email is retired**, so §9 steps specific to `weekly_report` mail no longer fire; `weekly_reports` stopped at 2026-07-06.
 
 ---
 

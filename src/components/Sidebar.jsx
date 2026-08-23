@@ -11,6 +11,18 @@ import { useAuth } from '../contexts/AuthContext';
 // pending a rework (Aug 21 2026): Weekly Report, Product Orders, Payments,
 // EOM Snapshot, Lot Trace. Delete the flag to bring one back; nothing else
 // needs changing.
+//
+// ⚠️ HIDDEN IS NOT DEAD — DO NOT DELETE THESE PAGES OR THEIR PARSERS.
+// Product Orders and the BOL flow are expected back around Oct 2026 with
+// substantial changes (Caroline, Aug 23). The `systems@` email reader that
+// feeds them is being KEPT, so `useGmail`, `InboxCard` and
+// `src/parsers/cortinaPO.js` all stay live and in use.
+//
+// The one genuinely retired feed is the **weekly Bentonville Retail Link
+// email** — `weekly_reports` stopped at 2026-07-06. Its parsers
+// (`parsers/weeklyEmail.js`, `parsers/weeklyAttachments.js`) are kept anyway:
+// they encode the real column names of the Walmart BI exports, which survive a
+// change of transport.
 const NAV = [
   { to: '/weekly',     label: 'Weekly Report', hidden: true },
   { to: '/eos',        label: 'EOS' },
