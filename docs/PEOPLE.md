@@ -25,7 +25,9 @@
 
 **Ellen** — finance. Owns **5 of the 13 measurables** (Weekly Sales, Sales Pipeline, Cash Balance & Forecast, AR, AP), the largest share of anyone. **Seeded Aug 23 2026** as `ellen@dirtycookie.com`, role **`finance`** — least privilege that still carries EOS write, since every EOS table allows `admin`/`finance`/`ops`. She has **not signed in yet**. Her surname is still not recorded anywhere; `full_name` is just "Ellen" and should be corrected when someone knows it.
 
-**Still no account and no seed:** **Sean** (owns Rock 2, hiring the Biz Dev role) and **Serina** (a seat owner). Neither owns a measurable, so neither blocks the scorecard. ⚠️ If either signs in before being seeded, `COALESCE(seed.role,'ops')` provisions them as internal **`ops`** and `ON CONFLICT DO NOTHING` means it never self-corrects — the failure that hit the Cortina account on Aug 19. Seed first, always.
+**Deliberately NOT seeded — Caroline, Aug 23 2026:** **Sean** (owns Rock 2, hiring the Biz Dev role) and **Serina** (a seat owner). They appear as owners inside `/eos` because those fields are free text, but neither owns a measurable and neither is getting a Cookie Central login. **This is a decision, not an oversight — don't seed them.**
+
+⚠️ If that ever changes, seed them **before** the first sign-in. `COALESCE(seed.role,'ops')` provisions an unseeded user as internal **`ops`** and `ON CONFLICT (id) DO NOTHING` means it never self-corrects — the failure that hit the Cortina account on Aug 19.
 
 **Seat owners that are not people:** `HIRE #1`, `HIRE #2`, `HIRE #3` and `OPEN` are unfilled seats on the accountability chart, not names.
 
