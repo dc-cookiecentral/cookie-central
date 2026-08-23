@@ -2,13 +2,15 @@
 
 Procedures and known-fixes for keeping Cookie Central live. Read top-to-bottom once; reach back when something specific breaks. Symptoms in **bold** mean "ctrl-F this when it happens."
 
+> ⚠️ **Five pages are hidden from the sidebar pending rework** (Aug 21 2026): Weekly Report, Product Orders, Payments, EOM Snapshot and Lot Trace. Procedures below that reference `/orders`, `/payments`, `/weekly`, `/snapshot` or `/trace` **still work — the routes are intact**, they are just not linked in the nav. Type the URL. The flag is `hidden: true` in `src/components/Sidebar.jsx`; deleting it brings a page back. Internal users now land on `/inventory` rather than `/orders`.
+
 ---
 
 ## 1 · Sign in
 
 The login screen at `/login` offers two methods:
 
-- **Magic link** (default) — enter email → click the link in the email. Throttled to ~3-4 sends/hour on the default Supabase SMTP. The first time someone signs in, the `handle_new_auth_user` trigger creates their `user_profiles` row using the role assigned in `user_role_seeds`.
+- **Magic link** (default) — enter email → click the link in the email. ⚠️ **The real limit is `rate_limit_email_sent = 2` per hour, per PROJECT** — not per user, not per day — because no custom SMTP is configured and the built-in Supabase sender is used. Every magic link, confirmation and recovery across the whole project shares that bucket, so a shared inbox with a few retries blocks itself. **Prefer the password path below for onboarding**; it sends no email at all. The first time someone signs in, the `handle_new_auth_user` trigger creates their `user_profiles` row using the role assigned in `user_role_seeds`.
 - **Password** (fallback) — for demos, SMTP outages, or users who'd rather skip email. Pre-provision the user in **Supabase dashboard → Auth → Users → Add user** with a password set and **Auto-confirm** ticked.
 
 After sign-in the sidebar footer shows full name + role. If it's missing, the profile row wasn't created — run the trigger-rebuild query in §5.4.

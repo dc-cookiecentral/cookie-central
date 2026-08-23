@@ -3,11 +3,17 @@
 Operational dashboard for Dirty Cookie's white-label retail business (Walmart + Kroger) through Cortina Foods.
 
 **Stack:** React + Vite + Tailwind + Supabase + Vercel
-**Status:** Phase 1 demo shipped (June 2026); launch hardening in progress. All demo modules are live against Supabase, plus the `systems@` AI email agent (Day 10) and the Lot Traceability chain UI (Day 11). One ship blocker remains before Phase 1 is declared shipped: Cortina NetSuite real-file reconciliation (awaiting Harshita's export sample). See `docs/BUILD_PLAN.md`.
+**Status** *(Aug 23 2026)*: Phase 1 demo shipped (June 2026); launch hardening in progress. All demo modules are live against Supabase, plus the `systems@` AI email agent (Day 10) and the Lot Traceability chain UI (Day 11). One ship blocker remains before Phase 1 is declared shipped: Cortina NetSuite real-file reconciliation (awaiting Harshita's export sample). See `docs/BUILD_PLAN.md`.
 
 **Also in this repo — a separate project.** The **Sample Ordering Site (Sample Central)**, where Cortina salespeople build sample shipments that flow to the co-manufacturer through ShipStation. Built July–August 2026 (ADR-025→046) and **launched August 19, 2026** — test mode is off in Production, the table was purged, and the first real order numbers `SMP-1206`. There is still no ShipStation sandbox: **Preview** builds share the production database and store, so a branch-build order is a real order (kept `SMP-TEST-`-prefixed on purpose). It shares this repo, the Supabase project and some infrastructure, but its goals, data and decisions are separate; don't conflate the two.
 
-**Also in this repo — a third project.** The **EOS Tracker** at `/eos`, the standing record for the weekly Level 10 leadership meeting (Scorecard, Issues, Rocks, To-Dos, Accountability Chart, V/TO). Built August 17–19, 2026 (ADR-047). **Its database is live; its frontend is built but not deployed** — all three projects ship from one Vite bundle, so merging it redeploys Sample Central. See `docs/EOS.md`.
+**Also in this repo — a third project.** The **EOS Tracker** at `/eos`, the standing record for the weekly Level 10 leadership meeting (Scorecard, Issues, Rocks, To-Dos, Accountability Chart, V/TO). Built August 17–19, 2026 (ADR-047), **live since August 21**. 13 measurables with goals set, To-Dos that hang off a measurable and carry forward until ticked. Internal roles only — the `cortina` login cannot see any of it. See `docs/EOS.md`.
+
+**And a new module in the main project.** The **Walmart Demand Planner** at `/demand-planner` — S&OP summary, chain-flow charts, DOT cut-recovery, tracker and paste-in inputs, for WC / PBG / CCF. Live since August 21. ⚠️ **It runs on a static snapshot frozen at 2026-08-13, not on Supabase**, and says so in a banner: its primary feeds (weekly POS by SKU, Walmart forecast snapshots, DOT service) have **no table in the schema at all**. The formulas and a full "wiring it to live data" handoff are in `docs/DEMAND_PLANNER_FORMULAS.md` — start there.
+
+⚠️ **Everything ships from one Vercel project and one Vite bundle.** Any merge to `main` redeploys Sample Central, which serves live Cortina traffic. Verify the deployed bundle after a merge, never the build log.
+
+**Five pages are currently hidden pending rework** — Weekly Report, Product Orders, Payments, EOM Snapshot and Lot Trace. They are marked `hidden: true` in `src/components/Sidebar.jsx`; their **routes still work by URL**, so a page can be reworked without shipping it to everyone. Removing the flag brings one back. Internal users land on `/inventory`.
 
 **Everything else in this README is the other project** — inventory, forecasting, POs, the weekly Retail Link reports and the **`systems@` Gmail agent** are *not* part of Sample Central. The one genuine overlap is `EDGE_CRON_BEARER` (Vault), the shared bearer for every pg_cron → Edge Function call in the repo. **Start any session on Sample Central from `sample-site/CLAUDE.md`**, and read `sample-site/docs/SAMPLE_CENTRAL_STATUS.md` for its current state.
 **Builder:** Caroline Friedrich
@@ -75,6 +81,8 @@ cookie-central/
 │   ├── DATA_MODEL.md            # Tables, columns, relationships
 │   ├── DECISIONS.md             # Architecture decision records — ADR-026…046 are Sample Central, earlier ones are not
 │   ├── RUNBOOK.md               # Launch operations: onboarding, troubleshooting, recovery
+│   ├── EOS.md                   # The EOS Tracker — schema, goal shapes, weekly operation
+│   ├── DEMAND_PLANNER_FORMULAS.md  # Demand planner engine spec + how to wire it to live data
 │   └── PEOPLE.md                # Org chart + contacts + system emails
 ├── sample-site/                 # Sample Central — SEPARATE PROJECT, docs only (code stays put)
 │   ├── CLAUDE.md                # Start sessions on that project here

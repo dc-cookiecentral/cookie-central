@@ -433,7 +433,7 @@ So "ShipStation pushes status back" is true for exactly one transition. `deliver
 **Naming.** The site's UI label and the ShipStation `InternalNotes` line both now read **"Deliver by"**. The database column, TypeScript field and all identifiers **remain `required_by`** — renaming them means a migration plus touching the Edge Function, shape types and insert path, for a cosmetic gain. Accepted cost: a permanent vocabulary split between code (`required_by`) and everything a human sees ("Deliver by").
 
 **Carried forward.**
-(a) **Not deployed.** Needs `npx supabase functions deploy shipstation-deliverby`, `select public.set_secret('SHIPSTATION_V2_API_KEY', …)`, then the cron migration applied last.
+(a) ~~Not deployed~~ — **deployed and on cron.** `shipstation-deliverby` runs every 15 minutes (`cron.job` id 3) and was re-confirmed healthy on Aug 19 2026: consecutive `200`s in `net._http_response`, picking up status changes within one window. ⚠️ Check `net._http_response`, never `cron.job_run_details` — `net.http_post` is fire-and-forget, so the job reports `succeeded` even when the request never landed.
 (b) ~~Rotate the test key~~ — **done August 4, 2026.** The plaintext test key was revoked (the old value now returns `Access denied`), a fresh key was written to Vault via `set_secret`, and the stale line was removed from `.env.local`. Nothing in the repo or the browser bundle holds a ShipStation key.
 (c) ~~Unverified~~ — **VERIFIED end-to-end August 4, 2026.** Deployed, type-checks (`deno check`, which caught a real `TS7053` a runtime-only deploy would have shipped), 87-case `_shared` suite passes, and **two live sweeps ran against production**: the first updated all 6 open orders (`failed: []`), the second wrote nothing and reported all 6 already correct. Remaining gap: **nobody has confirmed the dates render in the dashboard's Deliver By column** — the API is authoritative that the field is set, but the grid is what the co-man actually sorts by.
 (d) **`delivered` is still not wired**, and V2 shipment status cannot supply it (see above). The remaining routes are a ShipStation **webhook** (the webhook endpoint *is* reachable on this plan, unlike tracking) or **BCC'ing the Delivered customer-notification email** into the existing Gmail pipeline. Undecided.
@@ -743,7 +743,7 @@ The label lives in one place, `BENCHTOP_LABEL` in `_shared/shipstation.ts`, so t
 ## ADR-047: The EOS tracker keys everything to a Monday week, and derives status rather than storing it
 
 **Date:** August 19, 2026
-**Status:** **Database live** (5 migrations, ledger in sync). **Frontend built but not deployed** — see the sequencing note below. Third project in this repo; full doc at `docs/EOS.md`.
+**Status:** ~~Frontend built but not deployed~~ — **LIVE since August 21, 2026.** Merged once Sample Central's launch was verified, exactly as the sequencing note below intended. Eight migrations applied. A pre-launch review on Aug 23 reshaped the Scorecard (13 measurables, goals set, ranges where days-on-hand needed a floor) and added To-Dos that hang off a measurable — `20260823120000`, `20260823140000`, `20260823160000`. Third project in this repo; full doc at `docs/EOS.md`.
 
 **Decision.** A `/eos` page backed by seven `eos_*` tables holds the weekly Level 10 meeting: Scorecard, Issues, Rocks, To-Dos, Accountability Chart, and a read-only V/TO. Four sub-decisions carry the weight.
 
