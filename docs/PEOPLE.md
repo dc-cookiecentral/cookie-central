@@ -20,10 +20,14 @@
 | Shahira | Shahira Marei |
 | Marc | Marc Bouthillette — the late-July L10 notes spelled him *Mark*; normalised in `20260818130000` |
 | Dave | David Landeck |
-| Paul / PJ | Paul Hardy |
+| Paul | Paul Hardy — **`PJ` was a third label for the same person** (metrics said `PJ`, Rocks said `Paul`, the seat said `Paul (PJ)`). All normalised to **`Paul`** on Aug 23 2026: 4 measurables and 2 seats (Integrator, Planning) |
 | Caro | Caroline Friedrich — **`Caro` is the nickname and the name used throughout `/eos`** (normalised in `20260819120000`). Her full name stays here |
 
-**Not in the roster above, and no Cookie Central account:** **Ellen** (finance — owns Cash Balance & Forecast and AP/AR on the scorecard; the July notes carry an open question about whether she should join the L10) and **Sean** (owns Rock 2, hiring the Biz Dev role).
+**Ellen** — finance. Owns **5 of the 13 measurables** (Weekly Sales, Sales Pipeline, Cash Balance & Forecast, AR, AP), the largest share of anyone. **Seeded Aug 23 2026** as `ellen@dirtycookie.com`, role **`finance`** — least privilege that still carries EOS write, since every EOS table allows `admin`/`finance`/`ops`. She has **not signed in yet**. Her surname is still not recorded anywhere; `full_name` is just "Ellen" and should be corrected when someone knows it.
+
+**Still no account and no seed:** **Sean** (owns Rock 2, hiring the Biz Dev role) and **Serina** (a seat owner). Neither owns a measurable, so neither blocks the scorecard. ⚠️ If either signs in before being seeded, `COALESCE(seed.role,'ops')` provisions them as internal **`ops`** and `ON CONFLICT DO NOTHING` means it never self-corrects — the failure that hit the Cortina account on Aug 19. Seed first, always.
+
+**Seat owners that are not people:** `HIRE #1`, `HIRE #2`, `HIRE #3` and `OPEN` are unfilled seats on the accountability chart, not names.
 
 Named inside issues but not owners: Susie and Becky (Walmart CAPA / Bentonville requirements), Franz (Walmart system setup), Amit and Tim (Assemblers visit), John Lidestri. **Mark Cuban** appears in an issue title and is correctly spelled — unrelated to Marc Bouthillette.
 
