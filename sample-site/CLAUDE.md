@@ -50,17 +50,26 @@ npm run build
 ```
 
 `deno` lives at `~/.deno/bin/deno`; call it by full path if your shell's PATH
-does not have it. There is **no Docker**, so `supabase db dump` / local stack do
-not work.
+does not have it. There is **no Docker**, so `supabase db dump` and the local
+stack (`supabase start`) do not work.
 
-⚠️ **The remote migration ledger is behind the repo.**
-`supabase_migrations.schema_migrations` tops out at `20260805050000`, because the
-no-Docker workflow runs SQL through the Management API and that does not record a
-history row. **12 repo migrations are applied to the database but unregistered.**
-They all replay cleanly (every one is `ON CONFLICT DO UPDATE`, `IF NOT EXISTS` or
-otherwise guarded), so a `db push` would be safe — but do not read `migration
-list` as the truth about what is applied. The current list is in
-`docs/SAMPLE_CENTRAL_STATUS.md`.
+✅ **`supabase db push` DOES work — this doc used to say otherwise and was
+wrong.** It talks to the remote database directly; Docker is needed only for the
+local stack. Corrected in ADR-047, which used it to repair the ledger.
+
+⚠️ **Ledger drift is real but small, and it is self-inflicted.** Every migration
+applied through the Management API executes **without recording a history row**,
+so the ledger falls behind by exactly the number applied that way. The 12-file
+drift that stood from Aug 11 was repaired on **Aug 19** (`migration repair
+--status applied`, after probing the live schema to confirm each was genuinely
+present).
+
+**As of Aug 23 2026: 69 registered, 72 files, 3 unregistered** — the three EOS
+migrations from that day. Either `db push` them or `migration repair` them; do
+not read `migration list` as the truth about what is applied.
+
+**If you apply SQL through the Management API, you have just created drift.**
+Register it afterwards or write it down.
 
 For read-only SQL against the live database — and for *applying* a migration,
 which is how every one since `20260805050000` has gone in — use the Management

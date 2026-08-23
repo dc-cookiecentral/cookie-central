@@ -119,29 +119,26 @@ may include marketing, innovation and supplier contacts, not only salespeople.
 Everyone in it is now selectable as the notified party on a real sample
 shipment.
 
-## Migration ledger drift
+## Migration ledger drift — repaired Aug 19, 3 files behind again
 
-`supabase_migrations.schema_migrations` tops out at **`20260805050000`** with 52
-rows registered. **12 repo migrations are applied to the database but
-unregistered**, because the no-Docker workflow runs SQL through the Management
-API, which executes without recording a history row:
+**Resolved once, and it will keep recurring, so read the mechanism not the
+number.** Any migration applied through the Management API executes **without
+writing a `supabase_migrations.schema_migrations` row**, so the ledger falls
+behind by exactly the count applied that way.
 
-```
-20260806235500_seed_caroline              20260811140000_sample_shipment_delivery
-20260807000500_sales_reps                 20260812120000_addresses_active
-20260807001500_drop_salesperson_user_id   20260812150000_sample_shipment_issues
-20260807120000_seed_david_sales_rep       20260812170000_sample_settings
-20260810120000_seed_cortina_sales_reps    20260812190000_fulfilled_by
-20260811120000_seed_cortina_ordering_account
-20260814120000_seed_paul_hardy
-```
+- **Aug 11 → Aug 19:** 12 Sample Central migrations unregistered. Repaired in
+  ADR-047 — each was probed in the live schema to confirm it was genuinely
+  applied, then `migration repair --status applied` corrected the ledger.
+- **Aug 23 (now):** **69 registered, 72 files, 3 unregistered** — the three EOS
+  migrations applied that day (`20260823120000`, `20260823140000`,
+  `20260823160000`). All guarded and replay cleanly.
 
-All of them replay cleanly — every one is `INSERT … ON CONFLICT DO UPDATE`,
-`ADD COLUMN IF NOT EXISTS`, or otherwise `IF EXISTS`-guarded — so a `db push`
-would apply them against the live database without error and leave it in its
-current state. Bookkeeping gap, not a landmine. *(Reasoned from the SQL plus the
-live schema; not tested by an actual push, since there is no Docker and no
-staging copy.)*
+✅ **`supabase db push` works.** This doc and the README both used to say it did
+not, for want of Docker. That was wrong: `db push` talks to the remote database
+directly, and Docker is only needed for the local stack. Either push the three
+or repair them.
+
+⚠️ Never read `migration list` as the truth about what is applied.
 
 ## Store status mapping — confirmed, not inferred
 

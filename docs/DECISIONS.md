@@ -766,3 +766,119 @@ The label lives in one place, `BENCHTOP_LABEL` in `_shared/shipstation.ts`, so t
 **⚠️ Sequencing — the frontend is deliberately unshipped.** Cookie Central, Sample Central and EOS ship from **one Vercel project and one Vite bundle**. Merging EOS to `main` rebuilds and redeploys Sample Central, and this was built during Sample Central's launch week. So the halves were split the opposite way round from ADR-046's: **the database went first and the UI waits**, which is safe only because the tables are inert until something queries them. The one shared file is `AppSwitcher.jsx` — when the UI does ship, internal users gain a fourth waffle tile; `cortina` is filtered by `internalOnly: true`.
 
 **Ledger repair, recorded because it changed a standing hazard.** Applying these needed `supabase db push`, which the README and RUNBOOK both described as unavailable for want of Docker. **That was wrong** — `db push` talks to the remote database directly and needs Docker only for the local stack (`supabase start`). Before pushing, the 12 Sample Central migrations that the Management API had applied without registering were verified present in the live schema (every table and column probed through PostgREST, plus the one dropped column confirmed gone) and then `migration repair --status applied` corrected the ledger. **The remote ledger and `supabase/migrations/` are now in sync at 68 files** — the drift warning that stood in the README since Aug 11 is resolved.
+
+---
+
+## ADR-048: Scorecard goals have three shapes, and picking the wrong one fails silently
+
+**Date:** August 23, 2026
+**Status:** Applied to all measurables (`20260823120000`). Ten of thirteen carry goals; three are still baselining.
+
+**Decision.** A measurable's `goal_direction` is chosen from what the number *means*, not from a default of "higher is better":
+
+| Shape | For | Example |
+|---|---|---|
+| `gte` | rates and ratios where more is better | Service Level ≥ 98% |
+| `lte` | counts and delays where less is better | AR ≤ 45 days, QA ≤ 0 |
+| `between` (`goal_value`..`goal_max`) | quantities with a **floor as well as a ceiling** | Inventory FG 14–28 days |
+
+Two measurables that could not be scored as single rows were **split**: `AP / AR` into AR (`lte`) and AP (`gte`), and `Inventory` into Finished Goods, Raw Materials and Packaging. Ten measurables became thirteen.
+
+**Why.** `Inventory` shipped as `lte 28d`. Days on hand has a floor — below it you stock out — so under `lte` **a warehouse at 2 days on hand scored bright green**, which is the failure state rendered as success. Nothing about that is visible in the UI; the cell is green and the meeting moves on. `between` is the only shape that expresses a target band.
+
+`AP / AR` was worse: it could not be scored at all. AP days you want *longer*, AR days *shorter*, so no single `goal_direction` is correct for the row, and any value entered scored one half right and the other half backwards.
+
+**Innovation Tracking is the interesting case** — a project-progress metric on a Scorecard built for weekly rates. It is defined as *percent of planned milestones complete **to date***, not percent of the whole project, with a goal of `gte 100`. At 100 you are on plan. That makes `scoreEntry`'s existing bands reproduce the R/Y/G the foundation document asked for — ≥100 green, 90–100 yellow, <100 red — without adding a status enum or a fourth shape.
+
+**Where the numbers came from, because "grounded" and "plausible" are not the same.** Service Level 98% and Inventory FG 14–28d are lifted from the demand planner's own constants. AR ≤ 45d is set against a measured 55.2-day average over 336 paid invoices, so it is a stretch rather than a rubber stamp. Inventory Raw and Pkg are **explicitly starting points** — every `raw_materials` row carries the same placeholder `default_lead_days` of 14, so lead time cannot differentiate them yet. AP ≥ 30d is a Net-30 assumption and is **not computable at all** today: `invoices` and `payments` are both empty. Each row's `notes` records which it is.
+
+**Accepted.** `QA ≤ 0` has **no yellow band**, because `scoreEntry`'s tolerance is 10% of the goal and 10% of zero is zero. Any complaint is immediately red. That is right for QA and wrong-looking everywhere else, so it is recorded rather than "fixed".
+
+Weekly Sales, Sales Pipeline and Cash Balance keep `goal_value` NULL deliberately — those targets belong to Ellen. **Weekly Sales probably wants redefining as a rolling 4-week average**: weekly shipped revenue swings $0–$100k, so a weekly threshold scores shipping timing, not performance.
+
+---
+
+## ADR-049: To-Do carry-forward is a query, never copied rows
+
+**Date:** August 23, 2026
+**Status:** Built and deployed (`20260823140000`, `20260823160000`).
+
+**Decision.** A To-Do can hang off a measurable via `eos_todos.metric_id`, and the Scorecard's `▸` panel lists **every linked To-Do with `done = false`, without filtering by week**. An open item therefore keeps appearing under its measurable every week until someone ticks it, at which point it disappears from all weeks at once. `metric_week` records the week that raised it, so a carried-over item reads as carried over rather than new.
+
+Nothing copies rows forward. There is no cron, no weekly job, no duplication step.
+
+**Why.** The alternative — materialising next week's copy of an open To-Do — produces **one row per week per unfinished commitment, each needing its own tick**. It also makes "was this done?" ambiguous: done in which copy? The repo already contained the evidence: three identical `P0 · Transition to FreshCoast` To-Dos, same title, same null owner, same weeks, all pointing at the same issue. Nothing was copying rows and it happened anyway. Building carry-forward by copying would have industrialised that.
+
+Rendering the same row under every week costs one query and cannot drift.
+
+**Guards.** `metric_id` is `ON DELETE SET NULL`, never `CASCADE` — retiring a measurable must not silently delete outstanding commitments; the To-Do survives, orphaned, and surfaces in the flat list where someone will see it. A partial unique index on `(issue_id, title) WHERE issue_id IS NOT NULL` stops one issue spawning the same To-Do twice. Deliberately **not** unique on `issue_id` alone: one issue legitimately produces several *different* To-Dos, which is how an issue gets solved.
+
+**Placement.** The panel is its own `<tr>` spanning the grid rather than nested inside the measurable's name cell. That cell is `sticky` with its own stacking context, and a panel inside it is clipped by the trend grid's horizontal scroll.
+
+---
+
+## ADR-050: A bare `YYYY-MM-DD` is parsed as local midnight, not UTC
+
+**Date:** August 23, 2026
+**Status:** Fixed at source in `src/utils/dates.js`; corrects ~43 call sites without touching any of them.
+
+**Decision.** `formatDate` and `daysUntil` detect a **date-only** string and construct the Date from its parts at local midnight. Anything else — an ISO timestamp, a `Date` — still goes through `new Date(value)`.
+
+```js
+const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;   // anchored BOTH ends
+```
+
+**Why.** A Postgres `date` column arrives from PostgREST as a bare `'2026-08-18'` with no timezone. `new Date('2026-08-18')` parses that as **UTC midnight**, which is the previous evening anywhere west of Greenwich, so every consumer read a day early. `2026-01-01` rendered as **"Dec 31"** — wrong year.
+
+Display was the lesser half. `daysUntil` feeds the late-shipment alerts, the PO sort order, the Days column and the `DaysTag` urgency badge, and it returned **−1 for something due today**: a PO due today displayed as a day late, in red, and sorted accordingly. Measured in `America/Los_Angeles` against the old implementation, the error was exactly one day at every offset.
+
+**The regex is anchored at both ends deliberately.** A prefix match also catches the leading date of `'2026-08-18T14:30:00Z'` and would strip the time and zone off a value that was already correct — turning a fix into a different bug. Only a bare date, alone, takes the local branch.
+
+**Fixed at source rather than per call site** so the ~34 sites on pages currently hidden pending rework come back correct instead of inheriting it. `formatDateTime` is untouched; it only ever receives `timestamptz`, where UTC parsing is right.
+
+⚠️ **This bug is invisible east of Greenwich.** At UTC+1, UTC midnight is 01:00 the same local day and nothing looks wrong. It reproduces only west of Greenwich — verify in `America/Los_Angeles` or `America/New_York`, never in the default sandbox timezone.
+
+**Rule going forward:** `formatDate` for anything backed by a `date` column; it is now correct for both shapes. `src/utils/eosWeek.js` already did its own local parsing and warned about exactly this in its module header — the renderers had ignored the warning.
+
+---
+
+## ADR-051: Catalog lines lead with the product type (extends the ADR-037/038 field contract)
+
+**Date:** August 19, 2026
+**Status:** Live in production. Composed in the app, not stored.
+
+**Decision.** Catalog rows, cart lines and the pre-submit review sheet lead with the product **type**, with the SKU alone beneath:
+
+```
+COOKIE SHOT | Gourmet - Chocolate Chip 2.0 oz - Baked
+CC-2OZ-BAK-G
+```
+
+`productType()` derives three types from `form` + `prep`: `Shot` → COOKIE SHOT, `Stuffed`+`Baked` → STUFFED COOKIE, **any `Raw`** → RAW DOUGH BALL. Raw is tested **first**, because every raw row in the catalog is `form=Stuffed` and reading `form` first would label all of them STUFFED COOKIE.
+
+**Why.** A code like `CC-2OZ-BAK-G` does not say "shot", and it differs from the stuffed `CCH-2OZ-BAK-C` by one letter and by an entire product. The catalog previously led with the flavour family, which had the same defect: a salesperson reading *"Chocolate Chip / Choc. Hazelnut"* cannot tell a baked cookie from a frozen dough ball, and those ship differently.
+
+**It changes the ShipStation item `<Name>`.** The label is snapshotted into `sample_shipment_items.description` at submit, which the export sends as the item name and the Cortina order sheet prints. **SKU codes and product tags are untouched**, so no automation rule changes behaviour — ADR-029's warning about never keying rules on Item SKU still holds, and this is the human-readable half only. Existing shipments keep their old snapshotted text.
+
+**Not stored in `products.description`.** That column is the display name for the Spec Sheet and the `price_list` view, which belong to the *other* Cookie Central project. Composing in the app keeps the two from being coupled by a rename.
+
+**Knock-on, accepted.** The type prefix consumes the width that previously showed the flavour, so the drawer cart line and the pre-submit review list **wrap instead of truncating**. That review sheet exists to catch "the wrong cookie entirely"; clipping the flavour off the front would have defeated it.
+
+---
+
+## ADR-052: The Demand Planner ships as a static snapshot, and says so
+
+**Date:** August 21, 2026
+**Status:** Live at `/demand-planner`. Not connected to Supabase.
+
+**Decision.** The Walmart Demand Planner was ported in from a standalone artifact **engine and data unchanged**, running on an embedded `SEED` constant frozen at `SEED.asOf` (2026-08-13), with a permanent banner stating that and that edits are session-only. `recharts` was added for it — the app had no charting library.
+
+**Why not wire it to live data first.** Its primary feeds have **no table in the schema at all**: no POS, no Retail Link, no forecast, no velocity table exists, and `dot_inventory` is empty. Only the `orders` series has a real source. Wiring it means designing three or four new tables *plus* an ingest path for the Retail Link pull — a project, not a task. Shipping the page first makes the model reviewable by the people who will use it, months before the pipeline exists.
+
+**The banner is load-bearing.** The page looks live — real SKUs, real weeks, editable cells, charts running to January — and a planner who mistakes a 2026-08-13 snapshot for current data will size a co-bakery run against stale velocity. It reads `SEED.asOf` rather than a hardcoded date, so refreshing the seed updates it too.
+
+**The engine is not to be tidied.** It is a plain-JS mirror of `docs/DEMAND_PLANNER_FORMULAS.md`, cross-validated against the Excel workbook on 23 checks. Changing it means re-running that comparison. Keep `SEED` in place until a live feed reproduces the same numbers — it is the reference implementation.
+
+**Open question is ingest, not schema.** The weekly Bentonville Merchants email is already parsed for its body scorecard and auto-imported by the `systems@` agent, but its **three xlsx attachments have never been parsed**, and they are the likely home for weekly POS by SKU. Cheapest path, unproven. The Walmart forecast feed additionally needs **snapshot week × target week** per row — a feed carrying only "the current forecast" cannot reproduce `mape`.
+
+**Cost, accepted.** The bundle went 759KB → 1.22MB, and it loads on every page including Sample Central. Lazy-loading the route is the fix if that starts to matter.
