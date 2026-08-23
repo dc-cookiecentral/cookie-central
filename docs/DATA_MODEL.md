@@ -569,8 +569,14 @@ Indexed on `(status, priority NULLS LAST, sort_order)`.
 | `created_week`, `due_week` | date | |
 | `done` | boolean | `done_at` timestamptz alongside |
 | `issue_id` | uuid FK → `eos_issues` | ON DELETE SET NULL — preserves the trail from "we discussed this" to "someone did something" |
+| `metric_id` | uuid FK → `eos_scorecard_metrics` | ON DELETE SET NULL. Hangs the To-Do off a **measurable** instead of an issue — what the Scorecard's `▸` panel reads. Never CASCADE: retiring a measurable must not silently delete outstanding commitments |
+| `metric_week` | date | Which week's cell raised it. By the time anyone reads a carried-forward To-Do the context is gone, so it says "from Aug 10" — the same reasoning as `raised_week` on an issue |
 
 Partial index on `(due_week) WHERE NOT done`.
+Partial index on `(metric_id) WHERE metric_id IS NOT NULL` — most To-Dos carry no metric, and the Scorecard only asks for the ones that do.
+**Unique on `(issue_id, title) WHERE issue_id IS NOT NULL`** (`20260823160000`). Not on `issue_id` alone: one issue legitimately spawns several *different* To-Dos, which is how an issue gets solved. What is never legitimate is the same issue producing the same To-Do text twice — which it did three times before this guard.
+
+⚠️ **Carry-forward is a query, not stored state.** An open To-Do with a `metric_id` keeps appearing under its measurable every week until `done` flips, because `useMetricTodos` does not filter by week at all. Nothing copies rows forward; copying would produce one duplicate per week, each needing its own tick.
 
 ### `eos_meetings` — one row per week held
 | Column | Type | Notes |

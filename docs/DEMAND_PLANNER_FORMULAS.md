@@ -217,3 +217,93 @@ read optimistic — the DOT panel's true-fill is the corrected view where the ex
 report covers the window. Fill rate compares delivered-week to requested-week, so timing
 slips can show > 100 %. Store-count projection carries the last actual forward; planned
 door growth belongs in the seasonality multiplier until a traited-store forecast feed exists.
+
+---
+
+# Wiring it to live data — start here
+
+**Status as of Aug 23 2026: the page is LIVE at `/demand-planner` and runs on a
+static snapshot.** Everything below is what a session picking this up needs to
+know before designing anything. Written so you don't have to rediscover it.
+
+## What exists today
+
+`src/pages/DemandPlanner.jsx` — ported in from a standalone artifact, engine and
+data unchanged. It reads one embedded `SEED` constant frozen at `SEED.asOf`
+(2026-08-13) and carries a banner saying so. Edits, pastes and overrides live in
+component state for the session and are lost on reload. `recharts` was added for
+it; the app had no charting library before.
+
+**Do not casually refactor the engine.** It is a plain-JS mirror of the formulas
+above, cross-validated against the Excel workbook on 23 checks. If you change
+it, re-run that comparison.
+
+## The blocker: the feeds have no home in the schema
+
+This is the finding that decides the whole shape of the work. Checked against
+the live database, searching for anything matching `%pos%`, `%retail%`,
+`%forecast%`, `%velocity%`:
+
+| `SEED` series | Feeds | Where it would come from today |
+|---|---|---|
+| `pos` | POS units, $, traited stores, in-stock %, store on-hand | **No table exists.** This is the primary feed and the whole demand side |
+| `forecasts` | Walmart store forecast, by snapshot week × target week | **No table exists.** Needs snapshot history for the MAPE/lagged logic |
+| `dotService` | DOT ordered / cut / POs, the cut-recovery panel | **No table exists** |
+| `dot` | DOT on-hand, which re-anchors the forward cascade | `dot_inventory` exists but is **empty (0 rows)** |
+| `production` | Cases produced per week per SKU | `production_runs` exists — **5 rows** |
+| `orders` | NetSuite requested / delivered / revenue / cuts | `purchase_orders` (892) + `po_line_items` (1,194) — **the one series with a real source** |
+
+So "wiring it up" is really: **design three or four new tables, plus an ingest
+path.** It is a project, not a task. Schema is the easy half.
+
+## The real open question is ingest, not schema
+
+How does Retail Link POS actually arrive? The pieces that exist:
+
+- The weekly Bentonville Merchants email is already parsed for its **body
+  scorecard** (`src/parsers/weeklyEmail.js`), and `weekly_reports` holds 6 rows.
+- That email also carries **three xlsx attachments which have never been
+  parsed.** They are the most likely home for weekly POS by SKU by store count.
+- The `systems@` Gmail agent (ADR-021/022) already classifies and auto-imports
+  `weekly_report` mail, so the delivery mechanism exists — only the attachment
+  parsing is missing.
+
+**Extending the existing weekly-email path is almost certainly cheaper than
+building an upload flow**, but it is unproven: nobody has opened those
+attachments programmatically. Confirm their shape before committing to it.
+
+The Walmart *forecast* feed is a separate question — the engine wants a
+**snapshot week and a target week per row**, because the accuracy scoring uses
+the latest snapshot strictly before the target. A feed that only carries "the
+current forecast" cannot reproduce `mape`.
+
+## Conventions this repo will hold you to
+
+Learned the hard way; all of them cost real time at least once.
+
+- **A passing build proves nothing.** Grep the deployed bundle for a distinctive
+  string. `curl` the site, pull `/assets/index-*.js`, and check the hash changed.
+- **Runtime-parsed flags are not constant-folded.** Grepping for a guarded
+  string returns a hit whether the flag is on or off — see the
+  `VITE_SAMPLE_TEST_MODE` note in the Sample Central docs. Check the env literal.
+- **Anything with a counter needs its floor raised and deployed *before* the
+  data is purged.** See `SHIPMENT_NO_FLOOR`.
+- **Merging to `main` redeploys Sample Central**, which serves live Cortina
+  traffic — one Vercel project, one Vite bundle.
+- **Seed an account before its first sign-in.** `COALESCE(seed.role,'ops')` plus
+  `ON CONFLICT (id) DO NOTHING` means an unseeded sign-in silently becomes
+  internal `ops` and never self-corrects. This has already happened once.
+- **Postgres `date` columns are bare `YYYY-MM-DD`.** Use `formatDate` from
+  `utils/dates.js`, which parses them as local midnight; `new Date(value)`
+  treats them as UTC and lands a day early west of Greenwich.
+- **No Docker.** Migrations go through the Management API, which writes no
+  history row — so `migration list` is not the truth about what is applied.
+
+## Suggested first moves
+
+1. Open one of the weekly-email xlsx attachments and see whether POS by SKU by
+   week is actually in there. Everything downstream depends on the answer.
+2. Decide the forecast feed's grain (snapshot × target) before designing tables.
+3. Only then write migrations. Keep `SEED` in place until a real feed renders
+   the same numbers — it is the reference implementation, and the 23-check
+   validation is against it.
