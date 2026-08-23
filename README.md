@@ -15,6 +15,10 @@ Operational dashboard for Dirty Cookie's white-label retail business (Walmart + 
 
 **Five pages are currently hidden pending rework** — Weekly Report, Product Orders, Payments, EOM Snapshot and Lot Trace. They are marked `hidden: true` in `src/components/Sidebar.jsx`; their **routes still work by URL**, so a page can be reworked without shipping it to everyone. Removing the flag brings one back. Internal users land on `/inventory`.
 
+⚠️ **Hidden is not dead — do not delete these pages or their parsers.** Product Orders and the BOL flow are expected back **around Oct 2026** with substantial changes, and the **`systems@` email reader that feeds them is being kept** (Caroline, Aug 23 2026). The daily `gmail-poll-daily` cron stays on, and `InboxCard` stays on `/uploads`.
+
+**The one genuinely retired feed is the weekly Bentonville Retail Link email** — `weekly_reports` stopped at `2026-07-06`. Its parsers (`parsers/weeklyEmail.js`, `parsers/weeklyAttachments.js`) are kept regardless: they encode the real column names of the Walmart BI exports, which survive a change of transport. **This matters most to the Demand Planner**, whose POS feed was expected to come from that email — see `docs/DEMAND_PLANNER_FORMULAS.md`.
+
 **Everything else in this README is the other project** — inventory, forecasting, POs, the weekly Retail Link reports and the **`systems@` Gmail agent** are *not* part of Sample Central. The one genuine overlap is `EDGE_CRON_BEARER` (Vault), the shared bearer for every pg_cron → Edge Function call in the repo. **Start any session on Sample Central from `sample-site/CLAUDE.md`**, and read `sample-site/docs/SAMPLE_CENTRAL_STATUS.md` for its current state.
 **Builder:** Caroline Friedrich
 **Users:** Shahira (CEO/admin), Marc (COO/ops), David + Paul (Biz Exec/admin), Maria (Ops — onboarding later)

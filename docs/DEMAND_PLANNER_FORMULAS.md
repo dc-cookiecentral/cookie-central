@@ -256,21 +256,46 @@ the live database, searching for anything matching `%pos%`, `%retail%`,
 So "wiring it up" is really: **design three or four new tables, plus an ingest
 path.** It is a project, not a task. Schema is the easy half.
 
-## The real open question is ingest, not schema
+## The real open question is ingest, and it is now WIDE open
 
-How does Retail Link POS actually arrive? The pieces that exist:
+🔴 **The weekly Bentonville Retail Link email is retired (Caroline, Aug 23
+2026).** An earlier draft of this section recommended extending that path as the
+cheapest route to POS data. **Do not.** It is dead.
 
-- The weekly Bentonville Merchants email is already parsed for its **body
-  scorecard** (`src/parsers/weeklyEmail.js`), and `weekly_reports` holds 6 rows.
-- That email also carries **three xlsx attachments which have never been
-  parsed.** They are the most likely home for weekly POS by SKU by store count.
-- The `systems@` Gmail agent (ADR-021/022) already classifies and auto-imports
-  `weekly_report` mail, so the delivery mechanism exists — only the attachment
-  parsing is missing.
+Be precise about what died, because it is narrower than it first sounds: **the
+`systems@` email reader itself is being KEPT.** The daily poll still runs,
+`InboxCard` is still on `/uploads`, and Product Orders and the BOL flow are
+expected back around Oct 2026 with substantial changes. What is retired is the
+weekly Bentonville *feed*, not the email pipeline. So "get it from email" is not
+categorically off the table — that one sender is.
 
-**Extending the existing weekly-email path is almost certainly cheaper than
-building an upload flow**, but it is unproven: nobody has opened those
-attachments programmatically. Confirm their shape before committing to it.
+What that leaves:
+
+- `weekly_reports` holds 6 rows, newest `2026-07-06` — nothing has landed since
+  early July, consistent with the feed being dead.
+- `src/parsers/weeklyEmail.js` (body scorecard) and
+  `src/parsers/weeklyAttachments.js` (the three xlsx: `parseSalesSummary`,
+  `parseMarkdown`, `parseItemMaster`, `parseScorecard`, `parseSupplyPlan`,
+  `parseOtifDetail`) **both exist and were never wired to an ingest path** —
+  their header says the caller was "the dev test now, the Gmail/Edge-Function
+  connect later", and later never came.
+
+**Those parsers are still worth reading even though the email is gone.** They
+encode the actual column names and shapes of the Walmart BI exports —
+`parseSalesSummary` in particular is the closest thing in the repo to
+POS-by-SKU-by-week. If the same reports arrive by another route (a manual
+download, a different mailbox, a Retail Link pull), the parsing work is largely
+done and only the transport changes.
+
+**⚠️ UNANSWERED, and it blocks everything: where does Retail Link POS come from
+now?** Nothing in the repo currently supplies it. Until that is decided, the
+schema cannot be designed sensibly — the grain of the feed determines the grain
+of the tables.
+
+The Walmart *forecast* feed is a separate question with the same status. The
+engine wants a **snapshot week and a target week per row**, because accuracy
+scoring uses the latest snapshot strictly before the target. A feed that only
+carries "the current forecast" cannot reproduce `mape`.
 
 The Walmart *forecast* feed is a separate question — the engine wants a
 **snapshot week and a target week per row**, because the accuracy scoring uses
@@ -301,9 +326,13 @@ Learned the hard way; all of them cost real time at least once.
 
 ## Suggested first moves
 
-1. Open one of the weekly-email xlsx attachments and see whether POS by SKU by
-   week is actually in there. Everything downstream depends on the answer.
-2. Decide the forecast feed's grain (snapshot × target) before designing tables.
-3. Only then write migrations. Keep `SEED` in place until a real feed renders
+1. **Settle where POS data comes from now that the weekly email is retired.**
+   This is a business/process question, not a code one, and nothing downstream
+   can be designed without it.
+2. Read `src/parsers/weeklyAttachments.js` regardless — it records the real
+   column names and shapes of the Walmart BI reports, and most of that survives
+   a change of transport.
+3. Decide the forecast feed's grain (snapshot × target) before designing tables.
+4. Only then write migrations. Keep `SEED` in place until a real feed renders
    the same numbers — it is the reference implementation, and the 23-check
    validation is against it.
