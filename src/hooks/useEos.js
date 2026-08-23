@@ -105,6 +105,40 @@ export function useTodos() {
   return { todos: rows, ...rest };
 }
 
+// Module-level, NOT inline. `useTable` lists `filter` in its refetch
+// useCallback deps, so a fresh arrow on every render would give refetch a new
+// identity every render, and its useEffect would refetch forever.
+const METRIC_TODO_QUERY = {
+  order: 'created_week',
+  filter: (q) => q.not('metric_id', 'is', null),
+};
+
+// To-Dos that hang off a Scorecard measurable, keyed by metric_id.
+//
+// ⚠️ OPEN ITEMS ARE NOT FILTERED BY WEEK, and that is the whole carry-forward
+// mechanic: a To-Do raised against a measurable keeps appearing under it every
+// week until someone checks it off. There is no cron and nothing copies rows
+// forward — copying would create one duplicate per week, each needing its own
+// tick, which is exactly the mess the three identical "P0 · Transition to
+// FreshCoast" rows already demonstrate.
+//
+// Done items ARE dropped from the map, so the row collapses back to nothing the
+// moment the last one is ticked.
+export function useMetricTodos() {
+  const { rows, refetch, update, insert, loading, error } = useTable('eos_todos', METRIC_TODO_QUERY);
+  const byMetric = useMemo(() => {
+    const m = new Map();
+    for (const t of rows) {
+      if (t.done) continue;
+      const list = m.get(t.metric_id) || [];
+      list.push(t);
+      m.set(t.metric_id, list);
+    }
+    return m;
+  }, [rows]);
+  return { byMetric, refetch, update, insert, loading, error };
+}
+
 // ── Scorecard ──────────────────────────────────────────────────────────────
 // Metrics plus a window of entries. `weeks` is how many columns the trend grid
 // shows; EOS convention is 13 (one quarter), and the source document's own

@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { useScorecard, useMeeting, createIssue } from '../../hooks/useEos';
+import { Fragment, useMemo, useState } from 'react';
+import { useScorecard, useMeeting, createIssue, useMetricTodos } from '../../hooks/useEos';
 import {
   weekLabel, weekSpanLabel, addWeeks, currentScorecardWeek, meetingDateFor,
   scoreEntry, formatMetricValue, formatGoal,
@@ -188,6 +188,71 @@ function AddMetric({ onAdd, onCancel }) {
   );
 }
 
+// The To-Dos hanging off one measurable, revealed by the disclosure arrow.
+// Its own <tr> spanning the grid rather than nested inside the measurable's
+// cell: that cell is `sticky` with its own stacking context, and a panel inside
+// it would be clipped by the grid's horizontal scroll.
+function TodoPanel({ metric, todos, colSpan, canEdit, onToggle, onAdd }) {
+  const [draft, setDraft] = useState('');
+  const submit = async () => {
+    const title = draft.trim();
+    if (!title) return;
+    setDraft('');
+    await onAdd(metric, title);
+  };
+  return (
+    <tr className="border-b border-lt/60 bg-pc/20">
+      <td colSpan={colSpan} className="px-4 py-2">
+        <div className="text-[9px] uppercase tracking-wider text-gr font-bold mb-1.5">
+          To-Dos · {metric.name}
+        </div>
+        <ul className="space-y-1 mb-2">
+          {todos.length === 0 && (
+            <li className="text-[10px] text-gr italic">
+              Nothing open. Anything added here keeps appearing every week until it is ticked.
+            </li>
+          )}
+          {todos.map((t) => (
+            <li key={t.id} className="flex items-baseline gap-2">
+              <input
+                type="checkbox"
+                checked={!!t.done}
+                disabled={!canEdit}
+                onChange={() => onToggle(t)}
+                className="translate-y-[2px]"
+                aria-label={`Mark done: ${t.title}`}
+              />
+              <span className="text-[11px] text-dk flex-1 min-w-0">{t.title}</span>
+              {t.owner && <span className="text-[9px] text-gr">{t.owner}</span>}
+              {/* The week it was RAISED, not the week being viewed. That is what
+                  makes a carried-over item legible as carried over. */}
+              {t.metric_week && (
+                <span className="text-[9px] text-gr whitespace-nowrap" title="Week this To-Do was raised">
+                  from {weekLabel(t.metric_week)}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+        {canEdit && (
+          <div className="flex gap-1.5">
+            <input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
+              placeholder="Add a To-Do for this measurable…"
+              className="flex-1 min-w-0 px-2 py-1 rounded border border-lt text-[11px]"
+            />
+            <button onClick={submit} className="px-2.5 py-1 rounded border border-lt text-[11px] text-gr hover:text-pk">
+              Add
+            </button>
+          </div>
+        )}
+      </td>
+    </tr>
+  );
+}
+
 export default function Scorecard({ canEdit }) {
   const [endWeek, setEndWeek] = useState(() => currentScorecardWeek());
   const [windowSize, setWindowSize] = useState(13);
@@ -210,6 +275,30 @@ export default function Scorecard({ canEdit }) {
   // "Any issues will get migrated to the Issue List" — this is that move. It
   // records which week and which number sent the issue down, because by the time
   // anyone reads the Issues List the context is gone.
+  // Which measurables have their To-Do panel open. Local state, not persisted:
+  // it is a reading posture, not a property of the measurable.
+  const [openTodos, setOpenTodos] = useState({});
+  const { byMetric: todosByMetric, update: updateTodo, insert: insertTodo } = useMetricTodos();
+
+  const toggleTodo = async (t) => {
+    await updateTodo(t.id, { done: !t.done, done_at: t.done ? null : new Date().toISOString() });
+  };
+
+  // A To-Do raised against a measurable records the week it came from, so a
+  // carried-over item can say so. due_week follows the EOS seven-day rule.
+  const addTodo = async (metric, title) => {
+    // useTable.insert refetches on success, so the panel repaints itself.
+    await insertTodo({
+      title,
+      owner: metric.owner,
+      metric_id: metric.id,
+      metric_week: endWeek,
+      created_week: endWeek,
+      due_week: addWeeks(endWeek, 1),
+      done: false,
+    });
+  };
+
   const dropToIssues = async (metric) => {
     const entry = byCell.get(`${metric.id}|${endWeek}`);
     const shown = entry?.value == null ? 'no number entered' : formatMetricValue(metric, entry.value);
@@ -341,7 +430,8 @@ export default function Scorecard({ canEdit }) {
                 const current = scoreEntry(m, byCell.get(`${m.id}|${endWeek}`)?.value);
                 const offTrack = current === 'red' || current === 'yellow';
                 return (
-                  <tr key={m.id} className="border-b border-lt/60 hover:bg-pc/30">
+                  <Fragment key={m.id}>
+                  <tr className="border-b border-lt/60 hover:bg-pc/30">
                     <td className={`${TD_STICKY}`}>
                       <div className="flex items-start gap-1.5">
                         <button
@@ -357,6 +447,19 @@ export default function Scorecard({ canEdit }) {
                             className="text-[11px] font-semibold text-dk block leading-tight"
                           />
                           {m.notes && <div className="text-[9px] text-gr leading-tight mt-0.5">{m.notes}</div>}
+                          {/* Disclosure. Always present, so the count reads as
+                              "none open" rather than the control vanishing. */}
+                          <button
+                            onClick={() => setOpenTodos((o) => ({ ...o, [m.id]: !o[m.id] }))}
+                            aria-expanded={!!openTodos[m.id]}
+                            className="mt-0.5 flex items-center gap-1 text-[9px] text-gr hover:text-pk"
+                            title="To-Dos for this measurable"
+                          >
+                            <span className={`transition-transform ${openTodos[m.id] ? 'rotate-90' : ''}`}>▸</span>
+                            {(todosByMetric.get(m.id)?.length ?? 0) > 0
+                              ? `${todosByMetric.get(m.id).length} to-do${todosByMetric.get(m.id).length > 1 ? 's' : ''}`
+                              : 'to-dos'}
+                          </button>
                         </div>
                       </div>
                     </td>
@@ -401,6 +504,17 @@ export default function Scorecard({ canEdit }) {
                       )}
                     </td>
                   </tr>
+                  {openTodos[m.id] && (
+                    <TodoPanel
+                      metric={m}
+                      todos={todosByMetric.get(m.id) || []}
+                      colSpan={range.length + 5}
+                      canEdit={canEdit}
+                      onToggle={toggleTodo}
+                      onAdd={addTodo}
+                    />
+                  )}
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -411,6 +525,7 @@ export default function Scorecard({ canEdit }) {
           A measurable with no goal shows its number uncoloured — baseline 3–4 weeks before locking a weekly goal.
           Click a goal to set it; every past week re-scores against it immediately.
           {' '}⚑ drops an off-goal measurable to the Issues List with its week and number attached.
+          {' '}▸ opens the To-Dos for a measurable — an open one keeps appearing every week until it is ticked off.
         </div>
       </SectionCard>
     </div>
