@@ -1117,12 +1117,16 @@ export default function DemandPlanner() {
   const liveSeries = Object.keys(LABELS).filter(k => feeds.sources[k] === 'live').map(k => LABELS[k]);
   const seedSeries = Object.keys(LABELS).filter(k => feeds.sources[k] !== 'live').map(k => LABELS[k]);
   const anyLive = liveSeries.length > 0;
-  // Newest week that actually has POS — the yardstick every other feed's
-  // freshness is measured against.
-  const latestDataWk = Math.max(0, ...series.flatMap(s => s.cells.filter(c => c.pos != null).map(c => c.wk)));
-
   const series = useMemo(() => ["WC", "PBG", "CCF"].map(s => buildSkuSeries(input, s)), [input]);
   const metrics = useMemo(() => series.map(s => sopSummary(s)), [series]);
+
+  // Newest week that actually has POS — the yardstick every other feed's
+  // freshness is measured against. MUST stay below `series`: reading it above
+  // throws "Cannot access 'series' before initialization" on every render, which
+  // blanks the whole page. `const` is hoisted but not initialised, so this
+  // compiles, bundles and passes a string-grep of the artifact — it only fails
+  // when the component actually runs.
+  const latestDataWk = Math.max(0, ...series.flatMap(s => s.cells.filter(c => c.pos != null).map(c => c.wk)));
   const svc = useMemo(() => {
     const nsByWk = new Map();
     // Same source as the engine's `orders` series — reading SEED here while the
