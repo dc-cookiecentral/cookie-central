@@ -460,13 +460,28 @@ function ServiceBars({ rows, bad, warn, fmt }) {
           </div>
         ))}
       </div>
+      {/* The value on every bar, not just in a tooltip. A service level is read
+          for its exact number as often as for its shape, and a hover target is
+          no use in a screenshot or on a phone. One decimal: 98.4 vs 98.8 is a
+          real difference at this end of the range, and rounding to whole points
+          would collapse them. The % sign is carried once in the axis label
+          rather than repeated 14 times, which is what makes the column fit. */}
       <div className="flex gap-1 mt-1">
         {rows.map((r) => (
-          <div key={r.wk} className="flex-1 min-w-0 text-center text-[10px] cc-mono opacity-60">
+          <div key={r.wk} className="flex-1 min-w-0 text-center text-[9px] cc-mono font-bold tabular-nums"
+            style={{ color: barColor(r.v, bad, warn) }}>
+            {r.v == null ? "—" : (r.v * 100).toFixed(1)}
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-1">
+        {rows.map((r) => (
+          <div key={r.wk} className="flex-1 min-w-0 text-center text-[9px] cc-mono opacity-50 tabular-nums">
             {String(r.wk).slice(4)}
           </div>
         ))}
       </div>
+      <div className="text-[9px] opacity-40 mt-0.5">values are %, labels are Walmart week</div>
     </div>
   );
 }
