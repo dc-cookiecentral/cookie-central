@@ -41,6 +41,23 @@ const ITEM_TO_SKU = { 679640563: 'WC', 679640564: 'PBG', 683581675: 'CCF' };
 // confusing them silently drops every line.
 const CORTINA_ITEM_TO_SKU = { 1252: 'WC', 1251: 'PBG', 1287: 'CCF' };
 
+// ⚠️ PostgREST caps a response at 1,000 rows and says NOTHING about it — no
+// error, no flag, just a short array. `po_line_items` was already at 1,194 rows
+// when this shipped, so an unpaged read silently dropped ~16% of the order book
+// and the `orders` series disagreed with its own source (req fell to 37/49
+// against SEED; paged, it is 49/49). Every one of these tables grows by a file
+// a week, so page ALL of them rather than guessing which crosses the line next.
+const PAGE = 1000;
+async function fetchAll(build) {
+  const out = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await build().range(from, from + PAGE - 1);
+    if (error) return { data: out.length ? out : null, error };
+    out.push(...(data ?? []));
+    if (!data || data.length < PAGE) return { data: out, error: null };
+  }
+}
+
 export function useDemandFeeds() {
   const [state, setState] = useState({
     loading: true,
@@ -60,23 +77,34 @@ export function useDemandFeeds() {
 
     async function run() {
       const [posR, fcstR, otifR, dotR, ordR] = await Promise.all([
-        supabase
+        fetchAll(() => supabase
           .from('retail_link_pos_weekly')
-          .select('walmart_week, item_number, pos_units, pos_dollars, pos_units_if_instock, units_per_store_week, traited_stores, instock_pct, store_on_hand')
-          .order('walmart_week'),
-        supabase
+          // wmt_forecast_units and pos_units_if_instock are NOT engine inputs —
+          // the Sources tab needs them to show where a number came from and
+          // where two Walmart figures disagree. Omitting them made that tab
+          // silently empty rather than visibly broken.
+          .select('walmart_week, item_number, item_desc, pos_units, pos_dollars, pos_units_if_instock, units_per_store_week, traited_stores, instock_pct, store_on_hand, wmt_forecast_units')
+          .order('walmart_week')),
+        fetchAll(() => supabase
           .from('retail_link_forecast')
-          .select('snapshot_week, target_week, item_number, forecast_units'),
-        supabase
+          .select('snapshot_week, target_week, item_number, forecast_units')
+          .order('target_week')),
+        fetchAll(() => supabase
           .from('retail_link_otif')
-          .select('walmart_week, host_po, cases_ordered, cases_on_time, cases_unfilled'),
-        supabase
+          .select('walmart_week, host_po, cases_ordered, cases_on_time, cases_unfilled')
+          .order('walmart_week')),
+        fetchAll(() => supabase
           .from('dot_order_history')
-          .select('delivery_week, dot_order_number, customer_po, ordered_cases, cut_cases, reconciled_cases'),
-        supabase
+          .select('delivery_week, dot_order_number, customer_po, ordered_cases, cut_cases, reconciled_cases')
+          .order('dot_order_number')),
+        fetchAll(() => supabase
           .from('po_line_items')
           .select('cortina_item_number, quantity_cases, line_total, cut_reason, actual_delivery_date, purchase_orders!inner(walmart_po_number, ship_date_original, retailer)')
-          .eq('purchase_orders.retailer', 'Walmart'),
+          .eq('purchase_orders.retailer', 'Walmart')
+          // A stable sort is REQUIRED for paging: without an ORDER BY, Postgres
+          // may return rows in a different order per page and the pages then
+          // overlap or skip.
+          .order('id')),
       ]);
       if (!active) return;
 
