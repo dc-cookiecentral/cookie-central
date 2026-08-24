@@ -61,8 +61,10 @@ month** from the nightly Cortina export. Around **November 2026** it crosses
 No error message. No empty state. Just fewer rows than reality, on pages people
 trust.
 
-**This is pre-existing** — it is not caused by the Demand Planner work — but it
-was found during it, and it has a date attached. The fix is the same pattern
+**Tracked as an open ticket** at the top of `BUILD_PLAN.md` — impact table, fix,
+acceptance criteria and the count-check command. **This is pre-existing** — not
+caused by the Demand Planner work — but it was found during it, and it has a date
+attached. The fix is the same pattern
 already used in `src/hooks/useDemandFeeds.js` (`fetchAll`, which pages through
 in 1,000-row chunks). The hooks needing it: `usePurchaseOrders.js`,
 `usePayments.js`, `useAlerts.js`.
