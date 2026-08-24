@@ -605,7 +605,7 @@ Partial index on `(metric_id) WHERE metric_id IS NOT NULL` — most To-Dos carry
 
 **The V/TO is not in this schema.** The 5-year, 3-year and 1-year plans, core values and core focus live in `src/data/eosVto.js` — annual prose, not meeting data. See ADR-047.
 
-## Retail Link demand feeds (`/demand-planner` — built, migration not yet applied)
+## Retail Link demand feeds (`/demand-planner` — LIVE; migrations applied Aug 24 2026)
 
 Added by `20260824120000_retail_link_demand_feeds.sql`. The demand side of the Walmart Demand Planner. Populated **only** by uploads at `/uploads` → Retail Link; nothing writes here automatically. See ADR-053/054/055/056 and `docs/DEMAND_PLANNER_FORMULAS.md`.
 

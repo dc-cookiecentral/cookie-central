@@ -231,12 +231,16 @@ door growth belongs in the seasonality multiplier until a traited-store forecast
 
 # As built — the live Retail Link feeds
 
-**Status: August 24, 2026.** Built and building clean; the migration
-`20260824120000_retail_link_demand_feeds.sql` is **not yet applied**, so the page
-is still running on `SEED` until someone applies it and uploads a file. The
-sections this replaces were written before anyone had read a real export and
-several of their conclusions were wrong; the corrections are called out below so
-the same wrong turns are not taken twice.
+**Status: August 24, 2026 — LIVE.** All four migrations
+(`20260824120000`–`150000`) are applied to the remote database and all six
+exports have been uploaded, so the page runs on real Walmart data. The sections
+this replaces were written before anyone had read a real export and several of
+their conclusions were wrong; the corrections are called out below so the same
+wrong turns are not taken twice.
+
+⚠️ **Read `DEMAND_PLANNER_KNOWN_ISSUES.md` before trusting a number** — the
+supply side (days-on-hand, recommended production) is still placeholder and is
+marked as such in the UI.
 
 ## What feeds what
 
