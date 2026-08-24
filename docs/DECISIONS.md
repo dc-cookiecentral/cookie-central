@@ -1150,7 +1150,11 @@ The original panel note called it an "exception slice" and that turned out to be
 
 A fifth — the **Supply Plan** — is deliberately excluded from that table: it is what Walmart plans to *order from us*, not what shoppers will buy, and adding it would double-count.
 
-**🔴 Walmart publishes its forecast twice and the two do not agree, by a different factor per SKU.** On the WK28 file, median ratio of All Item Detail to the Forecast sheet: **WC ×1.0, PB&J ×0.7, CCF ×5.0**. The Forecast sheet's own embedded pivot agrees with All Item Detail rather than with its own raw rows. The planner uses **the Forecast sheet's raw rows** — the only copy with a documented grain (one row per item × week) and a snapshot week, which accuracy scoring requires. ⚠️ **The reason for the gap is not established.** It is not a units conversion; the ratios differ per SKU. The Sources tab shows both and names the choice rather than hiding it.
+**🔴 All Item Detail's "Forecast" row is malformed and is NOT charted.** It is not a weekly series. On the WK28 file, item 679640563 reads `202629 = 5,442.49`, `202630 = 5,382.55`, then **`202631 = 193,305.24` — the Forecast sheet's grand total for that item, sitting in a week column** — then zeros for every week after.
+
+⚠️ **Correction.** A first version of this ADR reported a "median ratio per SKU" between the two forecast columns (WC ×1.0, PB&J ×0.7, CCF ×5.0) and called the divergence an open question. That statistic was computed partly over the corrupted cells and is **withdrawn**. What survives is narrower and verifiable: the column mixes weekly values with a grand total, and separately CCF reads 26,549 at wk 202629 against the Forecast sheet's 5,355 — one observation, not a trend.
+
+The planner uses **the Forecast sheet's raw rows** exclusively — one row per item × week, with a snapshot week, which accuracy scoring requires. The malformed column is still ingested (harmless raw data) but drives nothing and is no longer shown as a comparable series. The Sources tab reports it as a defect, with the offending value named.
 
 **What the tab immediately surfaced.** For week 202629, Walmart forecasts **2,589** units of PB&J where the DC internal forecast says **1,485** — a **+74%** gap, and +86% the following week. That is the out-of-stock period depressing trailing velocity, which is exactly the assumption worth interrogating, and it was invisible before.
 
