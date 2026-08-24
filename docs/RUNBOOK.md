@@ -85,6 +85,22 @@ Then `/demand-planner` picks them up on next load; its banner's "as of" is the n
 
 If an export looks different from the above, run `node scripts/inspect-retail-link.mjs "<file>.xlsx"` — it runs every parser over every sheet and prints what matched.
 
+### 2.8 · Demand Planner — what you can and cannot trust
+
+⚠️ **Full list: `docs/DEMAND_PLANNER_KNOWN_ISSUES.md`. Read it before making a decision from this page.**
+
+| ✅ Trust — reconciled to the source files' own totals | 🔴 Do NOT trust yet |
+|---|---|
+| POS units / $, true demand, velocity | DC days on hand |
+| In-store fill rate (in-stock %) | DOT days on hand |
+| OTIF | Recommended production / pallets |
+| Walmart store forecast | DOT opening / closing |
+| PO requested / delivered / cuts, DOT cut recovery | |
+
+**Why the right-hand column is wrong:** the page computes demand from live Walmart data but its supply side is still placeholder — production is a frozen 2026-08-13 snapshot (`production_runs` holds 5 rows) and **no DOT on-hand report exists at all**. PB&J currently reads 363.8 days on hand and every SKU recommends 0 cases. Size co-bakery runs the way you did before this page existed, until `production` has a real feed.
+
+**The Sources tab** (`/demand-planner` → Sources) states, for every figure, which file, sheet and column it came from — or the formula, where the page derives it — and lists the places two sources disagree. Start there when a number looks wrong.
+
 ---
 
 ## 3 · User management
@@ -273,7 +289,24 @@ WHERE source_upload_id IN (
 
 Open the browser devtools → Network → look for the failing Supabase request. The `message` field on the response tells you the underlying SQL error (`column does not exist`, `permission denied`, etc.) and points at the table to fix.
 
-### 5.9 · **Local dev: sidebar footer says "Dev User"**
+### 5.9 · **A page silently shows fewer rows than the database has**
+
+⚠️ **Supabase returns at most 1,000 rows per query and reports no error when it truncates.** There is no empty state, no warning — just less data than reality on a page people trust.
+
+Already happened once: `po_line_items` (1,194 rows) was truncated on the Demand Planner's first live day, dropping ~16% of the order book invisibly.
+
+**Currently at risk** — `purchase_orders` is at **892 rows**, growing ~45–50/month from the nightly Cortina export, so it crosses 1,000 around **Nov 2026**. When it does, **Product Orders**, **Payments** and **Alerts** start dropping POs. The hooks needing the fix: `usePurchaseOrders.js`, `usePayments.js`, `useAlerts.js`.
+
+**The fix** is the `fetchAll` helper already in `src/hooks/useDemandFeeds.js` — page in 1,000-row chunks with a stable `ORDER BY` (without one, pages can overlap and skip).
+
+**To check any table:**
+```bash
+curl -sI "$VITE_SUPABASE_URL/rest/v1/<table>?select=id" \
+  -H "apikey: $VITE_SUPABASE_ANON_KEY" -H "Authorization: Bearer $VITE_SUPABASE_ANON_KEY" \
+  -H "Prefer: count=exact" -H "Range: 0-0" | grep -i content-range
+```
+
+### 5.10 · **Local dev: sidebar footer says "Dev User"**
 
 You're in bypass mode. `.env.local` → `VITE_AUTH_BYPASS=false` → restart vite. Bypass only renders a fake admin profile in the UI; DB calls run as anon and every role-gated insert will fail (which is why this is an instant tell).
 
@@ -296,6 +329,10 @@ SELECT
 Anything jumping → click through to the page that owns it.
 
 ### 6.2 · Weekly
+
+- **Row-count watch** — `purchase_orders` against the 1,000-row query cap (§5.9). At 892 as of Aug 24 2026.
+- **Demand Planner freshness** — the banner's "as of" week should track the latest Retail Link upload; the DOT panel warns when it lags POS.
+
 
 - Confirm the Bentonville weekly arrived: `SELECT week_number, report_date FROM weekly_reports ORDER BY report_date DESC LIMIT 3;`
 - Confirm DOT snapshot is fresh: `SELECT max(snapshot_date) FROM dot_inventory;` — should be within ~48 hours

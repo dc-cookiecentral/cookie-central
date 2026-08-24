@@ -3,7 +3,22 @@
 Operational dashboard for Dirty Cookie's white-label retail business (Walmart + Kroger) through Cortina Foods.
 
 **Stack:** React + Vite + Tailwind + Supabase + Vercel
-**Status** *(Aug 23 2026)*: Phase 1 demo shipped (June 2026); launch hardening in progress. All demo modules are live against Supabase, plus the `systems@` AI email agent (Day 10) and the Lot Traceability chain UI (Day 11). One ship blocker remains before Phase 1 is declared shipped: Cortina NetSuite real-file reconciliation (awaiting Harshita's export sample). See `docs/BUILD_PLAN.md`.
+**Status** *(Aug 24 2026)*: **Walmart Demand Planner is live on real data** — see the warning block below and `docs/DEMAND_PLANNER_KNOWN_ISSUES.md`. Previously *(Aug 23)*: Phase 1 demo shipped (June 2026); launch hardening in progress. All demo modules are live against Supabase, plus the `systems@` AI email agent (Day 10) and the Lot Traceability chain UI (Day 11). One ship blocker remains before Phase 1 is declared shipped: Cortina NetSuite real-file reconciliation (awaiting Harshita's export sample). See `docs/BUILD_PLAN.md`.
+
+> ## ⚠️ Using the Demand Planner? Read `docs/DEMAND_PLANNER_KNOWN_ISSUES.md` first.
+>
+> It went live on real Walmart data on **Aug 24 2026**. Most of it reconciles to
+> Walmart's own totals. Two things do not, and look just as convincing:
+>
+> 1. **Do not plan production off it yet.** DC/DOT days-on-hand and the
+>    recommended-production figures divide real demand by placeholder supply
+>    (`production_runs` holds 5 rows; there is no DOT on-hand feed). PB&J reads
+>    363.8 days on hand and every SKU recommends 0 cases. Trust POS, in-store
+>    fill, OTIF, forecast, orders and cut recovery — not the supply side.
+> 2. **`purchase_orders` is at 892 of Supabase's 1,000-row query cap**, growing
+>    ~45–50/month. Around **Nov 2026** Product Orders, Payments and Alerts begin
+>    silently dropping rows — no error, just less data. Fix is the `fetchAll`
+>    pattern already in `src/hooks/useDemandFeeds.js`.
 
 **Also in this repo — a separate project.** The **Sample Ordering Site (Sample Central)**, where Cortina salespeople build sample shipments that flow to the co-manufacturer through ShipStation. Built July–August 2026 (ADR-025→046) and **launched August 19, 2026** — test mode is off in Production, the table was purged, and the first real order numbers `SMP-1206`. There is still no ShipStation sandbox: **Preview** builds share the production database and store, so a branch-build order is a real order (kept `SMP-TEST-`-prefixed on purpose). It shares this repo, the Supabase project and some infrastructure, but its goals, data and decisions are separate; don't conflate the two.
 
@@ -11,7 +26,7 @@ Operational dashboard for Dirty Cookie's white-label retail business (Walmart + 
 
 **And a new module in the main project.** The **Walmart Demand Planner** at `/demand-planner` — **Service health** (in-store fill rate + OTIF), S&OP summary, chain-flow charts, DOT cut-recovery and tracker, for WC / PBG / CCF. Live since August 21; wired to live data August 24 (ADR-053→056).
 
-**Five of its six series are live** — POS, Walmart forecast, OTIF, DOT cut recovery and NetSuite orders — fed by the six weekly uploads at `/uploads`. Only `production` is still `SEED`, and there is **no DOT on-hand feed at all** (it does not exist), so the forward DOT cascade runs on its opening anchor. Each series falls back to SEED independently, so the banner reports which source won rather than claiming the page is simply "live" or "static". ⚠️ **The migration is not yet applied** — until it is, everything reads SEED. Start from `docs/DEMAND_PLANNER_FORMULAS.md` ("As built") and `docs/DATA_MODEL.md`.
+**Five of its six series are live** *(as of Aug 24 2026 — migrations applied, all six exports uploaded)* — POS, Walmart forecast, OTIF, DOT cut recovery and NetSuite orders, fed by the six weekly uploads at `/uploads`. Only `production` is still `SEED`, and there is **no DOT on-hand feed at all** (it does not exist), so the forward DOT cascade runs on its opening anchor — which is why days-on-hand and recommended production are **not trustworthy** (see the warning above). Each series falls back to SEED independently, so the banner reports which source won rather than claiming the page is simply "live" or "static". Start from **`docs/DEMAND_PLANNER_KNOWN_ISSUES.md`**, then `docs/DEMAND_PLANNER_FORMULAS.md` ("As built") and `docs/DATA_MODEL.md`.
 
 ⚠️ **Walmart restates POS**, so all three feeds upsert and re-uploading overlapping weeks is how the numbers stay correct — not a mistake. Consequently **"the live feed reproduces SEED" is not the acceptance test**; SEED is a stale snapshot (week 202622 moved 1,322 → 2,343 units for PB&J). See ADR-054.
 
@@ -90,7 +105,8 @@ cookie-central/
 │   ├── DECISIONS.md             # Architecture decision records — ADR-026…046 are Sample Central, earlier ones are not
 │   ├── RUNBOOK.md               # Launch operations: onboarding, troubleshooting, recovery
 │   ├── EOS.md                   # The EOS Tracker — schema, goal shapes, weekly operation
-│   ├── DEMAND_PLANNER_FORMULAS.md  # Demand planner engine spec + how to wire it to live data
+│   ├── DEMAND_PLANNER_FORMULAS.md  # Demand planner engine spec + "As built" data wiring
+│   ├── DEMAND_PLANNER_KNOWN_ISSUES.md # ⚠️ What to trust on that page and what not to — READ FIRST
 │   └── PEOPLE.md                # Org chart + contacts + system emails
 ├── sample-site/                 # Sample Central — SEPARATE PROJECT, docs only (code stays put)
 │   ├── CLAUDE.md                # Start sessions on that project here

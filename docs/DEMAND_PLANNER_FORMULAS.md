@@ -5,6 +5,11 @@
 > workbook on 23 checks. If you change the engine, re-run that comparison —
 > the numbers are used to size co-bakery production runs.
 >
+> ⚠️ **Before trusting a number off this page, read
+> `DEMAND_PLANNER_KNOWN_ISSUES.md`.** The demand side reconciles to Walmart's own
+> totals; the supply side (days-on-hand, recommended production) is still
+> placeholder and looks just as convincing.
+>
 > **The demand side is now live.** POS, the Walmart forecast and DC service read
 > the `retail_link_*` tables, populated by uploading the weekly Walmart exports
 > at `/uploads`. The supply side — `orders`, `production`, `dot` — is still the
@@ -438,6 +443,11 @@ Learned the hard way; all of them cost real time at least once.
   the truth about what is applied (ADR-047).
 
 ## Still open
+
+> ⚠️ **The team-facing version of this list is `DEMAND_PLANNER_KNOWN_ISSUES.md`** —
+> written for the people using the page rather than the people building it, and
+> it leads with the two items that can actually cause harm. Keep the two in sync.
+
 
 - **Apply the four pending migrations** (`20260824120000`, `130000`, `140000`, `150000`), then upload the six exports once.
 - **`production`** is the last series with no live source (`production_runs`
