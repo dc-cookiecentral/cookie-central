@@ -1124,7 +1124,9 @@ The original panel note called it an "exception slice" and that turned out to be
 
 **How the engine was protected.** The one-line change to `c.dotOut` was made, then validated by snapshotting all three SKU series before and after: with the new input absent, **432 cells were byte-identical** — the change was provably a no-op on the existing path. That harness is what then showed the real data producing a 6× understatement, which is what caused the revert. After reverting, the engine reproduces the original baseline exactly **even with real DOT data loaded**.
 
-**The test, when a current export arrives.** Check whether it contains **orders with zero cuts**. A recent, non-crisis window with no clean orders means the export is filtered; clean orders present means it is a full extract and reading 2 was right. Only then consider restoring `c.dotDelivered ?? c.dlv ?? ...` at that line — and even then, only if it also proves complete against NetSuite for the same weeks.
+**A DOT report arrives WEEKLY** (Caroline, Aug 24 2026), which changes the shape of this open question: it resolves itself on the next upload rather than waiting on someone to go and pull a file. It also makes the staleness warning on the cut-recovery panel a **missed-upload signal** rather than an inherent property of the feed, and puts the DOT report in the weekly routine as card 5 at `/uploads`.
+
+**The test, on the next report.** Check whether it contains **orders with zero cuts**. A normal, non-crisis week with no clean orders in it means the export is filtered; clean orders present means it is a full extract and reading 2 was right. Only then consider restoring `c.dotDelivered ?? c.dlv ?? ...` at that line — and even then, only if it also proves complete against NetSuite for the same weeks.
 
 **Note what does NOT depend on this.** The PO reconciliation above holds regardless: NetSuite records deliveries on cut POs, and the DOT export supplies the original order quantity. `dot_order_history` is still the right table and the parser is still validated — it is the *vintage and completeness* of the file that is open, not the shape.
 
@@ -1164,3 +1166,34 @@ The planner uses **the Forecast sheet's raw rows** exclusively — one row per i
 - **`Forecast` must not be truncated at the file week.** The parser bounds every measure at the file's own week, correctly, because future columns read `0` and a fabricated zero is undetectable. `Forecast` is the exception: it is inherently forward, and truncating it discarded the only copy comparable against the Forecast sheet. It is now exempt from the bound; all other measures still are not.
 
 **Fields carried but not fed to the engine.** `wmt_forecast_units`, `pos_units_if_instock` and the raw `instock_pct` ride along on the POS rows for this tab. `buildSkuSeries` reads none of them, so they cost nothing and the engine is untouched.
+
+## ADR-062: The Demand Planner goes live with half its numbers explicitly untrusted
+
+**Date:** August 24, 2026
+**Status:** Live and in use by the team.
+
+**Decision.** `/demand-planner` is released to the team with its **demand side trusted and its supply side explicitly labelled as placeholder**, rather than held back until every series is real. The distinction is documented in `DEMAND_PLANNER_KNOWN_ISSUES.md`, `RUNBOOK.md` §2.8, and a warning block at the top of the README.
+
+| ✅ Trusted — reconciled to the exports' own totals | 🔴 Placeholder |
+|---|---|
+| POS, true demand, velocity | DC days on hand |
+| In-store fill rate | DOT days on hand |
+| OTIF | Recommended production / pallets |
+| Walmart store forecast | DOT opening / closing |
+| PO requested / delivered / cuts, DOT cut recovery | |
+
+**Why ship it half-trusted.** The demand side answers questions nobody could answer before — what actually sold, how much was suppressed by out-of-stocks, how Walmart's forecast compares to ours, where cases were cut. Holding that back until `production_runs` has a real feed (it has **5 rows**, with no timeline) would withhold the working half indefinitely. The supply half is not wrong-by-a-little; it divides real demand by a frozen snapshot and a DOT on-hand feed **that does not exist**, producing PB&J at *363.8 days on hand* and *0 recommended cases* for every SKU.
+
+**The risk being accepted, stated plainly.** Those figures look exactly as authoritative as the trustworthy ones — same cards, same typography, same page. **The realistic failure mode is someone sizing a co-bakery run off a placeholder.** That is the single most likely way this page causes harm.
+
+**The mitigation is in the UI, not only in docs** (added before rollout). Documentation is the weak form — a team member reading `363.8` off a card is not holding a doc at that moment — so the placeholder figures are marked at the point of reading:
+
+- **Greyed and struck through**, with a `placeholder` badge, on the summary cards and every affected Tracker row.
+- **Threshold flags suppressed** on those rows. Colouring a fabricated number red reads as a genuine alarm, which is worse than not colouring it at all.
+- **A non-dismissible notice** at the top of the tab everyone lands on, naming which side of the page is trustworthy and which is not. Not dismissible on purpose: it stops being true when `production` gets a real feed, not when somebody clicks.
+
+**A second risk, unrelated to this page but found here.** Supabase caps a query at 1,000 rows and reports nothing when it truncates. `purchase_orders` is at **892** and grows ~45–50/month, so around **November 2026** Product Orders, Payments and Alerts begin silently dropping rows. It already bit once: `po_line_items` (1,194) was truncated on this page's first live day, losing ~16% of the order book invisibly. Fix is the `fetchAll` helper in `useDemandFeeds.js`; the hooks needing it are named in `RUNBOOK.md` §5.9.
+
+**A retraction carried into the launch docs.** This work reported to Caroline that "Walmart publishes its forecast twice, disagreeing by a different multiple per SKU (WC ×1.0, PB&J ×0.7, CCF ×5.0)" and suggested raising it with Bentonville. The statistic was computed over cells corrupted by a grand total sitting in a week column, and is **withdrawn**. The defensible remainder is one observation: CCF reads 26,549 at week 202629 against the Forecast sheet's 5,355. Recorded because a retracted number that reached a person does not un-reach them by being deleted from a file.
+
+**Verification standard, changed by failure.** This page shipped **blank** through three deploys each reported as "verified", because verification meant grepping the built bundle for expected strings — which were present, in code that could never execute (a temporal dead zone read of `series`). `scripts/smoke-render.mjs` now renders the component through `react-dom/server` across all six paths (3 tabs × live/empty feeds) and fails if it throws. **Grepping an artifact proves presence, not execution.** The rest of the app still has no equivalent check.

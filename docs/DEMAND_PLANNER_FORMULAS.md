@@ -5,6 +5,11 @@
 > workbook on 23 checks. If you change the engine, re-run that comparison —
 > the numbers are used to size co-bakery production runs.
 >
+> ⚠️ **Before trusting a number off this page, read
+> `DEMAND_PLANNER_KNOWN_ISSUES.md`.** The demand side reconciles to Walmart's own
+> totals; the supply side (days-on-hand, recommended production) is still
+> placeholder and looks just as convincing.
+>
 > **The demand side is now live.** POS, the Walmart forecast and DC service read
 > the `retail_link_*` tables, populated by uploading the weekly Walmart exports
 > at `/uploads`. The supply side — `orders`, `production`, `dot` — is still the
@@ -253,7 +258,7 @@ the same wrong turns are not taken twice.
 
 ⚠️ **Two different files are called "the DOT report".** `dot_order_history` (orders and cuts — live) and `dot_inventory` (pallet-level on-hand — does not exist). Neither substitutes for the other.
 
-🔴 **The only DOT export on hand was pulled 2026-07-16 and is stale** (weeks 202620–25 only). In it, 0 of 221 rows had no cut — either the export is exception-filtered, or that window is the documented supply crisis. A current export settles it; see ADR-060 for the test. Either way it is **not** a usable record of total depot deliveries and must **not** drive `dotOut`; doing so understates DOT's outflow ~6× and suppresses the production recommendation. It is surfaced in the Tracker as "DOT delivered — cut orders only". See ADR-060 for how to turn it on if an unfiltered export arrives — and for the one test that tells them apart.
+🔴 **The loaded DOT export was pulled 2026-07-16** (weeks 202620–25 only). In it, 0 of 221 rows had no cut — either the export is exception-filtered, or that window is the documented supply crisis. **A DOT report now arrives weekly**, so the next one settles it: does it contain orders with zero cuts? See ADR-060. Either way it is **not** a usable record of total depot deliveries and must **not** drive `dotOut`; doing so understates DOT's outflow ~6× and suppresses the production recommendation. It is surfaced in the Tracker as "DOT delivered — cut orders only". See ADR-060 for how to turn it on if an unfiltered export arrives — and for the one test that tells them apart.
 
 `retail_link_supply_plan` is also ingested (Walmart's forward **order** plan, ADR-057) but is **not yet wired into the engine** — it lands and is queryable, and connecting it to the `orders` series is the next piece. ⚠️ It is not the store forecast: `retail_link_forecast` is what Walmart expects consumers to buy, the supply plan is what Walmart plans to order from us. Adding them together double-counts.
 
@@ -438,6 +443,11 @@ Learned the hard way; all of them cost real time at least once.
   the truth about what is applied (ADR-047).
 
 ## Still open
+
+> ⚠️ **The team-facing version of this list is `DEMAND_PLANNER_KNOWN_ISSUES.md`** —
+> written for the people using the page rather than the people building it, and
+> it leads with the two items that can actually cause harm. Keep the two in sync.
+
 
 - **Apply the four pending migrations** (`20260824120000`, `130000`, `140000`, `150000`), then upload the six exports once.
 - **`production`** is the last series with no live source (`production_runs`

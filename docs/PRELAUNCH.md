@@ -40,3 +40,37 @@ easy to forget.
   ```
   (`PO14451` is real — leave it out unless you also want its 5 linked email
   extractions gone. General delete pattern: RUNBOOK §4.2.)
+
+## Demand Planner — before the team starts using it (Aug 24 2026)
+
+The page is live on real Walmart data. These are the things to clear, or at
+minimum to have told people, before it becomes a decision-making tool.
+Full detail: `DEMAND_PLANNER_KNOWN_ISSUES.md`.
+
+- [ ] 🔴 **Tell the team the supply-side numbers are placeholder.** DC/DOT
+  days-on-hand and recommended production divide live demand by frozen
+  production data and a non-existent DOT on-hand feed. PB&J reads **363.8 days
+  on hand**; every SKU recommends **0 cases**. Someone will otherwise plan a
+  co-bakery run off it — it is the single most likely way this page causes harm.
+  ✅ **Done Aug 24 2026** — those figures are greyed, struck through and badged
+  `placeholder` in the UI, their threshold flags are suppressed, and the summary
+  tab carries a non-dismissible notice. Still worth saying out loud to the team.
+- [ ] 🔴 **Ticket the 1,000-row cap** before ~Nov 2026. `purchase_orders` is at
+  892 and grows ~45–50/month; at 1,000, Product Orders / Payments / Alerts begin
+  silently dropping rows. Fix = the `fetchAll` pattern in `useDemandFeeds.js`
+  applied to `usePurchaseOrders.js`, `usePayments.js`, `useAlerts.js`.
+- [ ] 🟠 **Add the DOT Order History to the weekly upload routine.** A report now
+  arrives every week, so it sits alongside the Retail Link files (card 5 at
+  `/uploads`). The loaded one is a 2026-07-16 pull, three weeks behind POS —
+  upload the current one. **On the next report, check whether it contains any
+  orders with zero cuts**: that settles whether the export is exception-filtered
+  and whether it can ever serve as a record of total deliveries.
+- [ ] 🟠 **Do not raise the "CCF ×5.0 forecast" with Bentonville.** That
+  statistic was computed over corrupted cells and has been retracted. The
+  defensible observation is CCF 26,549 vs 5,355 at week 202629.
+- [ ] 🟡 **Adjudicate the in-stock restatement.** Walmart revised PB&J in-stock
+  for weeks 21–27 from 0.62–0.69 up to 0.87–0.98. It divides into demand, so it
+  moves the forecast. Both are shown in the Sources tab; nobody has decided.
+- [ ] 🟡 **Run `node scripts/smoke-render.mjs` before any Demand Planner
+  deploy.** Grepping the built bundle for strings does not prove the page runs —
+  it shipped blank three times that way.
