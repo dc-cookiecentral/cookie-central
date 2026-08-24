@@ -694,21 +694,26 @@ function Sources({ feeds, series }) {
       tone: n > 0 ? "warn" : "ok",
     });
   }
-  // 2. Walmart's two forecasts for the same week. Reported as a per-SKU RATIO,
-  //    not an averaged percentage: the two disagree by a different factor for
-  //    each SKU (~5× on CCF, ~2× on PB&J on the WK28 file), so a single mean
-  //    would blur the one fact that makes this worth looking at.
-  const bothFcst = fcstRows.filter((r) => r.wmtSheet > 0 && r.wmtDetail > 0);
-  if (bothFcst.length) {
-    const bySku = {};
-    for (const r of bothFcst) (bySku[r.sku] ??= []).push(r.wmtDetail / r.wmtSheet);
-    const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
-    const parts = Object.entries(bySku).map(([sku, xs]) => sku + " ×" + median(xs).toFixed(1));
+  // 2. All Item Detail's "Forecast" row is NOT a weekly series and must not be
+  //    charted as one. Observed on the WK28 file, item 679640563:
+  //      202629 = 5,442.49   202630 = 5,382.55
+  //      202631 = 193,305.24  ← the Forecast sheet's GRAND TOTAL for that item
+  //      202632 onward = 0
+  //    A grand total sitting in a week column, then zeros. An earlier build
+  //    reported a "median ratio per SKU" over this column; that statistic was
+  //    computed partly over the corrupted cells and has been withdrawn.
+  //    Reported as a defect with its evidence, not as a comparison.
+  const detailFcst = (feeds.pos ?? []).filter((p) => p._wmtFcstDetail > 0);
+  if (detailFcst.length) {
+    const max = detailFcst.reduce((a, b) => (b._wmtFcstDetail > a._wmtFcstDetail ? b : a));
+    const sheetAt = (feeds.forecasts ?? []).find((f) => f.target === max.wk && f.sku === max.sku);
     disc.push({
-      title: "Walmart publishes its forecast twice, and the two do not agree",
-      body: "All Item Detail's \"Forecast\" row runs a different multiple of the Forecast sheet for every SKU — median ratio " +
-        parts.join(", ") + " across " + bothFcst.length + " forward cells. The Forecast sheet's own embedded pivot agrees with All Item Detail, not with its own raw rows.",
-      note: "The planner uses the FORECAST SHEET'S RAW ROWS — the only copy with a documented grain (one row per item × week) and a snapshot week, which accuracy scoring needs. The other figure is shown here but feeds nothing. ⚠️ The reason for the gap is NOT established; treat it as an open question, not a units conversion.",
+      title: "Walmart's second forecast column is malformed — not used",
+      body: "All Item Detail carries a \"Forecast\" row, but it is not a weekly series: it holds a " +
+        "few real weeks, then a grand total dropped into a week column, then zeros. Largest value loaded is " +
+        F.int(max._wmtFcstDetail) + " at wk " + max.wk + " for " + max.sku +
+        (sheetAt ? " — the Forecast sheet says " + F.int(sheetAt.units) + " for the same week." : "."),
+      note: "The planner uses the FORECAST SHEET'S RAW ROWS exclusively — one row per item × week, with a snapshot week, which accuracy scoring needs. This column is ingested but drives nothing and is not charted.",
       tone: "warn",
     });
   }
@@ -787,10 +792,11 @@ function Sources({ feeds, series }) {
 
       <section className="bg-white rounded-2xl border p-5" style={{ borderColor: "#E5D9DE" }}>
         <header className="mb-3">
-          <h2 className="cc-serif text-lg">The forecast, four ways</h2>
+          <h2 className="cc-serif text-lg">The forecast, three ways</h2>
           <p className="text-xs opacity-60">
             Forward weeks only. These are computed differently and are SUPPOSED to differ — the spread is
-            what tells you which assumption to interrogate.
+            what tells you which assumption to interrogate. Walmart's second forecast column is deliberately
+            absent: it is malformed (see Discrepancies).
           </p>
         </header>
         {fcstRows.length === 0 && <p className="text-[12px] opacity-60">No forward weeks with forecast data yet.</p>}
@@ -801,7 +807,6 @@ function Sources({ feeds, series }) {
                 <tr className="text-[10px] uppercase tracking-widest opacity-50 text-left cc-sans">
                   <th className="pb-1 pr-3">Wk</th><th className="pb-1 pr-3">SKU</th>
                   <th className="pb-1 pr-3 text-right" title="Forecast sheet — carries a snapshot week">WMT (Forecast sheet)</th>
-                  <th className="pb-1 pr-3 text-right" title="All Item Detail 'Forecast' row — restated, no history">WMT (All Item Detail)</th>
                   <th className="pb-1 pr-3 text-right" title="base velocity × stores × seasonality">DC internal</th>
                   <th className="pb-1 pr-3 text-right">Consensus</th>
                   <th className="pb-1 text-right" title="WMT (Forecast sheet) vs DC internal">Gap</th>
@@ -815,7 +820,6 @@ function Sources({ feeds, series }) {
                       <td className="py-1 pr-3">{String(r.wk).slice(4)}</td>
                       <td className="py-1 pr-3 font-bold">{r.sku}</td>
                       <td className="py-1 pr-3 text-right">{F.int(r.wmtSheet)}</td>
-                      <td className="py-1 pr-3 text-right opacity-60">{F.int(r.wmtDetail)}</td>
                       <td className="py-1 pr-3 text-right">{F.int(r.internal)}</td>
                       <td className="py-1 pr-3 text-right">{F.int(r.consensus)}</td>
                       <td className="py-1 text-right font-bold"

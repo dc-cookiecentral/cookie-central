@@ -355,18 +355,17 @@ from `Sales Summary` / `Item Data`. `store_on_hand` is written for the file's ow
 week and left **NULL** for backfilled weeks — never 0 — so it accrues one week
 per upload from here on.
 
-## Which forecast? There are four, and they disagree
+## Which forecast? There are three
 
 `/demand-planner` → **Sources** shows them side by side. See ADR-061.
 
 | Number | Where it comes from |
 |---|---|
 | Walmart store forecast | `Forecast` sheet, raw rows — **the one the engine uses** (only copy with a snapshot week) |
-| Walmart's other forecast | All Item Detail's `Forecast` row — restated in place, no history, shown but feeds nothing |
 | DC internal | derived: base velocity × stores used × seasonality |
 | Consensus | internal, after override and seasonality |
 
-🔴 **The two Walmart figures disagree by a different multiple per SKU** — WK28 medians: WC ×1.0, PB&J ×0.7, CCF ×5.0. Not a units conversion. **Unexplained; treat as an open question.**
+🔴 **All Item Detail's `Forecast` row is malformed — do not chart it.** It holds a few real weeks, then a **grand total in a week column** (WK28, item 679640563: `202631 = 193,305.24`), then zeros. Ingested but drives nothing and is not displayed as a series.
 
 ⚠️ **Walmart's description column in All Item Detail is wrong on 8 of every 9 rows** — only the first row per item carries the right label. Descriptions come from the `Item Data` sheet instead. Item numbers were never affected.
 
