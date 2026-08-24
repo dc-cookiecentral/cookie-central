@@ -297,7 +297,7 @@ Already happened once: `po_line_items` (1,194 rows) was truncated on the Demand 
 
 **Currently at risk** — `purchase_orders` is at **892 rows**, growing ~45–50/month from the nightly Cortina export, so it crosses 1,000 around **Nov 2026**. When it does, **Product Orders**, **Payments** and **Alerts** start dropping POs. The hooks needing the fix: `usePurchaseOrders.js`, `usePayments.js`, `useAlerts.js`.
 
-**The fix** is the `fetchAll` helper already in `src/hooks/useDemandFeeds.js` — page in 1,000-row chunks with a stable `ORDER BY` (without one, pages can overlap and skip).
+**Tracked** as an open ticket at the top of `BUILD_PLAN.md`. **The fix** is the `fetchAll` helper already in `src/hooks/useDemandFeeds.js` — page in 1,000-row chunks with a stable `ORDER BY` (without one, pages can overlap and skip).
 
 **To check any table:**
 ```bash

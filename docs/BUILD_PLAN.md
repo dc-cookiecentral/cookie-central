@@ -17,6 +17,56 @@
 - **Phase 2 — Operations:** upcoming (weeks following Phase 1 ship).
 - **Phase 3 — Financials + Rollout:** late summer 2026.
 
+## 🔴 OPEN — Row-cap truncation, due before ~Nov 2026
+
+**Raised:** Aug 24 2026, during the Demand Planner live-data work.
+**Severity:** silent data loss on pages the team trusts. No error, no empty state.
+**Owner:** unassigned.
+
+### The problem
+
+Supabase/PostgREST returns **at most 1,000 rows per query** and gives **no indication** when it truncates — the response is simply short. Any hook that reads a whole table without paging silently stops seeing rows past 1,000.
+
+**`purchase_orders` is at 892 rows** (Aug 24 2026), growing **~45–50/month** from the nightly Cortina export. It crosses 1,000 around **November 2026**.
+
+### Impact when it crosses
+
+| Page | Hook | What breaks |
+|---|---|---|
+| Product Orders | `src/hooks/usePurchaseOrders.js` | POs stop appearing in the list and KPIs |
+| Payments | `src/hooks/usePayments.js` | invoices/payments go missing |
+| Alerts | `src/hooks/useAlerts.js` | at-risk POs stop being flagged — the alert simply never fires |
+
+The Alerts case is the worst: a missing alert is indistinguishable from "nothing is wrong."
+
+### This is not hypothetical — it already happened
+
+On the Demand Planner's first live day, `po_line_items` (1,194 rows) was truncated: **~16% of the order book was missing** and nothing surfaced it. Caught only by reconciling the computed series against its own source file — `req` scored 37/49 truncated vs 49/49 paged.
+
+### The fix
+
+Copy `fetchAll` from `src/hooks/useDemandFeeds.js` — it pages in 1,000-row chunks and is already in production. Apply to the three hooks above.
+
+⚠️ **Paging requires a stable `ORDER BY`.** Without one, Postgres may return rows in a different order per page and the pages will overlap and skip. `useDemandFeeds` orders every paged query for exactly this reason.
+
+### How to check any table's count
+
+```bash
+curl -sI "$VITE_SUPABASE_URL/rest/v1/<table>?select=id" \
+  -H "apikey: $VITE_SUPABASE_ANON_KEY" -H "Authorization: Bearer $VITE_SUPABASE_ANON_KEY" \
+  -H "Prefer: count=exact" -H "Range: 0-0" | grep -i content-range
+```
+
+### Acceptance
+
+- [ ] The three hooks page rather than single-shot, each with a stable `ORDER BY`.
+- [ ] A count check on `purchase_orders` and `po_line_items` matches what the page displays.
+- [ ] `RUNBOOK.md` §6.2's weekly row-count watch is being done, or replaced by something automatic.
+
+**Also worth deciding:** whether to page every hook pre-emptively rather than wait for each table to cross 1,000 one at a time. Tables currently well under: `raw_material_lots` 158, `lot_shipments` 129, `raw_materials` 32.
+
+---
+
 ## Blockers (Phase 1)
 - [x] systems@dirtycookie.com access — DONE
 - [x] Shahira sign-off on prototype — DONE
