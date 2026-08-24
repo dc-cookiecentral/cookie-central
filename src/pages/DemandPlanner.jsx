@@ -252,13 +252,27 @@ const gapColor = g => {
   return a > 0.4 ? (g > 0 ? "#C2185B" : "#8E24AA") : "#E8A33D";
 };
 
-function Stat({ label, value, tone, src }) {
-  const color = tone === "bad" ? "#C2185B" : tone === "warn" ? "#B87514" : "#2D2235";
+// `placeholder` marks a figure whose INPUTS are not real yet. It is not a
+// styling nicety: these numbers sit on the same cards, in the same type, as
+// figures reconciled against Walmart's own totals, and the realistic failure
+// mode for this page is somebody sizing a co-bakery run off one of them. So a
+// placeholder is greyed, struck through, and carries the word — it should be
+// impossible to read as a measurement at a glance. See ADR-062.
+function Stat({ label, value, tone, src, placeholder }) {
+  const color = placeholder ? "#B0A3AC"
+    : tone === "bad" ? "#C2185B" : tone === "warn" ? "#B87514" : "#2D2235";
   return (
     <div>
       <div className="text-[10px] uppercase tracking-widest opacity-60">{label}</div>
-      <div className="cc-serif text-xl" style={{ color }}>{value}</div>
-      {src && <div className="text-[9px] opacity-50 mt-0.5">{src}</div>}
+      <div className="cc-serif text-xl flex items-baseline gap-1.5"
+        style={{ color, textDecoration: placeholder ? "line-through" : undefined }}>
+        {value}
+        {placeholder && (
+          <span className="cc-sans text-[8px] uppercase tracking-widest px-1 py-0.5 rounded no-underline"
+            style={{ background: "#EFE4E9", color: "#8E1039", textDecoration: "none" }}>placeholder</span>
+        )}
+      </div>
+      {src && <div className="text-[9px] mt-0.5" style={{ opacity: placeholder ? 0.8 : 0.5, color: placeholder ? "#8E1039" : undefined }}>{src}</div>}
     </div>
   );
 }
@@ -369,8 +383,8 @@ function FlowCard({ s, m }) {
             src="Retail Link · share of stores" />
           <Stat label="Fill rate, last 4 wks" value={F.pct(m.l4wFill)}
             src="NetSuite (Cortina) deliveries" />
-          <Stat label="DOT days on hand" value={F.d1(m.dotDoh)} tone={m.dotDoh > 28 ? "warn" : undefined}
-            src="modeled · awaiting DOT on-hand feed" />
+          <Stat label="DOT days on hand" value={F.d1(m.dotDoh)} placeholder
+            src="NOT REAL — no DOT on-hand feed exists; modelled off an opening assumption" />
         </div>
         <div>
           <div style={{ height: 190 }}>
@@ -858,6 +872,31 @@ function Sources({ feeds, series }) {
   );
 }
 
+// Sits above the S&OP cards, on the tab people land on. The greying and the
+// "placeholder" badges do the work at the point of reading a number; this says
+// it once, in plain language, for someone scanning the page for the first time.
+// Deliberately not dismissible — it stops being true when `production` gets a
+// real feed, not when somebody clicks.
+function PlaceholderNotice() {
+  return (
+    <div className="rounded-xl px-4 py-3 text-[12px]"
+      style={{ background: "#FDF3D8", border: "1px solid #E8D9A8", color: "#5C4A1F" }}>
+      <div className="font-semibold mb-0.5">Do not plan production from this page yet.</div>
+      <div>
+        Everything on the <b>demand</b> side is live and reconciles to Walmart's own totals — POS,
+        in-store fill rate, OTIF, the Walmart forecast, orders and cut recovery.
+        The <b>supply</b> side does not: production volumes are a frozen 2026-08-13 snapshot and
+        there is <b>no DOT on-hand feed at all</b>. Anything marked{" "}
+        <span className="text-[8px] uppercase tracking-widest px-1 py-0.5 rounded align-middle"
+          style={{ background: "#EFE4E9", color: "#8E1039" }}>placeholder</span>{" "}
+        — days on hand, recommended production, DOT opening and closing — is real demand divided by
+        an assumption. Size co-bakery runs the way you did before this page existed.
+        {" "}<span className="opacity-70">Detail: docs/DEMAND_PLANNER_KNOWN_ISSUES.md</span>
+      </div>
+    </div>
+  );
+}
+
 function Summary({ series, metrics }) {
   return (
     <div className="flex flex-col gap-4">
@@ -968,16 +1007,16 @@ const ROWS = [
   { k: "cuts", l: "Cut-reason lines", g: c => c.cuts, f: "int" },
   { k: "rev", l: "Invoiced revenue", g: c => c.revenue, f: "money" },
   { k: "dcclose", l: "DC closing (cs)", g: c => c.dcClose, f: "int", sec: "Walmart DC" },
-  { k: "dcdoh", l: "DC DOH (fwd)", g: c => c.dcDoh, f: "d1", flag: c => (c.dcDoh > 0 && c.dcDoh < 7 ? "bad" : null) },
-  { k: "dotused", l: "DOT closing — used (cs)", g: c => c.dotUsed, f: "int", sec: "DOT" },
+  { k: "dcdoh", l: "DC DOH (fwd)", placeholder: true, g: c => c.dcDoh, f: "d1", flag: c => (c.dcDoh > 0 && c.dcDoh < 7 ? "bad" : null) },
+  { k: "dotused", l: "DOT closing — used (cs)", placeholder: true, g: c => c.dotUsed, f: "int", sec: "DOT" },
   { k: "dotdlv", l: "DOT delivered — cut orders only (cs)", g: c => c.dotDelivered, f: "int" },
-  { k: "dotact", l: "DOT actual OH (feed)", g: c => c.dotActual, f: "int" },
-  { k: "dotdoh", l: "DOT DOH (fwd)", g: c => c.dotDoh, f: "d1",
+  { k: "dotact", l: "DOT actual OH (feed)", placeholder: true, g: c => c.dotActual, f: "int" },
+  { k: "dotdoh", l: "DOT DOH (fwd)", placeholder: true, g: c => c.dotDoh, f: "d1",
     flag: c => (c.dotDoh > 0 && c.dotDoh < 7 ? "bad" : c.dotDoh > 28 ? "warn" : null) },
-  { k: "rec", l: "Rec production (cs)", g: c => c.rec, f: "int", sec: "Co-bakery" },
-  { k: "plan", l: "Planned output (cs)", g: c => c.plan, f: "int" },
+  { k: "rec", l: "Rec production (cs)", placeholder: true, g: c => c.rec, f: "int", sec: "Co-bakery" },
+  { k: "plan", l: "Planned output (cs)", placeholder: true, g: c => c.plan, f: "int" },
   { k: "act", l: "Actual shipped to DOT", g: c => c.actual, f: "int", edit: "actual" },
-  { k: "pal", l: "Pallets", g: c => c.pallets, f: "d1" },
+  { k: "pal", l: "Pallets", placeholder: true, g: c => c.pallets, f: "d1" },
 ];
 
 function Tracker({ series, onEdit }) {
@@ -1027,9 +1066,19 @@ function Tracker({ series, onEdit }) {
                           style={{ background: "#EFE4E9" }}>{row.sec}</td></tr>
                       )}
                       <tr>
-                        <td className="sticky left-0 bg-white z-10 cc-sans px-3 py-1 border-b" style={{ borderColor: "#F2EAEE" }}>{row.l}</td>
+                        <td className="sticky left-0 bg-white z-10 cc-sans px-3 py-1 border-b"
+                          style={{ borderColor: "#F2EAEE", color: row.placeholder ? "#B0A3AC" : undefined }}
+                          title={row.placeholder ? "Placeholder — computed from frozen production data and a DOT on-hand feed that does not exist. Do not plan from this row." : undefined}>
+                          {row.l}
+                          {row.placeholder && (
+                            <span className="ml-1.5 text-[8px] uppercase tracking-widest px-1 py-0.5 rounded"
+                              style={{ background: "#EFE4E9", color: "#8E1039" }}>placeholder</span>
+                          )}
+                        </td>
                         {s.cells.map((c, i) => {
-                          const flag = row.flag ? row.flag(c) : null;
+                          // Flags are suppressed on placeholder rows: colouring a
+                          // fabricated number red reads as a genuine alarm.
+                          const flag = row.placeholder ? null : (row.flag ? row.flag(c) : null);
                           const future = i > s.lastActualIdx;
                           const editable = row.edit === "actual" ? true : (row.edit ? future : false);
                           return (
@@ -1038,7 +1087,8 @@ function Tracker({ series, onEdit }) {
                                 borderRight: i === s.lastActualIdx ? "2px solid #C2185B" : undefined,
                                 background: flag === "bad" ? "#F8CBCB" : flag === "warn" ? "#FDE9C8" : future ? "#FDF6FA" : undefined,
                                 color: flag === "bad" ? "#8E1039" : flag === "warn" ? "#8A5A10" : undefined,
-                                fontWeight: flag === "bad" ? 600 : undefined }}>
+                                fontWeight: flag === "bad" ? 600 : undefined,
+                                ...(row.placeholder ? { color: "#B0A3AC", fontStyle: "italic" } : {}) }}>
                               {editable ? (
                                 <input type="number" step={row.edit === "mult" ? "0.05" : "1"}
                                   defaultValue={row.g(c) ?? ""}
@@ -1254,7 +1304,7 @@ export default function DemandPlanner() {
         )}
       </div>
       <main className="p-5 cc-sans">
-        {tab === "summary" && (<><ServiceHealth series={series} otif={feeds.otif} /><div className="mt-4" /><Summary series={series} metrics={metrics} /><DotServicePanel svc={svc} latestDataWk={latestDataWk} /></>)}
+        {tab === "summary" && (<><PlaceholderNotice /><div className="mt-4" /><ServiceHealth series={series} otif={feeds.otif} /><div className="mt-4" /><Summary series={series} metrics={metrics} /><DotServicePanel svc={svc} latestDataWk={latestDataWk} /></>)}
         {tab === "tracker" && <Tracker series={series} onEdit={onEdit} />}
         {tab === "sources" && <Sources feeds={feeds} series={series} />}
       </main>

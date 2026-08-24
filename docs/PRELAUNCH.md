@@ -52,7 +52,9 @@ Full detail: `DEMAND_PLANNER_KNOWN_ISSUES.md`.
   production data and a non-existent DOT on-hand feed. PB&J reads **363.8 days
   on hand**; every SKU recommends **0 cases**. Someone will otherwise plan a
   co-bakery run off it — it is the single most likely way this page causes harm.
-  *Highest-value mitigation: label those figures in the UI, not only in docs.*
+  ✅ **Done Aug 24 2026** — those figures are greyed, struck through and badged
+  `placeholder` in the UI, their threshold flags are suppressed, and the summary
+  tab carries a non-dismissible notice. Still worth saying out loud to the team.
 - [ ] 🔴 **Ticket the 1,000-row cap** before ~Nov 2026. `purchase_orders` is at
   892 and grows ~45–50/month; at 1,000, Product Orders / Payments / Alerts begin
   silently dropping rows. Fix = the `fetchAll` pattern in `useDemandFeeds.js`

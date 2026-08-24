@@ -1184,7 +1184,11 @@ The planner uses **the Forecast sheet's raw rows** exclusively — one row per i
 
 **The risk being accepted, stated plainly.** Those figures look exactly as authoritative as the trustworthy ones — same cards, same typography, same page. **The realistic failure mode is someone sizing a co-bakery run off a placeholder.** That is the single most likely way this page causes harm.
 
-**⚠️ The mitigation is currently documentation only, and documentation is the weak form.** The numbers should be visually marked in the UI — greyed, badged, or withheld until their inputs are real. That was not done in this pass and is the highest-value follow-up. Recorded here so the gap is not mistaken for an oversight.
+**The mitigation is in the UI, not only in docs** (added before rollout). Documentation is the weak form — a team member reading `363.8` off a card is not holding a doc at that moment — so the placeholder figures are marked at the point of reading:
+
+- **Greyed and struck through**, with a `placeholder` badge, on the summary cards and every affected Tracker row.
+- **Threshold flags suppressed** on those rows. Colouring a fabricated number red reads as a genuine alarm, which is worse than not colouring it at all.
+- **A non-dismissible notice** at the top of the tab everyone lands on, naming which side of the page is trustworthy and which is not. Not dismissible on purpose: it stops being true when `production` gets a real feed, not when somebody clicks.
 
 **A second risk, unrelated to this page but found here.** Supabase caps a query at 1,000 rows and reports nothing when it truncates. `purchase_orders` is at **892** and grows ~45–50/month, so around **November 2026** Product Orders, Payments and Alerts begin silently dropping rows. It already bit once: `po_line_items` (1,194) was truncated on this page's first live day, losing ~16% of the order book invisibly. Fix is the `fetchAll` helper in `useDemandFeeds.js`; the hooks needing it are named in `RUNBOOK.md` §5.9.
 

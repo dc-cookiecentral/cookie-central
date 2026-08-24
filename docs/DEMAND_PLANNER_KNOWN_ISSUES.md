@@ -34,6 +34,11 @@ when you divide a real number by a made-up one.
 forecast, PO requested / delivered / cuts, and DOT cut recovery. Every one of
 those was reconciled against the source files' own total rows.
 
+**On screen, these are marked for you.** Placeholder figures are greyed and
+struck through with a `placeholder` badge, their red/amber warning colours are
+suppressed (a flag on a made-up number reads as a real alarm), and the tab
+carries a notice saying so. If a number is not marked, it is real.
+
 **When this gets fixed:** when `production_runs` has a real feed. It currently
 holds **5 rows**. Until then, size co-bakery runs the way you did before this
 page existed.
