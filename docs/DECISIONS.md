@@ -886,7 +886,7 @@ CC-2OZ-BAK-G
 ## ADR-053: The Retail Link weekly workbook is the demand feed, and one upload backfills the year
 
 **Date:** August 24, 2026
-**Status:** Built. Migration `20260824120000_retail_link_demand_feeds.sql` **not yet applied**. Supersedes ADR-052's premise.
+**Status:** Built. Migration `20260824120000_retail_link_demand_feeds.sql` **applied to the remote database Aug 24 2026**; live in production. Supersedes ADR-052's premise.
 
 **Decision.** `/demand-planner` reads three new tables — `retail_link_pos_weekly`, `retail_link_forecast`, `retail_link_otif` — populated by uploading two Walmart exports at `/uploads`: the weekly `Dirty Cookie WK##.xlsx` workbook and the `OTIF STORE Performance PO DETAILS` export. Parsers: `src/parsers/retailLink.js`, `src/parsers/retailLinkOtif.js`. Hook: `src/hooks/useDemandFeeds.js`.
 
@@ -963,7 +963,7 @@ CC-2OZ-BAK-G
 ## ADR-057: The upload surface is the six exports actually used, and the paste-in Inputs tab is gone
 
 **Date:** August 24, 2026
-**Status:** Built. Migration `20260824130000_retail_link_supply_plan.sql` **not yet applied**.
+**Status:** Built. Migration `20260824130000_retail_link_supply_plan.sql` **applied to the remote database Aug 24 2026**; live in production.
 
 **Decision.** `/uploads` leads with the six exports that are actually uploaded (Caroline, Aug 24 2026), in her order:
 
@@ -1001,7 +1001,7 @@ Adding the first two together double-counts demand. Their totals do not reconcil
 ## ADR-058: The "DOT Report" is the Order History export — and OTIF is not the same measurement
 
 **Date:** August 24, 2026
-**Status:** Built and **validated against a real export**. Migration `20260824140000_dot_order_history.sql` **not yet applied**.
+**Status:** Built and **validated against a real export**. Migration `20260824140000_dot_order_history.sql` **applied to the remote database Aug 24 2026**; live in production.
 
 **Decision.** Card 5 of the six weekly uploads is the DOT **`Order History (N).xlsx`** outbound export — sheet "Outbound Orders", one row per DOT order heading to a Walmart GDC. It writes a new table, `dot_order_history`, and drives the planner's cut-recovery panel. Parser: `src/parsers/dotOrderHistory.js`.
 
@@ -1042,7 +1042,7 @@ They measure the same shipments from opposite ends and **their weeks do not alig
 ## ADR-059: The `orders` series comes from two different dates — and there is no DOT on-hand feed
 
 **Date:** August 24, 2026
-**Status:** Built and validated against the 2026-08-22 Cortina export. Migration `20260824150000_po_line_cut_reason.sql` **not yet applied**.
+**Status:** Built and validated against the 2026-08-22 Cortina export. Migration `20260824150000_po_line_cut_reason.sql` **applied to the remote database Aug 24 2026**; live in production.
 
 **Decision.** The demand planner's `orders` series is derived live from `po_line_items` joined to `purchase_orders`, completing the wiring: **five of the engine's six series are now live** — `pos`, `forecasts`, `otif`, `dotService`, `orders`. Only `production` remains on SEED.
 
@@ -1139,7 +1139,7 @@ The original panel note called it an "exception slice" and that turned out to be
 
 1. **Where every number comes from** — file → sheet → column for each figure, or the formula where the page derives it, with a live / seed / no-source badge.
 2. **Discrepancies** — computed from whatever is loaded, never asserted. A claim that stops being true stops being displayed.
-3. **The forecast, four ways** — the forward numbers side by side per SKU per week, with the gap.
+3. **The forecast, three ways** — the forward numbers side by side per SKU per week, with the gap. (Four at first; Walmart's second forecast column turned out to be malformed and was withdrawn — see ADR-061's correction below.)
 
 **Why the forecast section exists.** "The forecast" is ambiguous in this system — there are **four** forward numbers, computed differently, that are *supposed* to differ:
 
