@@ -9,7 +9,11 @@ Operational dashboard for Dirty Cookie's white-label retail business (Walmart + 
 
 **Also in this repo — a third project.** The **EOS Tracker** at `/eos`, the standing record for the weekly Level 10 leadership meeting (Scorecard, Issues, Rocks, To-Dos, Accountability Chart, V/TO). Built August 17–19, 2026 (ADR-047), **live since August 21**. 13 measurables with goals set, To-Dos that hang off a measurable and carry forward until ticked. Internal roles only — the `cortina` login cannot see any of it. See `docs/EOS.md`.
 
-**And a new module in the main project.** The **Walmart Demand Planner** at `/demand-planner` — S&OP summary, chain-flow charts, DOT cut-recovery, tracker and paste-in inputs, for WC / PBG / CCF. Live since August 21. ⚠️ **It runs on a static snapshot frozen at 2026-08-13, not on Supabase**, and says so in a banner: its primary feeds (weekly POS by SKU, Walmart forecast snapshots, DOT service) have **no table in the schema at all**. The formulas and a full "wiring it to live data" handoff are in `docs/DEMAND_PLANNER_FORMULAS.md` — start there.
+**And a new module in the main project.** The **Walmart Demand Planner** at `/demand-planner` — **Service health** (in-store fill rate + OTIF), S&OP summary, chain-flow charts, DOT cut-recovery and tracker, for WC / PBG / CCF. Live since August 21; wired to live data August 24 (ADR-053→056).
+
+**Five of its six series are live** — POS, Walmart forecast, OTIF, DOT cut recovery and NetSuite orders — fed by the six weekly uploads at `/uploads`. Only `production` is still `SEED`, and there is **no DOT on-hand feed at all** (it does not exist), so the forward DOT cascade runs on its opening anchor. Each series falls back to SEED independently, so the banner reports which source won rather than claiming the page is simply "live" or "static". ⚠️ **The migration is not yet applied** — until it is, everything reads SEED. Start from `docs/DEMAND_PLANNER_FORMULAS.md` ("As built") and `docs/DATA_MODEL.md`.
+
+⚠️ **Walmart restates POS**, so all three feeds upsert and re-uploading overlapping weeks is how the numbers stay correct — not a mistake. Consequently **"the live feed reproduces SEED" is not the acceptance test**; SEED is a stale snapshot (week 202622 moved 1,322 → 2,343 units for PB&J). See ADR-054.
 
 ⚠️ **Everything ships from one Vercel project and one Vite bundle.** Any merge to `main` redeploys Sample Central, which serves live Cortina traffic. Verify the deployed bundle after a merge, never the build log.
 
@@ -17,7 +21,7 @@ Operational dashboard for Dirty Cookie's white-label retail business (Walmart + 
 
 ⚠️ **Hidden is not dead — do not delete these pages or their parsers.** Product Orders and the BOL flow are expected back **around Oct 2026** with substantial changes, and the **`systems@` email reader that feeds them is being kept** (Caroline, Aug 23 2026). The daily `gmail-poll-daily` cron stays on, and `InboxCard` stays on `/uploads`.
 
-**The one genuinely retired feed is the weekly Bentonville Retail Link email** — `weekly_reports` stopped at `2026-07-06`. Its parsers (`parsers/weeklyEmail.js`, `parsers/weeklyAttachments.js`) are kept regardless: they encode the real column names of the Walmart BI exports, which survive a change of transport. **This matters most to the Demand Planner**, whose POS feed was expected to come from that email — see `docs/DEMAND_PLANNER_FORMULAS.md`.
+**The one genuinely retired feed is the weekly Bentonville Retail Link email** — `weekly_reports` stopped at `2026-07-06`. Keeping its parsers turned out to be the right call: **the same Walmart reports now arrive as file uploads**, and `parsers/weeklyAttachments.js` supplied the column matching for `Sales Summary`, `Markdown`, `Item Data` and the OTIF `Receiver` sheet unchanged. Retiring the email cost the transport, not the parsing. The Demand Planner's feeds are built on top of them — see `docs/DEMAND_PLANNER_FORMULAS.md`.
 
 **Everything else in this README is the other project** — inventory, forecasting, POs, the weekly Retail Link reports and the **`systems@` Gmail agent** are *not* part of Sample Central. The one genuine overlap is `EDGE_CRON_BEARER` (Vault), the shared bearer for every pg_cron → Edge Function call in the repo. **Start any session on Sample Central from `sample-site/CLAUDE.md`**, and read `sample-site/docs/SAMPLE_CENTRAL_STATUS.md` for its current state.
 **Builder:** Caroline Friedrich
@@ -121,7 +125,8 @@ cookie-central/
 | `/trace` | Lot Traceability — enter any lot (raw / FG / outbound), chain both directions + recall report | `raw_material_lots`, `production_runs`/`_subcomponents`/`_pallets`, `lot_shipments`, `po_lot_numbers` |
 | `/reference` | Products + Raw Materials + Transitions | Walmart item master + `raw_materials` + `transitions` |
 | `/audit` | Audit log viewer (admin/finance only) | `audit_log` |
-| `/uploads` | Drag-drop pipeline + upload history + **systems@ Inbox** (Connect Gmail, Check for new) | `upload_log`, `gmail_sync_state` |
+| `/uploads` | Drag-drop pipeline (**six weekly exports** first, legacy feeds collapsed — ADR-057) + upload history + **systems@ Inbox** | `upload_log`, `gmail_sync_state` |
+| `/demand-planner` | Walmart Demand Planner — Service health (in-store fill + OTIF), S&OP summary, flow charts, cut recovery, tracker | `retail_link_pos_weekly` + `retail_link_forecast` + `retail_link_otif` + `dot_order_history` + `po_line_items`/`purchase_orders` (+ `retail_link_supply_plan`, ingested not wired); `production` from `SEED`; no DOT on-hand feed exists |
 
 ## Phase 2
 
