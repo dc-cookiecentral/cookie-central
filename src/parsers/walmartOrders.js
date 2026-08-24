@@ -101,6 +101,11 @@ export function parseRows(rows) {
       store_upc: g(r, 'Store Code') || null,
       destination_dc: destinationDc(r),
       actual_delivery_date: isoDate(r['Actual Delivery Date']),
+      // Why this line was short-shipped, verbatim. Values are compound
+      // ('Restricted Supply - Supplier | Dot Out Of Stock-Contact Csr') and the
+      // list grows, so it is never normalised to an enum. The demand planner
+      // counts lines carrying one as its `cuts` figure.
+      cut_reason: g(r, 'Cut Reason') || null,
       // Warehouse / appointment fields — captured even though mostly empty today.
       metadata: {
         invoice_number: g(r, 'Invoice Number') || null,
@@ -278,6 +283,12 @@ async function importRecords(records, { uploadId, client } = {}) {
         walmart_unit_price: l.walmart_unit_price,
         store_upc: l.store_upc,
         destination_dc: l.destination_dc,
+        cut_reason: l.cut_reason,
+        // Promoted out of metadata to a real column (20260824150000): the demand
+        // planner buckets delivered cases and revenue by ACTUAL delivery week,
+        // and it is per-line because different DCs on one SO deliver on
+        // different days. Still mirrored in metadata for back-compat.
+        actual_delivery_date: l.actual_delivery_date,
         metadata: l.metadata,
       });
     }

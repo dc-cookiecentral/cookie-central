@@ -116,6 +116,22 @@ Defines UOM conversion chains per product category.
 | unit_cost | numeric | From NetSuite PO |
 | line_total | numeric | |
 
+
+**Added `20260824150000` — `cut_reason` (text) and `actual_delivery_date` (date).**
+
+`cut_reason` comes from the Cortina export's long-ignored **Cut Reason** column — 194 of 1,155 lines on the 2026-08-22 file, 170 of them `Restricted Supply - Supplier`. Stored **verbatim, never normalised**: values are already compound (`Restricted Supply - Supplier | Dot Out Of Stock-Contact Csr`) and the list grows, so an enum or CHECK would start rejecting real rows. Partial index `WHERE cut_reason IS NOT NULL` — only ~17% of lines carry one and the question is always "which were cut".
+
+`actual_delivery_date` is promoted out of `metadata->>'actual_delivery_date'` to a typed column. It is **per line, not per PO** — different DCs on one SO deliver on different days — and the demand planner buckets on it.
+
+⚠️ **The demand planner reads these two dates differently, and it matters:**
+
+```
+req, cuts  →  purchase_orders.ship_date_original   (scheduled delivery week)
+dlv, rev   →  po_line_items.actual_delivery_date   (actual delivery week)
+```
+
+Verified against `SEED.orders`: `req` 49/49 and `cuts` 49/49 exact. `cuts` is a **count of lines** carrying a reason, not a sum of cut cases. See ADR-059.
+
 ### shipments
 | Column | Type | Notes |
 |--------|------|-------|
@@ -588,3 +604,126 @@ Partial index on `(metric_id) WHERE metric_id IS NOT NULL` — most To-Dos carry
 | `notes` | text | |
 
 **The V/TO is not in this schema.** The 5-year, 3-year and 1-year plans, core values and core focus live in `src/data/eosVto.js` — annual prose, not meeting data. See ADR-047.
+
+## Retail Link demand feeds (`/demand-planner` — built, migration not yet applied)
+
+Added by `20260824120000_retail_link_demand_feeds.sql`. The demand side of the Walmart Demand Planner. Populated **only** by uploads at `/uploads` → Retail Link; nothing writes here automatically. See ADR-053/054/055/056 and `docs/DEMAND_PLANNER_FORMULAS.md`.
+
+⚠️ **All three UPSERT, and that is a correctness requirement.** Walmart restates POS after the fact — week 202622 moved 1,322 → 2,343 units for PBG between the Aug 13 snapshot and the WK28 export. The later file must win. An insert-based importer would preserve a number Walmart has withdrawn.
+
+`item_number` is the Walmart **Prime Item Nbr** and is the durable key everywhere. The short codes the planner displays (WC / PBG / CCF) are a display concern, mapped in `WM_ITEM_TO_SKU` in `src/pages/DemandPlanner.jsx` and mirrored in `src/hooks/useDemandFeeds.js` — deliberately **not** stored, so adding an item needs no migration.
+
+### `retail_link_pos_weekly` — POS by item by Walmart week
+Source: the `All Item Detail` sheet of `Dirty Cookie WK##.xlsx`. Long-format in the file (one row per item × measure, ~55 week columns); pivoted to one row per week here. **One upload backfills the entire year.**
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `walmart_week` | int NOT NULL | e.g. `202628` — Walmart week, Sat–Fri |
+| `item_number` | text NOT NULL | Prime Item Nbr, e.g. `'679640563'` |
+| `item_desc` | text | |
+| `pos_units`, `pos_dollars` | numeric | "POS Qty" / "POS Sales $" |
+| `pos_units_if_instock` | numeric | Walmart's own un-suppressed demand. The engine derives `trueDemand` as `units ÷ instock`; the two disagree slightly (WC 202620: `5920/0.9459 = 6258` vs `6240.272` supplied). **Prefer the supplied column** — `useDemandFeeds` hands the engine an in-stock that reproduces it exactly |
+| `units_per_store_week` | numeric | "Units per Store per Week (w/zeros)" — per **traited** store, so it does *not* yield stores-selling (ADR-055) |
+| `avg_price` | numeric | |
+| `traited_stores` | int | |
+| `instock_pct` | numeric | A **fraction** (`0.9875`), not a percent |
+| `wmt_forecast_units`, `variance` | numeric | Walmart's forecast as restated in this sheet |
+| `store_on_hand`, `whse_on_hand` | int | ⚠️ **Current week only.** No weekly on-hand history exists in any export. NULL for backfilled weeks — never 0, because the engine blanks `storeOhDoh` on null and would compute a false zero |
+| `source_week` | int | The week of the *file* this row came from |
+| `upload_id` | uuid FK → `upload_log` | |
+
+`UNIQUE (walmart_week, item_number)`; indexed on `walmart_week`.
+
+⚠️ **Only weeks up to the file's own week are written.** Later week columns exist and read `0` — a future week has not happened, and storing that zero is undetectable downstream because null and 0 mean different things to the engine.
+
+### `retail_link_forecast` — Walmart forecast, snapshot × target
+Source: the `Forecast` sheet. One row per (item × `walmart_calendar_week`); a pure forward view from the file's week.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `snapshot_week` | int NOT NULL | The week the forecast was **pulled**, taken from the file — never the upload date |
+| `target_week` | int NOT NULL | `walmart_calendar_week` |
+| `item_number` | text NOT NULL | |
+| `item_desc`, `vendor_stock_id` | text | |
+| `forecast_units` | numeric | `final_forecast_each_quantity` |
+| `upload_id` | uuid FK → `upload_log` | |
+
+`UNIQUE (snapshot_week, target_week, item_number)`; `CHECK (target_week > snapshot_week)`; indexed `(target_week, item_number)`.
+
+⚠️ **`mape` stays blank until two weeks of files are loaded.** Accuracy scoring needs the latest snapshot *strictly before* each target, so history accumulates from the first upload onward. Snapshots earlier than that are unrecoverable. This is expected, not a bug.
+
+The sheet also carries an **embedded pivot table** to the right whose totals do not reconcile with the raw block (WK28: raw PBG 202629 = `2589.32`, pivot = `5058.75`). Only the raw block is parsed — it is the one with a documented grain.
+
+### `retail_link_otif` — DC service / OTIF by PO
+Source: the `Receiver` sheet of `OTIF STORE Performance PO DETAILS *.xlsx`. **OTIF = In Time and In Full.** The only Retail Link sheet whose records each carry a real Walmart Week.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `walmart_week` | int NOT NULL | |
+| `host_po` | text NOT NULL | "Host PO Nbr" — zero-padded, kept as text |
+| `oms_po` | text | |
+| `mabd` | date | Must Arrive By Date |
+| `delivery_window` | text | |
+| `cases_ordered`, `cases_early`, `cases_on_time`, `cases_late`, `cases_unfilled` | numeric | Field names match the export's literal headers. `cases_unfilled` is the "cut" in planner terms |
+| `otif_pct` | numeric | A **fraction** (`0.6462`), not a percent |
+| `upload_id` | uuid FK → `upload_log` | |
+
+`UNIQUE (walmart_week, host_po)`; indexed on `walmart_week`.
+
+Grain is **per PO, not per week**, deliberately: the cut-recovery panel needs the PO count, and per-week totals are a trivial aggregate of these rows while the reverse is not. The export's leading grand-total line has no PO number and is **not** stored.
+
+⚠️ **Never average `otif_pct`.** Roll up as `SUM(cases_on_time) / SUM(cases_ordered)`. Verified against the file's own total: `0.646224` vs the stated `0.6462`, where averaging the per-PO percentages gives `0.6844`. See ADR-056.
+
+⚠️ **Files overlap by design.** A "WK 24 to 27" and a "WK 27 to 27" export arrive together; across both, 234 PO rows collapse to 194 unique `(week, PO)`. The parser also de-duplicates *within* one file, because Postgres rejects `ON CONFLICT DO UPDATE` affecting a row twice in one batch.
+
+### `retail_link_supply_plan` — Walmart's forward ORDER plan
+Source: the **`Data`** sheet of `Dirty Cookie Supply Plan Wk##.xlsx`. Added by `20260824130000`. The workbook's `Supply Plan` tab is a monthly pivot and is ignored; `metadata` names the dataset **"Order Forecast"**.
+
+⚠️ **Not the same thing as `retail_link_forecast`.** That is what Walmart expects consumers to *buy*; this is what Walmart plans to *order from us*. Different points in the chain — adding them together double-counts demand, and their totals do not reconcile.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `snapshot_date` | date NOT NULL | The pull date, from the file's own `sugg_order_dt` — never the upload date |
+| `item_number` | text NOT NULL | `wm_item_nbr` |
+| `item_desc` | text | |
+| `order_place_date` | date NOT NULL | `order_place_dt` |
+| `order_place_week` | int NOT NULL | Derived at parse time from the Walmart calendar (week 202605 begins Sat 2026-02-28). Verified against all 48 weeks of `SEED.weeks` — exact. Stored, not computed on read, so the bucketing rule lives in one place |
+| `dc_nbr` | text NOT NULL **DEFAULT `''`** | Empty in the "Total Company" exports. **Not nullable** — NULL never equals NULL, so a nullable column would break the unique key |
+| `order_each_quantity` | numeric | **EACHES**, the file's own unit. Everything observed is a clean multiple of 12 (vendor pack), so cases = eaches / 12 — but conversion is left to the reader, matching the rule that units→cases happens exactly once |
+| `upload_id` | uuid FK → `upload_log` | |
+
+`UNIQUE (snapshot_date, item_number, order_place_date, dc_nbr)`; indexed `(order_place_week, item_number)`. Verified on WK28: 60 rows = 3 items × 20 order-place dates, all unique, bucketing to weeks 202629–202648.
+
+⚠️ **Excel serials, converted directly.** Reading these dates with SheetJS's `cellDates` produced values like `2026-08-15T23:00:21Z` — a fractional serial rendered in local time, which lands on the **wrong day** west of Greenwich. The parser converts serials against the 1899-12-30 epoch instead.
+
+### `dot_order_history` — DOT outbound orders and cuts
+Source: the DOT `Order History (N).xlsx` export, sheet "Outbound Orders". Added by `20260824140000`. Drives the planner's cut-recovery panel.
+
+⚠️ **Not `dot_inventory`.** That is a pallet-level ON-HAND snapshot (still empty, parser still FORMAT UNCONFIRMED). This is an ORDER/CUT feed. Both are called "the DOT report"; they answer different questions.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `dot_order_number` | text NOT NULL **UNIQUE** | The natural key — unique on all 221 rows of the sample. Text, not a number: an identifier is never arithmetic |
+| `customer_po` | text | The Walmart PO — **joins `retail_link_otif.host_po`** (62 of 169 matched in the sample; partial only because the exports covered different windows). Indexed |
+| `corporate_account`, `temperature`, `order_status` | text | `Open` / `Picked` / `Loaded` / `Delivered` |
+| `ordered_cases`, `expected_cases`, `reconciled_cases`, `shipped_cases`, `cut_cases` | numeric | **CASES**, always multiples of 21 (the pallet layer) |
+| `order_date`, `delivery_date`, `requested_delivery_date`, `customer_arrival_date`, `reconciled_date` | date | Source writes US `M/D/YYYY`; parsed to bare `YYYY-MM-DD` |
+| `delivery_week` | int | Derived at parse time from the Walmart calendar. **`delivery_date` is the bucketing date** — it is what reproduces `SEED.dotService`; Order Date does not |
+| `appointment_at` | text | Verbatim (`'07/22/2026, 04:00 PM'`). Kept as text because the source carries no timezone and a timestamptz would invent one |
+| `originating_dc`, `fulfilling_dc`, `destination`, `load_numbers` | text | `destination` looks like `Walmart/Gdc #6042` |
+| `upload_id` | uuid FK → `upload_log` | |
+
+`UNIQUE (dot_order_number)`; indexed on `delivery_week` and `customer_po`.
+
+⚠️ **The quantity identity has three terms:** `ordered = expected + cut + reconciled` (holds 221/221). The two-term version `ordered = expected + cut` holds on only 148/221 — dropping `reconciled` makes a third of the file look corrupt. The parser checks this on import and warns rather than fails.
+
+🔴 **The sample export was pulled 2026-07-16 and is stale** (delivery weeks 202620–25). Every one of its 221 rows carries a cut; 146 are fully cut — either it is exception-filtered or that window is the documented supply crisis. Safe for cut recovery, **unsafe as a delivery record** until a current export settles it (ADR-060).
+
+✅ **The PO join is solid regardless:** `customer_po` reconciles to NetSuite on 169/169 POs. NetSuite cases **== DOT reconciled on 155/169**, which shows NetSuite records what was *delivered*, not ordered, on a cut PO. The DOT export's unique contribution is the **original order quantity** — 12,747 cases against 2,768 in NetSuite for the same POs.
+
+✅ **Validated by exact reproduction:** bucketed by delivery week this file reproduces `SEED.dotService` exactly on ordered, cut and order count for all six weeks. Unlike POS — which Walmart restates, so exact agreement would be suspicious — this export is a fixed slice, so exact agreement is the correct test.
+
+### RLS
+All five: `"All can read"` for any authenticated user, `"Internal write"` for `admin` / `finance` / `ops` — the EOS convention. The `cortina` role is gated out of `/demand-planner` at the router anyway (`InternalOnly` in `App.jsx`).
+
+`upload_log.upload_type` gained `'retail_link'` and `'retail_link_otif'` in `20260824120000`, `'retail_link_supply_plan'` in `20260824130000`, and `'dot_order_history'` in `20260824140000`.

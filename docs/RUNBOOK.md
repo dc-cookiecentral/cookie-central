@@ -23,7 +23,7 @@ After sign-in the sidebar footer shows full name + role. If it's missing, the pr
 
 ### 2.1 · Upload a file
 
-All uploads go through `/uploads`. Drag a file onto its origin card (Cortina, Assemblers, QuickBooks); the pipeline parses, previews, and only commits after **Import**.
+All uploads go through `/uploads`. The page leads with the **six exports actually used** (see §2.7); everything else sits in a collapsed "Legacy & occasional" group. Drag a file onto its card; the pipeline parses, previews, and only commits after **Import**.
 
 | Origin | File | Lands in |
 |---|---|---|
@@ -31,6 +31,10 @@ All uploads go through `/uploads`. Drag a file onto its origin card (Cortina, As
 | Cortina | DOT portal CSV | `dot_inventory` (snapshot rows tagged by `snapshot_date`) |
 | Assemblers | **One** multi-sheet workbook (Production / Reject / Inventory / Shipment / N Job sheets) | `production_runs` + `production_pallets` + `production_subcomponents` + `production_rejects` + `lot_shipments` + `raw_materials` + `raw_material_lots` |
 | QuickBooks | Invoices/payments CSV | `invoices` + `payments` |
+| Retail Link | `Dirty Cookie Supply Plan Wk##.xlsx` | `retail_link_supply_plan` |
+| Retail Link | `Dirty Cookie WK##.xlsx` | `retail_link_pos_weekly` + `retail_link_forecast` |
+| Retail Link | `OTIF STORE Performance PO DETAILS *.xlsx` (1-week **and** 3-week) | `retail_link_otif` |
+| DOT | `Order History (N).xlsx` — outbound orders + cuts | `dot_order_history` |
 
 Every upload writes one row to `upload_log` with `status='processing'` → `complete` (or `error`). Watch the table at the bottom of `/uploads` — if an import errored, the row carries the error message.
 
@@ -53,6 +57,33 @@ Every upload writes one row to `upload_log` with `status='processing'` → `comp
 ### 2.6 · Manually capture a delivered FG lot or BOL
 
 `/orders/:po → Delivery & Lots`. Inline-edit the BOL number on the PO, or **+ Add Lot** to record an arriving FG lot. Phase 2 replaces this with email-driven AI extraction; Phase 1 entry is manual.
+
+### 2.7 · The weekly upload routine (feeds the Demand Planner)
+
+Six files, in the order they appear on `/uploads`:
+
+| # | File | Notes |
+|---|---|---|
+| 1 | `Dirty Cookie Supply Plan Wk##.xlsx` | Walmart's forward **order** plan — what it intends to order from us, by order-place date |
+| 2 | `Dirty Cookie WK##.xlsx` | POS, in-stock, traited stores, store forecast. One file backfills the **whole year** of POS, so the first upload is not "one week of data" |
+| 3 | `OTIF STORE Performance … 1 week` | In Time and In Full — cases ordered / in time / late / unfilled per PO |
+| 4 | `OTIF STORE Performance … 3 weeks` | Same format, wider window. **Upload both** — they overlap on purpose |
+| 5 | `DOT Report` — `Order History (N).xlsx` | Outbound DOT orders and **cut** cases. Drives cut recovery: the volume DOT never shipped, which NetSuite never sees |
+| 6 | `Walmart Report (NetSuite)` | Drives the planner's `orders` series (requested / delivered / revenue / cuts) and carries the **Cut Reason** column. Also auto-ingests nightly from `systems@` |
+
+Then `/demand-planner` picks them up on next load; its banner's "as of" is the newest week **with data**, not the time of the fetch.
+
+✅ **Re-uploading weeks you already have is correct, not a mistake.** Walmart restates POS after the fact — week 202622 moved 1,322 → 2,343 units for PB&J between snapshots — and every Retail Link feed upserts so the later file wins. The same applies to the two OTIF exports, whose week ranges deliberately overlap.
+
+⚠️ **Two different files are called "the DOT report".** Card 5 takes the **`Order History (N).xlsx`** outbound export (orders and cuts) — validated against a real file. The *pallet-level on-hand* export is a different thing entirely; it lives in the Legacy group as "DOT Inventory (pallet-level)", its parser (`src/parsers/dot.js`) is still FORMAT UNCONFIRMED, and no sample has ever arrived. Don't drop one on the other's card.
+
+⚠️ **`mape` (forecast accuracy) stays blank until a second week's file is loaded.** Accuracy scoring needs the previous week's snapshot to compare against, and snapshots before the first upload are unrecoverable. This is expected.
+
+⚠️ **Store on-hand only accrues from the week you start uploading.** No weekly on-hand history exists in any Walmart export, so backfilled weeks show blank for Store OH DOH — blank, not zero.
+
+🔴 **There is no DOT on-hand report at all** (Caroline, Aug 24 2026) — not pending, non-existent. Its upload card has been removed. The planner's forward DOT cascade runs permanently on `params.dotOpeningAnchor`, so the Tracker's DOT rows are a **model, not actuals**. Do not go looking for a file to fix this.
+
+If an export looks different from the above, run `node scripts/inspect-retail-link.mjs "<file>.xlsx"` — it runs every parser over every sheet and prints what matched.
 
 ---
 

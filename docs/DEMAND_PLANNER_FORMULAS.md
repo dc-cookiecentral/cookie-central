@@ -5,9 +5,11 @@
 > workbook on 23 checks. If you change the engine, re-run that comparison —
 > the numbers are used to size co-bakery production runs.
 >
-> The page currently runs on an embedded `SEED` snapshot (`SEED.asOf`), not on
-> Supabase. See the header comment in `DemandPlanner.jsx` for what wiring it to
-> live data would require.
+> **The demand side is now live.** POS, the Walmart forecast and DC service read
+> the `retail_link_*` tables, populated by uploading the weekly Walmart exports
+> at `/uploads`. The supply side — `orders`, `production`, `dot` — is still the
+> embedded `SEED` snapshot, and each series falls back to SEED independently.
+> See **"As built"** at the foot of this file, and ADR-053→056.
 
 Every computed value in the dashboard, in calculation order. These formulas are identical in
 the web engine (`demandEngine.ts` / prototype) and the Excel workbook — the two were
@@ -220,143 +222,199 @@ door growth belongs in the seasonality multiplier until a traited-store forecast
 
 ---
 
-# Wiring it to live data — start here
+---
 
-**Status as of Aug 23 2026: the page is LIVE at `/demand-planner` and runs on a
-static snapshot.** Everything below is what a session picking this up needs to
-know before designing anything. Written so you don't have to rediscover it.
+# As built — the live Retail Link feeds
 
-## What exists today
+**Status: August 24, 2026.** Built and building clean; the migration
+`20260824120000_retail_link_demand_feeds.sql` is **not yet applied**, so the page
+is still running on `SEED` until someone applies it and uploads a file. The
+sections this replaces were written before anyone had read a real export and
+several of their conclusions were wrong; the corrections are called out below so
+the same wrong turns are not taken twice.
 
-`src/pages/DemandPlanner.jsx` — ported in from a standalone artifact, engine and
-data unchanged. It reads one embedded `SEED` constant frozen at `SEED.asOf`
-(2026-08-13) and carries a banner saying so. Edits, pastes and overrides live in
-component state for the session and are lost on reload. `recharts` was added for
-it; the app had no charting library before.
+## What feeds what
 
-**Do not casually refactor the engine.** It is a plain-JS mirror of the formulas
-above, cross-validated against the Excel workbook on 23 checks. If you change
-it, re-run that comparison.
-
-## The blocker: the feeds have no home in the schema
-
-This is the finding that decides the whole shape of the work. Checked against
-the live database, searching for anything matching `%pos%`, `%retail%`,
-`%forecast%`, `%velocity%`:
-
-| `SEED` series | Feeds | Where it would come from today |
+| Engine series | Source | Status |
 |---|---|---|
-| `pos` | POS units, $, traited stores, in-stock %, store on-hand | **No table exists.** This is the primary feed and the whole demand side |
-| `forecasts` | Walmart store forecast, by snapshot week × target week | **No table exists.** Needs snapshot history for the MAPE/lagged logic |
-| `dotService` | DOT ordered / cut / POs, the cut-recovery panel | **No table exists** |
-| `dot` | DOT on-hand, which re-anchors the forward cascade | `dot_inventory` exists but is **empty (0 rows)** |
-| `production` | Cases produced per week per SKU | `production_runs` exists — **5 rows** |
-| `orders` | NetSuite requested / delivered / revenue / cuts | `purchase_orders` (892) + `po_line_items` (1,194) — **the one series with a real source** |
+| `pos` | `retail_link_pos_weekly` ← `All Item Detail` sheet | **live** |
+| `forecasts` | `retail_link_forecast` ← `Forecast` sheet | **live** |
+| `dotService` | `dot_order_history` ← DOT `Order History` export | **live** |
+| `otif` | `retail_link_otif` ← OTIF `Receiver` sheet | **live** |
+| `orders` | `po_line_items` + `purchase_orders` ← Cortina/NetSuite export | **live** |
+| `production` | — `production_runs` holds 5 rows | SEED |
+| `dot` | 🔴 **no such feed exists** — there is no DOT on-hand report | permanently empty; engine uses `params.dotOpeningAnchor` |
 
-So "wiring it up" is really: **design three or four new tables, plus an ingest
-path.** It is a project, not a task. Schema is the easy half.
+⚠️ **The `orders` series reads TWO different dates.** `req` and `cuts` bucket by the PO's *scheduled* delivery week; `dlv` and `rev` bucket by the line's *actual* delivery week (per line — DCs on one SO deliver on different days). Verified against SEED: `req` 49/49, `cuts` 49/49 exact. `cuts` is a **count of lines** carrying a cut reason, not a sum of cut cases. See ADR-059.
 
-## The real open question is ingest, and it is now WIDE open
+🔴 **There is no DOT on-hand report** (Caroline, Aug 24 2026) — not "not yet", it does not exist. The Tracker's DOT rows are therefore a **model**, never actuals. Do not read `dotDoh` as measured.
 
-🔴 **The weekly Bentonville Retail Link email is retired (Caroline, Aug 23
-2026).** An earlier draft of this section recommended extending that path as the
-cheapest route to POS data. **Do not.** It is dead.
+⚠️ **`otif` and `dotService` are separate on purpose.** OTIF is Walmart measuring us against MABD, keyed on Walmart's week; cut recovery is what DOT failed to ship, keyed on delivery date. Same shipments, opposite ends, and **the weeks do not align** — merging them averages two different things. See ADR-058.
 
-Be precise about what died, because it is narrower than it first sounds: **the
-`systems@` email reader itself is being KEPT.** The daily poll still runs,
-`InboxCard` is still on `/uploads`, and Product Orders and the BOL flow are
-expected back around Oct 2026 with substantial changes. What is retired is the
-weekly Bentonville *feed*, not the email pipeline. So "get it from email" is not
-categorically off the table — that one sender is.
+⚠️ **Two different files are called "the DOT report".** `dot_order_history` (orders and cuts — live) and `dot_inventory` (pallet-level on-hand — does not exist). Neither substitutes for the other.
 
-What that leaves:
+🔴 **The only DOT export on hand was pulled 2026-07-16 and is stale** (weeks 202620–25 only). In it, 0 of 221 rows had no cut — either the export is exception-filtered, or that window is the documented supply crisis. A current export settles it; see ADR-060 for the test. Either way it is **not** a usable record of total depot deliveries and must **not** drive `dotOut`; doing so understates DOT's outflow ~6× and suppresses the production recommendation. It is surfaced in the Tracker as "DOT delivered — cut orders only". See ADR-060 for how to turn it on if an unfiltered export arrives — and for the one test that tells them apart.
 
-- `weekly_reports` holds 6 rows, newest `2026-07-06` — nothing has landed since
-  early July, consistent with the feed being dead.
-- `src/parsers/weeklyEmail.js` (body scorecard) and
-  `src/parsers/weeklyAttachments.js` (the three xlsx: `parseSalesSummary`,
-  `parseMarkdown`, `parseItemMaster`, `parseScorecard`, `parseSupplyPlan`,
-  `parseOtifDetail`) **both exist and were never wired to an ingest path** —
-  their header says the caller was "the dev test now, the Gmail/Edge-Function
-  connect later", and later never came.
+`retail_link_supply_plan` is also ingested (Walmart's forward **order** plan, ADR-057) but is **not yet wired into the engine** — it lands and is queryable, and connecting it to the `orders` series is the next piece. ⚠️ It is not the store forecast: `retail_link_forecast` is what Walmart expects consumers to buy, the supply plan is what Walmart plans to order from us. Adding them together double-counts.
 
-**Those parsers are still worth reading even though the email is gone.** They
-encode the actual column names and shapes of the Walmart BI exports —
-`parseSalesSummary` in particular is the closest thing in the repo to
-POS-by-SKU-by-week. If the same reports arrive by another route (a manual
-download, a different mailbox, a Retail Link pull), the parsing work is largely
-done and only the transport changes.
+Code: `src/parsers/retailLink.js`, `src/parsers/retailLinkOtif.js`,
+`src/hooks/useDemandFeeds.js`, and the `input` memo in `DemandPlanner.jsx`.
+Schema detail is in `docs/DATA_MODEL.md`; the reasoning is in ADR-053→056.
 
-## ✅ ANSWERED: Retail Link data arrives as an uploaded CSV / XLSX
+**Each series falls back to SEED independently** when its table is missing
+(pre-migration) or empty (pre-first-upload). That is what lets the migration,
+the first upload and the cutover happen on different days without the page ever
+breaking. The banner reports which source won per series — do not replace it
+with a flat "live" or "static" claim, because it is genuinely both.
 
-**Caroline, Aug 23 2026.** Not email, not an API — a **file upload**. That is a
-better fit than the email path would have been, and most of the machinery
-already exists.
+## The weekly routine
 
-**`UploadPipeline` is already generic.** `src/components/UploadPipeline.jsx`
-does drag-drop → parse → preview → confirm → import, logs to `upload_log`
-(`upload_type`, `filename`, `row_count`, `status`, `errors`, `source`), and is
-driven entirely by a **parser config object**. Adding a feed means writing that
-config, not building an upload flow. The shape, from
-`src/parsers/ingredientMaster.js`:
+Six exports, in the order they appear on `/uploads` (ADR-057):
 
-```js
-export default {
-  type: 'ingredient_master',          // → upload_log.upload_type
-  label: 'Ingredient Master',
-  accept: '.csv,.xlsx,.xls',
-  columns: [ { key, label }, … ],     // preview table
-  parse(rows),                        // 2D array → { records, errors }
-  importRecords(records, { uploadId, client }),
-  // parseFile(file) instead of parse(rows) ONLY for multi-sheet workbooks
-  // that need workbook structure the row-flattener destroys (see production.js)
-};
+1. `Dirty Cookie Supply Plan WK#` — Walmart's forward order plan
+2. `Dirty Cookie WK#` — POS, in-stock, traited stores, store forecast
+3. `OTIF Store Performance` — 1 week
+4. `OTIF Store Performance` — 3 weeks (overlaps #3 on purpose; upload both)
+5. `DOT Report` — the `Order History (N).xlsx` outbound export (orders + cuts)
+6. `Walmart Report (NetSuite)` — drives the `orders` series; also auto-ingests nightly from `systems@`
+
+Re-uploading weeks you already have is not just safe, it is how the numbers stay
+correct (see below). `/demand-planner` picks them up on next load; the banner's
+"as of" is the newest week **with data**, not the time of the fetch.
+
+⚠️ **The paste-in Inputs tab was removed** on Aug 24 2026 — every feed it
+duplicated now has a real, persisted upload path, and a second lossy ingest route
+meant two sources of truth for the same numbers. Its DOT **on-hand** hand-entry
+went with it, and the Order History export does not replace it (that file carries
+orders and cuts, not on-hand), so the `dot` series stays empty and the forward
+cascade runs on `params.dotOpeningAnchor` until a pallet-level export arrives.
+
+`scripts/inspect-retail-link.mjs <file.xlsx>` runs every parser over every sheet
+and prints a coverage map. Reach for it first when an export changes shape.
+
+## Corrections to what this document used to say
+
+**❌ "The three xlsx attachments."** The workbook has **nine** sheets:
+`Sales Summary`, `All Item Detail`, `Scorecard`, `Last Week Data`, `Sales Data`,
+`Markdown`, `Warehouse Inv`, `Item Data`, `Forecast`. The three-attachment model
+came from the retired weekly email, not from the export.
+
+**❌ "`parseSalesSummary` is the closest thing to POS by SKU by week — start
+there."** It is a single "last week" column. The real feed is **`All Item
+Detail`**, a long-format matrix with ~55 Walmart-week columns and nine measures
+per item. **One upload backfills the whole year.** The belief that POS would
+accrue one week per file was the thing that made this look like a big project.
+
+**❌ "`parseFile` already handles both CSV and XLSX, so the format question is
+settled by existing code."** It is not. `parseXlsxFile` returns header-keyed
+objects **concatenated across every sheet**, and these exports carry a title row
+above the header. Measured on a real file: **0 of 12 rows** carried
+`Prime Item Nbr`, `LW POS Qty` or `Curr Str On Hand`. Retail Link parsers use the
+`parseFile(file)` hook and read sheets directly (ADR-055).
+
+**❌ "The forecast feed's grain is unsettled / may make `mape` impossible."**
+The `Forecast` sheet is weekly and clean — 3 items × 24 weeks, no duplicates.
+Stamping the file's own week as `snapshot_week` works exactly as the fallback
+predicted, so `mape` becomes computable once two weeks are loaded.
+
+**❌ "They have never been run against a real file."** Too strong.
+`src/data/itemMaster.js` records `parseItemMaster` producing *verified* output
+from a real `Dirty Cookie WK16.xlsx`. Its numbers reproduce exactly.
+
+**❌ "`parseSupplyPlan` — possibly the forecast feed."** Its `Supply Plan` sheet
+is **monthly** and cannot feed a weekly engine — but the file is not a dead end.
+Its `Data` sheet is date-grain and is a **different dataset entirely** (its
+`metadata` sheet names it "Order Forecast"), now ingested to
+`retail_link_supply_plan`. An intermediate reading of this file — that the `Data`
+sheet merely duplicated the `Forecast` sheet — was also wrong.
+
+**⚠️ "Keep `SEED` until a live feed reproduces the same numbers."** Do **not**
+follow this literally — see the next section.
+
+## The three things that will bite you
+
+**1. Walmart restates POS.** Week 202622 reads `1322` units for PBG in SEED
+(frozen 2026-08-13) and `2343` in the WK28 export; WC reads `4035` and `4847`.
+In-stock was restated too — SEED has PBG at 0.62–0.69 for weeks 21–27 where the
+file says 0.87–0.98. Week alignment was checked at offsets −2…+2 and zero-shift
+wins, so this is restatement, not a calendar bug.
+
+Two consequences. The tables **upsert** — a correctness requirement, not
+re-upload hygiene. And **"reproduces SEED" is the wrong acceptance test**: SEED
+is a stale snapshot, and a live number differing from it on a restated week is
+the feed working. What SEED is still good for is the *engine* — it is the input
+the 23-check Excel cross-validation ran against, which is why the engine still
+must not be casually tidied.
+
+**2. Future week columns read `0`, not null.** The parser bounds POS at the
+file's own week. A week with no PO is null; a week with a zero-quantity PO is 0;
+the engine treats those differently and cannot detect a fabricated zero.
+
+**3. There is no weekly store on-hand anywhere.** Only the current position,
+from `Sales Summary` / `Item Data`. `store_on_hand` is written for the file's own
+week and left **NULL** for backfilled weeks — never 0 — so it accrues one week
+per upload from here on.
+
+## Which forecast? There are four, and they disagree
+
+`/demand-planner` → **Sources** shows them side by side. See ADR-061.
+
+| Number | Where it comes from |
+|---|---|
+| Walmart store forecast | `Forecast` sheet, raw rows — **the one the engine uses** (only copy with a snapshot week) |
+| Walmart's other forecast | All Item Detail's `Forecast` row — restated in place, no history, shown but feeds nothing |
+| DC internal | derived: base velocity × stores used × seasonality |
+| Consensus | internal, after override and seasonality |
+
+🔴 **The two Walmart figures disagree by a different multiple per SKU** — WK28 medians: WC ×1.0, PB&J ×0.7, CCF ×5.0. Not a units conversion. **Unexplained; treat as an open question.**
+
+⚠️ **Walmart's description column in All Item Detail is wrong on 8 of every 9 rows** — only the first row per item carries the right label. Descriptions come from the `Item Data` sheet instead. Item numbers were never affected.
+
+## Service metrics — in-store fill rate and OTIF
+
+The two headline numbers, in the **Service health** panel above the S&OP cards
+(Caroline, Aug 24 2026). **OTIF = In Time and In Full.** They are the two ends of
+the chain: OTIF is whether we delivered to Walmart complete and to the date;
+in-store fill is whether it then reached the shelf. Both sit above the demand
+read because a problem in either invalidates it — suppressed POS from an
+out-of-stock is not weak demand.
+
+```
+OTIF(week)          = SUM(cases_on_time) / SUM(cases_ordered)     -- CASES, never a mean of per-PO %
+inStoreFill(week)   = mean(instock_pct) across SKUs with sales    -- simple mean, not weighted
 ```
 
-`parseFile` in `src/utils/csvParser.js` already handles **both CSV and XLSX** →
-rows, so the format question is settled by existing code.
+**Both formulas were verified against the exports' own total rows**, and both
+obvious alternatives are wrong:
 
-**And the Walmart parsers already take exactly that input.**
-`src/parsers/weeklyAttachments.js` exports six pure functions that accept
-`rows` — a single sheet as a 2D array from SheetJS `sheet_to_json(ws, {header: 1})`
-— which is precisely what `parseFile` produces. They were written transport-
-agnostic on purpose; its header says the caller "does the XLSX.read + sheet
-extraction". **The retirement of the weekly email cost the transport, not the
-parsing.**
+| | computed | file states |
+|---|---|---|
+| OTIF, cases-weighted | `0.646224` | `0.6462` ✅ |
+| OTIF, mean of per-PO % | `0.6844` | ❌ 4 points high |
+| In-stock, simple mean | `98.1500%` | `98.1467%` ✅ |
+| In-stock, traited-weighted | `98.0967%` | ❌ |
+| In-stock, POS-weighted | `98.1256%` | ❌ |
 
-| Parser | Likely role for the demand planner |
-|---|---|
-| `parseSalesSummary` | the closest thing in the repo to **POS by SKU by week** — start here |
-| `parseScorecard` | weekly KPI roll-up |
-| `parseSupplyPlan` | forward order plan; possibly the forecast feed |
-| `parseOtifDetail` | per-PO OTIF, feeds fill rate / service level |
-| `parseMarkdown`, `parseItemMaster` | markdowns and item master |
+The `Scorecard` sheet's own "Repl Instock %" (`98.2503%`) is a **different
+denominator again** — do not treat it as interchangeable with the Sales Summary
+total.
 
-⚠️ **They have never been run against a real file in this pipeline** — only
-"the dev test". Verify each against an actual export before trusting its column
-matching, which is by name (exact then prefix) and tolerant of stray spaces.
+⚠️ **OTIF can never be split by SKU.** There is no item number anywhere in the
+OTIF export — it is per PO against MABD. It is a whole-business weekly figure
+while in-stock is per-SKU, which is why the two halves of the panel are shaped
+differently. The panel says so on screen.
 
-### What still needs deciding
+⚠️ **Pre-launch weeks are excluded from the fill headline.** They carry in-stock
+0 against a handful of test stores back to 202601; averaging those genuine zeros
+would show a catastrophic outage in weeks the product was not on sale.
 
-- **Which report(s) actually carry POS by SKU by week**, and at what grain.
-  `parseSalesSummary` is the candidate; confirm against a real file.
-- **The forecast feed's grain.** The engine needs **snapshot week × target
-  week** per row, because accuracy scoring uses the latest snapshot strictly
-  *before* the target. A file carrying only "the current forecast" cannot
-  reproduce `mape` — if the export is a single forward view, either snapshot it
-  on upload (stamp the upload week as `snap`) or accept that MAPE stays blank.
-- **Re-upload semantics.** Weekly files overlap. `importRecords` should upsert
-  on `(week, sku)` rather than insert, or a re-upload doubles a week.
+Thresholds mirror the Tracker's rows — in-stock < 65% bad / < 80% warn, OTIF
+< 90% / < 98%. **Display thresholds, not Walmart-published targets.** Change both
+places together, or the same metric gets flagged two ways on one page.
 
-The Walmart *forecast* feed is a separate question with the same status. The
-engine wants a **snapshot week and a target week per row**, because accuracy
-scoring uses the latest snapshot strictly before the target. A feed that only
-carries "the current forecast" cannot reproduce `mape`.
-
-The Walmart *forecast* feed is a separate question — the engine wants a
-**snapshot week and a target week per row**, because the accuracy scoring uses
-the latest snapshot strictly before the target. A feed that only carries "the
-current forecast" cannot reproduce `mape`.
+Field names stay Walmart's: the column is `cases_on_time`, matching the export's
+literal `Cases On Time` header. Prose says "In Time and In Full"; the field names
+have to match the file or the column match breaks on the next upload.
 
 ## Conventions this repo will hold you to
 
@@ -367,31 +425,29 @@ Learned the hard way; all of them cost real time at least once.
 - **Runtime-parsed flags are not constant-folded.** Grepping for a guarded
   string returns a hit whether the flag is on or off — see the
   `VITE_SAMPLE_TEST_MODE` note in the Sample Central docs. Check the env literal.
-- **Anything with a counter needs its floor raised and deployed *before* the
-  data is purged.** See `SHIPMENT_NO_FLOOR`.
 - **Merging to `main` redeploys Sample Central**, which serves live Cortina
   traffic — one Vercel project, one Vite bundle.
 - **Seed an account before its first sign-in.** `COALESCE(seed.role,'ops')` plus
   `ON CONFLICT (id) DO NOTHING` means an unseeded sign-in silently becomes
-  internal `ops` and never self-corrects. This has already happened once.
+  internal `ops` and never self-corrects.
 - **Postgres `date` columns are bare `YYYY-MM-DD`.** Use `formatDate` from
-  `utils/dates.js`, which parses them as local midnight; `new Date(value)`
-  treats them as UTC and lands a day early west of Greenwich.
-- **No Docker.** Migrations go through the Management API, which writes no
-  history row — so `migration list` is not the truth about what is applied.
+  `utils/dates.js`; `new Date(value)` treats them as UTC and lands a day early
+  west of Greenwich.
+- **No Docker.** `npx supabase db push` works (it hits the remote directly);
+  Docker is only needed for the *local* stack. Applying SQL by hand through the
+  Management API or SQL editor writes no history row, so `migration list` is not
+  the truth about what is applied (ADR-047).
 
-## Suggested first moves
+## Still open
 
-1. **Get one real Retail Link export** and run `parseSalesSummary` against it.
-   That single step answers the grain question, validates the column matching,
-   and tells you whether POS by SKU by week is actually in there.
-2. Design the tables from what that file actually contains — not from `SEED`'s
-   shape, which is what the engine wants, not what the source provides. The gap
-   between the two is the real work.
-3. Settle the forecast feed's grain (snapshot × target) before writing
-   migrations; stamping the upload week as `snap` is the fallback.
-4. Write the parser config, point `UploadPipeline` at it from `/uploads`, and
-   make `importRecords` upsert rather than insert.
-5. Keep `SEED` in place until a live feed reproduces the same numbers — it is
-   the reference implementation, and the 23-check validation is against it.
-   Swap the data source last, not first.
+- **Apply the four pending migrations** (`20260824120000`, `130000`, `140000`, `150000`), then upload the six exports once.
+- **`production`** is the last series with no live source (`production_runs`
+  holds 5 rows). The `dot` on-hand series has no source and never will.
+- **Restore the cut-reason breakdown** in the cut-recovery panel. It was
+  removed as hardcoded prose (ADR-058) and `cut_reason` is now ingested
+  (ADR-059), so it can come back as a computed breakdown.
+- **Confirm the restated in-stock.** SEED has PBG at 0.62–0.69 for weeks 21–27,
+  the file says 0.87–0.98. In-stock divides into demand, so this materially moves
+  the forecast. If PB&J really was ~65% in stock through that stretch, it is
+  Walmart's restated figure that deserves the doubt, not SEED's.
+- **`mape` stays blank** until a second week's file lands.

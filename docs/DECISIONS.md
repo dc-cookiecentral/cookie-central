@@ -869,7 +869,7 @@ CC-2OZ-BAK-G
 ## ADR-052: The Demand Planner ships as a static snapshot, and says so
 
 **Date:** August 21, 2026
-**Status:** Live at `/demand-planner`. Not connected to Supabase.
+**Status:** ⚠️ **Largely superseded by ADR-053 (August 24, 2026)** — the demand side now reads live Retail Link tables. Kept because its reasoning about the banner and the engine still holds, and because its "open question is ingest" section records what was believed before a real export was read. Its factual claims about the feeds are wrong; see ADR-053/054.
 
 **Decision.** The Walmart Demand Planner was ported in from a standalone artifact **engine and data unchanged**, running on an embedded `SEED` constant frozen at `SEED.asOf` (2026-08-13), with a permanent banner stating that and that edits are session-only. `recharts` was added for it — the app had no charting library.
 
@@ -882,3 +882,281 @@ CC-2OZ-BAK-G
 **Open question is ingest, not schema.** The weekly Bentonville Merchants email is already parsed for its body scorecard and auto-imported by the `systems@` agent, but its **three xlsx attachments have never been parsed**, and they are the likely home for weekly POS by SKU. Cheapest path, unproven. The Walmart forecast feed additionally needs **snapshot week × target week** per row — a feed carrying only "the current forecast" cannot reproduce `mape`.
 
 **Cost, accepted.** The bundle went 759KB → 1.22MB, and it loads on every page including Sample Central. Lazy-loading the route is the fix if that starts to matter.
+
+## ADR-053: The Retail Link weekly workbook is the demand feed, and one upload backfills the year
+
+**Date:** August 24, 2026
+**Status:** Built. Migration `20260824120000_retail_link_demand_feeds.sql` **not yet applied**. Supersedes ADR-052's premise.
+
+**Decision.** `/demand-planner` reads three new tables — `retail_link_pos_weekly`, `retail_link_forecast`, `retail_link_otif` — populated by uploading two Walmart exports at `/uploads`: the weekly `Dirty Cookie WK##.xlsx` workbook and the `OTIF STORE Performance PO DETAILS` export. Parsers: `src/parsers/retailLink.js`, `src/parsers/retailLinkOtif.js`. Hook: `src/hooks/useDemandFeeds.js`.
+
+**The workbook has nine sheets, not three.** Every prior plan in this repo assumed three attachments — a sales report, a supply plan, and OTIF — because that is what the retired weekly email carried. A real WK28 export has `Sales Summary`, `All Item Detail`, `Scorecard`, `Last Week Data`, `Sales Data`, `Markdown`, `Warehouse Inv`, `Item Data` and `Forecast`. Two of them changed the shape of the work:
+
+- **`All Item Detail` is the entire demand side.** Long format: one row per (item × measure), with ~55 Walmart-week columns (`202601`…`202655`) and nine measures — POS Sales $, POS Qty, POS Qty if Instock, Units per Store per Week (w/zeros), Avg Price, Traited Stores, Instock, Forecast, Variance. **A single upload backfills the whole year.** The long-held assumption that POS would accrue one week per file was wrong, and it was the assumption that made this look expensive.
+- **`Forecast` is a real weekly forecast.** One row per (item × `walmart_calendar_week`) — verified as exactly 3 items × 24 weeks = 72 rows in WK28, no duplicates — and a pure forward view starting the week after the file's own. ADR-052 worried the forecast feed might be unusable for `mape`; it is usable, provided the snapshot week is stamped (see below).
+
+**Only weeks up to the file's own week are actuals.** The week columns run past the reporting week and read `0`, not null. Storing those zeros would be undetectable downstream, because the engine treats null (no data) and 0 (a real zero) as different values — a week with no PO is null, a week with a zero-quantity PO is 0. The parser bounds POS at the file's week, which it takes from the `Scorecard` sheet's "Last Week" range (`(202628-202628/...)`), falling back to the `Forecast` sheet's earliest target minus one. **Deliberately not from the filename** (renamed downloads are common) **nor the upload date** (re-loading an old file must not claim to be a fresh snapshot).
+
+**Snapshot week is part of the forecast key.** The engine scores accuracy using, for each target week, the latest snapshot strictly *before* it. A single forward view cannot express that, so `retail_link_forecast` is keyed `(snapshot_week, target_week, item_number)` and each weekly upload deposits one more snapshot. **`mape` stays blank until at least two weeks of files are loaded** — expected, not a bug. Snapshots earlier than the first upload are not recoverable.
+
+**The one field with no weekly history: store on-hand.** No on-hand measure exists in `All Item Detail`; only the current position, from `Sales Summary` and `Item Data`. So `store_on_hand` is written for the file's own week and left NULL for backfilled weeks, accruing one week per upload thereafter. NULL rather than 0 — the engine blanks `storeOhDoh` on null and would compute a false zero.
+
+**Partial by design, and the banner says which half.** Retail Link supplies demand only. `orders` (needs `purchase_orders`/`po_line_items` mapped onto the series), `production` (`production_runs` holds 5 rows) and `dot` (`dot_inventory` empty) are still SEED. Each series falls back to SEED **independently** when its table is missing or empty, so the page renders identically before the migration, after it but before the first upload, and after — which is what lets those three happen on different days. The banner reports which source won per series; do not replace it with a flat "live" or "static" claim, because it is genuinely both.
+
+**Not ingested, and why.** `Markdown`, `Warehouse Inv`, `Sales Data` and `Item Data` feed other pages or nothing.
+
+⚠️ **Corrected by ADR-057.** This ADR originally also excluded the Supply Plan export, reasoning that its `Supply Plan` sheet is monthly and its `Data` sheet "duplicates the `Forecast` sheet at a coarser grain". The first half is right; the second is wrong. The `Data` sheet is a *different dataset* — its own `metadata` sheet names it "Order Forecast" — and it is now ingested.
+
+## ADR-054: Walmart restates POS, so the feed upserts — and SEED is not the acceptance test
+
+**Date:** August 24, 2026
+**Status:** Built into the unique keys on all three tables.
+
+**Decision.** Every Retail Link load **upserts**; the later file always wins. `retail_link_pos_weekly` is unique on `(walmart_week, item_number)`, `retail_link_forecast` on `(snapshot_week, target_week, item_number)`, `retail_link_otif` on `(walmart_week, host_po)`.
+
+**This is a correctness requirement, not re-upload hygiene.** Walmart revises POS after the fact, and not by trivial amounts. Comparing the WK28 export against `SEED` (frozen 2026-08-13) week by week: most weeks agree within 2%, but **week 202622 does not** — PBG reads `1322` units in SEED and `2343` in the file; WC reads `4035` and `4847`. 202622 is the week of the PB&J in-stock collapse, so the week captured while it was still settling is the week that moved most. In-stock was restated too: SEED has PBG at 0.62–0.69 for weeks 21–27 where the file says 0.87–0.98. An insert-based importer would not merely duplicate rows — it would preserve a number Walmart has since withdrawn.
+
+**Week alignment was checked, not assumed.** Testing SEED against the file at offsets −2…+2 weeks, zero-shift matched best (10/16 within 2% vs 3/16 at ±2). The disagreement is restatement, not a calendar bug.
+
+**Therefore "the live feed reproduces SEED" is the WRONG acceptance test**, and ADR-052's instruction to keep SEED until it does should not be followed literally. SEED is a stale snapshot, not a reference answer. A live number differing from SEED on a restated week is the feed working. What SEED remains good for is the *engine* — it is the input the 23-check Excel cross-validation was run against, and that is still the reason not to tidy the engine.
+
+**Overlapping files are normal.** A `WK 24 to 27` and a `WK 27 to 27` OTIF export arrive together; across both, 234 PO rows collapse to **194 unique** `(week, PO)`. The parser also de-duplicates *within* a single file before upserting, because Postgres rejects `ON CONFLICT DO UPDATE` affecting one row twice in a batch.
+
+## ADR-055: The Retail Link parsers read the workbook themselves, and sheet detection needs sentinels
+
+**Date:** August 24, 2026
+**Status:** Built.
+
+**Decision.** Both Retail Link parsers implement the `parseFile(file)` hook and read sheets directly, bypassing `parseFile` in `src/utils/csvParser.js` — the `src/parsers/production.js` pattern.
+
+**The shared helper cannot feed these parsers, despite an earlier doc claiming it could.** `parseXlsxFile` uses `sheet_to_json(ws, { defval: null })` — header-keyed objects — and **concatenates every sheet**. The Walmart exports put a title row above the header, so the flattener keys the data off the title and loses the sheet boundaries. Measured on a real file: **0 of 12 resulting rows** carried `Prime Item Nbr`, `LW POS Qty` or `Curr Str On Hand`. The six functions in `weeklyAttachments.js` need per-sheet 2D arrays (`{ header: 1 }`), which is a different thing entirely.
+
+**"The parser returned something" is not sheet detection.** Three of the six existing parsers are not discriminating: `parseScorecard` has **no header sentinel at all** — it reads row 0 as period names and row 3+ as metrics, so it succeeds on literally any sheet — and `parseMarkdown`'s sentinel `/prime_item_number/i` also matches the `Item Data` sheet. On a first run against a fixture, `parseScorecard` claimed every sheet. Route by sheet name or by an explicit sentinel: `Prime Item Nbr` for Sales Summary, `mumd_amount` for Markdown, `prime_item_number` for Item Data, `vendor scorecard` for Scorecard, `Host PO Nbr` for OTIF.
+
+**`scripts/inspect-retail-link.mjs` exists for exactly this.** It runs all six parsers over every sheet of an export, reports which legitimately claim which, and prints a coverage map against the engine's needs. Use it first when an export changes shape rather than guessing.
+
+**Items that are not ours must be filtered per ITEM, never per row.** WK28 lists `SC LEMON RICOTTA` (675595532) with every measure zero. Dropping zero *rows* would be wrong — a real item's pre-launch weeks are legitimately zero and the engine needs them. The parser keeps any item that ever sold or was ever traited.
+
+**`storesSelling` is not derivable from these exports.** "Units per Store per Week **(w/zeros)**" is per *traited* store — the `(w/zeros)` is the giveaway — so `units ÷ that ratio` recovers `traited_stores` exactly, not stores that sold. Verified: the derivation returned a number identical to `traited` on every week. It is stored as null. `buildSkuSeries` never reads it; only the store-level paste-in aggregator does. (`Sales Data` carries `LW_units_per_str_with_sales_per_week_ty`, which *is* the right denominator — but current week only, no history.)
+
+## ADR-056: OTIF is cases-weighted and can never be per-SKU; in-store fill is a simple mean
+
+**Date:** August 24, 2026
+**Status:** Built — the **Service health** panel at the top of the S&OP summary.
+
+**Decision.** In-store fill rate and OTIF are the two headline numbers on `/demand-planner`, above the flow cards (Caroline, Aug 24 2026). They are the two ends of the same chain: **OTIF — In Time and In Full** is whether we delivered to Walmart complete and to the date; in-store fill is whether it then reached the shelf.
+
+**Why they sit above the demand read.** A problem in either invalidates the numbers below. Suppressed POS from an out-of-stock is not weak demand, and the engine's `trueDemand` correction is only trustworthy if you can see how bad the in-stock actually was.
+
+**OTIF aggregates on CASES: `cases_on_time ÷ cases_ordered`.** Verified against the export's own grand-total row — `0.646224` computed vs `0.6462` stated. Averaging the per-PO percentages gives **`0.6844`**, a 4-point overstatement, because a 21-case PO would count the same as a 2,500-case one. This is the single easiest way to publish a wrong service number.
+
+**OTIF can never be split by SKU.** There is **no item number anywhere** in the OTIF export — it is per PO, measured against MABD. It is a whole-business weekly figure while in-stock is per-SKU, which is why the two halves of the panel are shaped differently rather than forced into one table. The panel states this on screen so nobody asks for a per-SKU breakdown that cannot exist.
+
+**In-store fill is a SIMPLE MEAN across SKUs.** That is what reproduces the `Sales Summary` Grand Total row: 98.1500% computed vs 98.1467% stated. Traited-weighting (98.0967%) and POS-weighting (98.1256%) both drift off it. The `Scorecard` sheet's own "Repl Instock %" (98.2503%) is a *different* denominator again — do not treat the two as interchangeable.
+
+**Pre-launch weeks are excluded from the fill headline.** They carry in-stock 0 against a handful of test stores back to 202601, and averaging those genuine zeros into a shelf-availability number would show a catastrophic outage in weeks the product was not on sale. The panel requires actual sales in the week.
+
+**Thresholds mirror the Tracker's rather than inventing new ones** — in-stock < 65% bad / < 80% warn, OTIF < 90% / < 98%. The same metric flagged at two different cut-offs on one page is a bug. **These are display thresholds, not Walmart-published targets**; if the real scorecard requirement differs, change both places together.
+
+**Field names stay Walmart's.** The column is `cases_on_time` and the parser matches the export's literal `Cases On Time` header. Prose says "In Time and In Full"; the field names have to match the file or the column match breaks on the next upload.
+
+## ADR-057: The upload surface is the six exports actually used, and the paste-in Inputs tab is gone
+
+**Date:** August 24, 2026
+**Status:** Built. Migration `20260824130000_retail_link_supply_plan.sql` **not yet applied**.
+
+**Decision.** `/uploads` leads with the six exports that are actually uploaded (Caroline, Aug 24 2026), in her order:
+
+| # | Card | Parser | Lands in |
+|---|---|---|---|
+| 1 | Dirty Cookie Supply Plan WK# | `retailLinkSupplyPlan` | `retail_link_supply_plan` |
+| 2 | Dirty Cookie WK# | `retailLink` | `retail_link_pos_weekly` + `retail_link_forecast` |
+| 3 | OTIF Store Performance — 1 week | `retailLinkOtif` | `retail_link_otif` |
+| 4 | OTIF Store Performance — 3 weeks | `retailLinkOtif` | `retail_link_otif` |
+| 5 | DOT Report | `dot` | `dot_inventory` |
+| 6 | Walmart Report (NetSuite) | `walmartOrders` | `purchase_orders` + `po_line_items` |
+
+Everything else drops to a **collapsed "Legacy & occasional" group** — Assemblers Report, QuickBooks Payments, Ingredient Master. They are demoted, not deleted: Assemblers underpins Inventory and Lot Trace, Ingredient Master underpins Reference, and neither has a replacement. Two cards *were* deleted, both speculative parsers that never saw a real file: **Cortina PO PDF** (superseded by the Walmart Orders export) and **NetSuite POs** (`netsuite.js`, marked FORMAT UNCONFIRMED). The "awaiting format" placeholder and its `PlannedCard` component went with them.
+
+**Two cards share one parser, deliberately.** The 1-week and 3-week OTIF exports are the same format, but they arrive as two separate downloads, so the page shows two drop zones and the weekly routine reads as a checklist. Cards are therefore keyed by `title`, not `type` — keying by `type` collided and silently dropped one.
+
+**The Supply Plan is the missing middle of the chain**, and this is the reason it is worth a table of its own rather than folding into the forecast:
+
+```
+retail_link_forecast      what Walmart expects CONSUMERS to buy   (store POS forecast)
+retail_link_supply_plan   what Walmart plans to ORDER FROM US     ← this
+purchase_orders           what Walmart actually ordered
+```
+
+Adding the first two together double-counts demand. Their totals do not reconcile and should not be expected to.
+
+**Dates needed a real calendar.** The Supply Plan is date-grain and the engine is weekly, so `order_place_week` is derived at parse time from the Walmart calendar — week 202605 begins Saturday 2026-02-28 — and **verified against all 48 weeks of `SEED.weeks`, exact**. Two traps: the file stores Excel serials, and reading them with SheetJS's `cellDates` produced values like `2026-08-15T23:00:21Z` that land on the **wrong day** west of Greenwich, so serials are converted directly against the 1899-12-30 epoch. And `dc_nbr` is empty in the "Total Company" exports, so it is `NOT NULL DEFAULT ''` — a nullable column would break the unique key outright, since NULL never equals NULL.
+
+**The Inputs tab is removed.** It carried five paste-and-go cards — Retail Link POS, store forecast, warehouse forecast, DOT order history, DOT on-hand. Four of the five are now covered by real uploads that persist and upsert; keeping a parallel, session-only ingest path invited two sources of truth for the same numbers, and its own Walmart-week arithmetic used a *different anchor* (2026-01-31) from the verified one. ~77 lines of paste parsers went with it.
+
+**What that costs, accepted.** DOT on-hand had no file source and was only enterable by hand there, so the `dot` series is now always empty and the engine falls back to `params.dotOpeningAnchor`. The intended replacement is the DOT Report (card 5) — but see the warning below, and until that is real the DOT cascade is running on its anchor.
+
+⚠️ **Card 5's parser has never seen a real file.** `dot.js` is marked FORMAT UNCONFIRMED, blocked on a sample, and its column aliases are guesses. The card says so. Check the upload preview before trusting an import, and expect to adjust the alias arrays first.
+
+## ADR-058: The "DOT Report" is the Order History export — and OTIF is not the same measurement
+
+**Date:** August 24, 2026
+**Status:** Built and **validated against a real export**. Migration `20260824140000_dot_order_history.sql` **not yet applied**.
+
+**Decision.** Card 5 of the six weekly uploads is the DOT **`Order History (N).xlsx`** outbound export — sheet "Outbound Orders", one row per DOT order heading to a Walmart GDC. It writes a new table, `dot_order_history`, and drives the planner's cut-recovery panel. Parser: `src/parsers/dotOrderHistory.js`.
+
+**It is not the file `dot.js` was written for.** `src/parsers/dot.js` targets a pallet-level ON-HAND snapshot (`on_hand` / `incoming` / `in_transit` / `allocated`) for `dot_inventory` and the Inventory page. It is still FORMAT UNCONFIRMED and still has no sample. Both files are "the DOT report" in conversation; they answer different questions and neither substitutes for the other. `dot.js` is demoted to the Legacy group as **"DOT Inventory (pallet-level)"** rather than deleted.
+
+**Validated by exact reproduction, which is the right test here.** Bucketing the export by Delivery Date into Walmart weeks reproduces `SEED.dotService` exactly — all six weeks, on ordered, cut *and* order count:
+
+```
+202620  252/208/2     202623  3906/2587/63
+202621  798/630/23    202624  2373/2006/47
+202622 5334/5283/84   202625    84/  42/ 2
+```
+
+Note this is the **opposite** of the POS acceptance test in ADR-054. POS is restated by Walmart, so exact agreement with SEED would be suspicious; this export is a fixed historical slice, so exact agreement is exactly what should happen. Delivery Date is the bucketing date — switching to Order Date breaks the reproduction.
+
+**The quantity identity is three terms, not two.**
+
+```
+ordered_cases = expected_cases + cut_cases + reconciled_cases     221/221 rows ✅
+ordered_cases = expected_cases + cut_cases                        148/221 rows ❌
+```
+
+Dropping `reconciled` makes a third of the file look corrupt. The parser checks the three-term identity on every import and raises a **warning, not a failure** — a violation means the export's shape changed and the cut figures should not be trusted, which is worth surfacing without blocking a load.
+
+**`customer_po` joins `retail_link_otif.host_po`.** 62 of the 169 DOT POs in the sample matched an OTIF PO (partial only because the two exports covered different date windows). That join is how a cut seen from DOT's side lines up with the same shortfall seen from Walmart's side, and it is indexed for it.
+
+**OTIF and DOT cut recovery are now separate series, deliberately.** An earlier pass had `dotService` derived from the OTIF export because it was the only service feed available. That was wrong once the real DOT export arrived:
+
+- **OTIF** is Walmart measuring *us* against MABD — keyed on Walmart's week.
+- **Cut recovery** is what *DOT* failed to ship — keyed on delivery date.
+
+They measure the same shipments from opposite ends and **their weeks do not align**. Merging them silently averages two different things. `useDemandFeeds` now returns `otif` and `dotService` independently, each with its own SEED fallback, and the banner names both.
+
+**A hardcoded narrative was removed.** The cut-recovery panel carried prose asserting `"Restricted Supply — Supplier" on 119 of 136 fully-cut orders (DOT out-of-stock on only 9)`. True of the 6/18–7/20 slice, and about to become a lie the first time a different export was uploaded. Cut *reasons* are a NetSuite field the planner has never ingested; the panel now says so instead of asserting last quarter's numbers. Restore it as data, not prose, if reason codes are ever ingested.
+
+**Worth reading off the sample: the cut rate in that slice was 84%** — 10,756 of 12,747 cases ordered were never shipped. That is the number the panel exists to make visible.
+
+## ADR-059: The `orders` series comes from two different dates — and there is no DOT on-hand feed
+
+**Date:** August 24, 2026
+**Status:** Built and validated against the 2026-08-22 Cortina export. Migration `20260824150000_po_line_cut_reason.sql` **not yet applied**.
+
+**Decision.** The demand planner's `orders` series is derived live from `po_line_items` joined to `purchase_orders`, completing the wiring: **five of the engine's six series are now live** — `pos`, `forecasts`, `otif`, `dotService`, `orders`. Only `production` remains on SEED.
+
+**The two-date rule, which is the whole finding.**
+
+```
+req, cuts  →  the PO's SCHEDULED delivery week   (purchase_orders.ship_date_original)
+dlv, rev   →  the line's ACTUAL delivery week    (po_line_items.actual_delivery_date)
+```
+
+Both dates were already in the export and using either one for everything is wrong. Bucketed this way against `SEED.orders` (49 week × SKU cells):
+
+| Field | Match | |
+|---|---|---|
+| `req` | **49/49** | ✅ exact |
+| `cuts` | **49/49** | ✅ exact |
+| `dlv` | 43/49 | all 6 misses in weeks 202628–202629 |
+| `rev` | 43/49 | same 6 |
+
+Those six are not errors. SEED froze on 2026-08-13 with those deliveries still pending — it records `dlv = 0` for week 202629 where the newer export records the 231/147/483 cases that have since landed. Same pattern as the POS restatement in ADR-054: **the live feed knowing more than SEED is the feed working.**
+
+Bucketing was chosen by measurement, not assumption. Using `Date` (order date) for `req` scores 28/49 and `Actual Delivery Date` scores 20/49; `Delivery Date` scores 49/49. **`actual_delivery_date` is per LINE, not per PO** — different DCs on one SO deliver on different days — which is why it was promoted out of `metadata` into a real column.
+
+**`cuts` is a COUNT OF LINES, not a quantity.** It counts lines carrying a cut reason. That is what SEED holds and what reproduces it exactly; summing cut *cases* would be a different and much larger number, and silently substituting one for the other would look plausible on a chart.
+
+**Cut Reason is now ingested.** The Cortina export has always carried it and nothing ever read it. On the 2026-08-22 file, 194 of 1,155 lines carry one, **170 of them "Restricted Supply - Supplier"**. Stored verbatim as text, never normalised: the values are already compound (`|` and `;` separated) and the list evidently grows, so a CHECK constraint would start rejecting real rows. This is the data behind the prose ADR-058 removed from the cut-recovery panel — it can now be restored as a computed breakdown rather than a hardcoded sentence.
+
+**Two item numberings coexist in this system and confusing them fails silently.**
+
+```
+Walmart prime item nbr   679640563 / 679640564 / 683581675   → Retail Link feeds
+Cortina/NetSuite item    1252      / 1251      / 1287        → the orders feed
+```
+
+Both map to WC / PBG / CCF. `useDemandFeeds` carries both maps; a wrong one drops every line rather than erroring.
+
+**🔴 There is no DOT on-hand report (Caroline, Aug 24 2026).** Not "not yet" — it does not exist. Consequences, all deliberate:
+
+- The upload card for it is **removed**, not demoted. `src/parsers/dot.js` and the `dot_inventory` table are retained (the Inventory page reads the table) but the parser is now unreachable and should stop being described as "awaiting a sample".
+- The engine's `dot` series is permanently empty, so the forward DOT cascade runs on `params.dotOpeningAnchor`. The Tracker's DOT rows are a **model**, never actuals, and should be read that way.
+- This does **not** affect `dot_order_history` (ADR-058), which is a different file entirely — orders and cuts, not on-hand. Both are called "the DOT report"; only one exists.
+
+**The cut-recovery panel's NetSuite comparison now reads the same source as the engine.** It previously summed `SEED.orders` while the engine could be reading live data — which would have made "invisible in NetSuite" compare two different order books.
+
+## ADR-060: The DOT Order History is exception-filtered, so it cannot drive the outbound leg
+
+**Date:** August 24, 2026
+**Status:** Series built and surfaced in the Tracker. The engine change was written, regression-tested, and **deliberately reverted**.
+
+**The intent.** The DOT Order History records what was delivered to each Walmart depot — an ACTUAL for a leg (`dotOut`, DOT → depots) that the engine otherwise MODELS off the NetSuite order book. The tracker should show measured history and model only the future, so `dotOut` should prefer the DOT actual wherever it exists. That reasoning is sound and the plumbing works.
+
+**Why it is not wired.** ⚠️ **The only DOT export available is stale — pulled 2026-07-16** (Caroline), covering delivery weeks 202620–202625 and nothing since. That is also why it reproduces `SEED.dotService` exactly: SEED was frozen 2026-08-13 and built from this same file. Reproduction proved the parser correct; it proved nothing about the feed being current.
+
+In that file, **0 of 221 rows had no cut** and 146 of 221 were *fully* cut. Two readings, and the old file cannot distinguish them:
+
+1. **The export is filtered to exception orders.** It covers 169 POs; NetSuite carries roughly 700 more in the same weeks, delivered without incident and absent here.
+2. **The window is genuinely catastrophic.** Weeks 202620–25 are exactly the documented supply crisis — in-stock fell to 58–68% for PB&J and White Chocolate over the same weeks — so a very high cut rate is expected there.
+
+Even allowing for the crisis, *zero* clean orders out of 221 leans toward a filter. But until a **current** export arrives, this stays unresolved, and either way the file cannot supply the outbound total: under reading 1 it omits clean POs by construction, and under reading 2 it is five weeks stale. Feeding it into `dotOut` would understate DOT's outflow and suppress the production recommendation that sizes co-bakery runs.
+
+⚠️ **A first draft of this ADR justified that with "1,949 cases reconciled where NetSuite records 11,603 delivered". That comparison was invalid** — 1,949 is the DOT slice's 169 POs, 11,603 is *every* NetSuite delivery in those weeks. Apples to oranges. The conclusion survives; the arithmetic behind it did not. The real reason is simply that the file omits every clean PO by construction.
+
+**What the PO join then established (Caroline, Aug 24 2026).** `dot_order_history.customer_po` corresponds to the NetSuite report, and reconciling the two per PO answers the question the aggregate never could:
+
+| | matched POs |
+|---|---|
+| NetSuite cases **== DOT reconciled** | **155 / 169** |
+| NetSuite cases **+ DOT cut == DOT ordered** | **157 / 169** |
+
+**NetSuite records what was DELIVERED, not what was ordered, on a cut PO.** That is the finding. It means the engine's existing `c.dotOut = c.dlv` was already correct — `dlv` is a genuine delivery figure, net of cuts — and the DOT export's unique contribution is not deliveries at all but the **original order quantity**: 12,747 cases ordered against 2,768 recorded in NetSuite for the same 169 POs. **10,756 cases of order book that NetSuite never saw.** That is exactly what the cut-recovery panel exists to surface, and it is now verifiable per PO rather than inferred from week totals.
+
+⚠️ **12 of 169 POs break the additive identity** — NetSuite carries the full ordered quantity (e.g. PO `0003542012`: NetSuite 147, DOT cut 147, DOT ordered 147), so adding the cut would double-count. In those NetSuite kept the order rather than the delivery. Because of them, true order book should be taken as **DOT `ordered_cases` for any PO the DOT file covers** — authoritative for those — and NetSuite quantity elsewhere, rather than by summing.
+
+The original panel note called it an "exception slice" and that turned out to be the load-bearing word. `SEED.dotService` — which this file reproduces exactly (ADR-058) — is likewise a cut-recovery series, not a delivery series. Reproducing it was never evidence of completeness.
+
+**What was built and kept.** `feeds.dotDeliveries` — DOT reconciled/ordered/cut cases allocated to SKU and bucketed by delivery week — and a Tracker row, **"DOT delivered — cut orders only (cs)"**, named so nobody reads it as total deliveries. Visibility, not input.
+
+**The SKU allocation, which was the hard part and does work.** The DOT export has no item column, so SKU comes through the PO: `dot_order_history.customer_po` → `purchase_orders.walmart_po_number` → `po_line_items`. Measured: **169 of 169 DOT POs matched, 100% of ordered and reconciled cases joinable, 0 unmatched.** 128 POs are single-SKU (exact); 41 carry more than one and are split **pro-rata on the PO's line quantities** — the only approximation in the file, and unresolvable from these exports because DOT never records the item.
+
+**How the engine was protected.** The one-line change to `c.dotOut` was made, then validated by snapshotting all three SKU series before and after: with the new input absent, **432 cells were byte-identical** — the change was provably a no-op on the existing path. That harness is what then showed the real data producing a 6× understatement, which is what caused the revert. After reverting, the engine reproduces the original baseline exactly **even with real DOT data loaded**.
+
+**The test, when a current export arrives.** Check whether it contains **orders with zero cuts**. A recent, non-crisis window with no clean orders means the export is filtered; clean orders present means it is a full extract and reading 2 was right. Only then consider restoring `c.dotDelivered ?? c.dlv ?? ...` at that line — and even then, only if it also proves complete against NetSuite for the same weeks.
+
+**Note what does NOT depend on this.** The PO reconciliation above holds regardless: NetSuite records deliveries on cut POs, and the DOT export supplies the original order quantity. `dot_order_history` is still the right table and the parser is still validated — it is the *vintage and completeness* of the file that is open, not the shape.
+
+## ADR-061: Every number states its source, and disagreements are shown rather than resolved silently
+
+**Date:** August 24, 2026
+**Status:** Built — a third tab, **Sources**, on `/demand-planner`.
+
+**Decision.** The planner now says where each figure comes from and where its sources disagree (Caroline, Aug 24 2026: *"clearly call out discrepancies and specify exactly where the data is coming from or how it is derived… by understanding the difference in the forecast we can appropriately look at the situation and hone in on the proper assumptions"*). Three sections:
+
+1. **Where every number comes from** — file → sheet → column for each figure, or the formula where the page derives it, with a live / seed / no-source badge.
+2. **Discrepancies** — computed from whatever is loaded, never asserted. A claim that stops being true stops being displayed.
+3. **The forecast, four ways** — the forward numbers side by side per SKU per week, with the gap.
+
+**Why the forecast section exists.** "The forecast" is ambiguous in this system — there are **four** forward numbers, computed differently, that are *supposed* to differ:
+
+| | source |
+|---|---|
+| Walmart store forecast | Forecast sheet, raw rows (has a snapshot week) |
+| Walmart's other forecast | All Item Detail's `Forecast` row (restated in place, no history) |
+| DC internal forecast | derived: base velocity × stores × seasonality |
+| Consensus | internal, after override and seasonality |
+
+A fifth — the **Supply Plan** — is deliberately excluded from that table: it is what Walmart plans to *order from us*, not what shoppers will buy, and adding it would double-count.
+
+**🔴 Walmart publishes its forecast twice and the two do not agree, by a different factor per SKU.** On the WK28 file, median ratio of All Item Detail to the Forecast sheet: **WC ×1.0, PB&J ×0.7, CCF ×5.0**. The Forecast sheet's own embedded pivot agrees with All Item Detail rather than with its own raw rows. The planner uses **the Forecast sheet's raw rows** — the only copy with a documented grain (one row per item × week) and a snapshot week, which accuracy scoring requires. ⚠️ **The reason for the gap is not established.** It is not a units conversion; the ratios differ per SKU. The Sources tab shows both and names the choice rather than hiding it.
+
+**What the tab immediately surfaced.** For week 202629, Walmart forecasts **2,589** units of PB&J where the DC internal forecast says **1,485** — a **+74%** gap, and +86% the following week. That is the out-of-stock period depressing trailing velocity, which is exactly the assumption worth interrogating, and it was invisible before.
+
+**Two Walmart data-quality defects found while building it.**
+
+- **The description column in All Item Detail is wrong on 8 of every 9 rows.** Only the first row per item (`POS Sales $`) carries the right label; the other eight repeat a stale one from an unrelated product — item `679640563` reads `SC TIRAMISU CUP` on eight rows and `DC WHITE CHOC CKE` on one; `679640564` reads `SC DBL CHOC PUDD` vs `DC PB COOKIE`. Descriptions are therefore taken from the **Item Data** sheet, the actual item master. The item NUMBER was never in doubt and is what everything keys on, so no figure was ever affected — but a display bug that renames PB&J to a pudding cup would have destroyed trust in the page.
+- **`Forecast` must not be truncated at the file week.** The parser bounds every measure at the file's own week, correctly, because future columns read `0` and a fabricated zero is undetectable. `Forecast` is the exception: it is inherently forward, and truncating it discarded the only copy comparable against the Forecast sheet. It is now exempt from the bound; all other measures still are not.
+
+**Fields carried but not fed to the engine.** `wmt_forecast_units`, `pos_units_if_instock` and the raw `instock_pct` ride along on the POS rows for this tab. `buildSkuSeries` reads none of them, so they cost nothing and the engine is untouched.
