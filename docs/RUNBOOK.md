@@ -68,7 +68,7 @@ Six files, in the order they appear on `/uploads`:
 | 2 | `Dirty Cookie WK##.xlsx` | POS, in-stock, traited stores, store forecast. One file backfills the **whole year** of POS, so the first upload is not "one week of data" |
 | 3 | `OTIF STORE Performance … 1 week` | In Time and In Full — cases ordered / in time / late / unfilled per PO |
 | 4 | `OTIF STORE Performance … 3 weeks` | Same format, wider window. **Upload both** — they overlap on purpose |
-| 5 | `DOT Report` — `Order History (N).xlsx` | Outbound DOT orders and **cut** cases. Drives cut recovery: the volume DOT never shipped, which NetSuite never sees |
+| 5 | `DOT Report` — `Order History (N).xlsx` | Outbound DOT orders and **cut** cases. Drives cut recovery: the volume DOT never shipped, which NetSuite never sees. **Arrives weekly** — if the planner's cut-recovery panel warns it is 2+ weeks behind POS, an upload was missed |
 | 6 | `Walmart Report (NetSuite)` | Drives the planner's `orders` series (requested / delivered / revenue / cuts) and carries the **Cut Reason** column. Also auto-ingests nightly from `systems@` |
 
 Then `/demand-planner` picks them up on next load; its banner's "as of" is the newest week **with data**, not the time of the fetch.

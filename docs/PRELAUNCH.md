@@ -59,10 +59,12 @@ Full detail: `DEMAND_PLANNER_KNOWN_ISSUES.md`.
   892 and grows ~45–50/month; at 1,000, Product Orders / Payments / Alerts begin
   silently dropping rows. Fix = the `fetchAll` pattern in `useDemandFeeds.js`
   applied to `usePurchaseOrders.js`, `usePayments.js`, `useAlerts.js`.
-- [ ] 🟠 **Pull a fresh DOT Order History.** The loaded one is a 2026-07-16 pull,
-  three weeks behind POS. When it arrives, check whether it contains any orders
-  with **zero cuts** — that settles whether the export is exception-filtered, and
-  whether it can ever serve as a delivery record.
+- [ ] 🟠 **Add the DOT Order History to the weekly upload routine.** A report now
+  arrives every week, so it sits alongside the Retail Link files (card 5 at
+  `/uploads`). The loaded one is a 2026-07-16 pull, three weeks behind POS —
+  upload the current one. **On the next report, check whether it contains any
+  orders with zero cuts**: that settles whether the export is exception-filtered
+  and whether it can ever serve as a record of total deliveries.
 - [ ] 🟠 **Do not raise the "CCF ×5.0 forecast" with Bentonville.** That
   statistic was computed over corrupted cells and has been retracted. The
   defensible observation is CCF 26,549 vs 5,355 at week 202629.

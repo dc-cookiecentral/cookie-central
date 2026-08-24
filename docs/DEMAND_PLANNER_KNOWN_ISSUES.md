@@ -87,20 +87,26 @@ which is real, live, and covers orders and cuts.
 
 ---
 
-## 🟠 4. The DOT data on screen is three weeks behind the rest
+## 🟠 4. The DOT data on screen is three weeks behind — and that is now a signal
 
-The loaded DOT export was pulled **2026-07-16** and ends at Walmart week
-**202625**, while POS runs to **202628**. The cut-recovery panel carries a
-warning saying so.
+**A DOT report arrives every week** (confirmed Aug 24 2026), so it belongs in the
+weekly upload routine alongside the Retail Link files — it is card 5 at
+`/uploads`.
 
-The DOT export is pulled by hand and has no schedule, so this gap will grow until
-someone pulls a fresh one. When you do:
+The currently loaded export was pulled **2026-07-16** and ends at Walmart week
+**202625**, while POS runs to **202628**. The cut-recovery panel warns when this
+happens.
 
-⚠️ **Check whether the new export contains any orders with ZERO cuts.** The
-current file has **none** — all 221 rows carry a cut — which means it is either
-filtered to exception orders only, or that window (the supply crisis) really was
-that bad. That question is unresolved and it decides whether the file can ever be
-used as a record of total deliveries. It currently is not.
+**Because the report is weekly, a gap of two weeks or more means an upload was
+missed — not that none was available.** Treat the warning as an action, not a
+disclaimer: go and upload the latest one.
+
+⚠️ **On the next report, check whether it contains any orders with ZERO cuts.**
+The current file has **none** — all 221 rows carry a cut — which means it is
+either filtered to exception orders only, or that window (the supply crisis)
+really was that bad. Weekly delivery settles this quickly: a normal week with no
+clean orders in it means the export is filtered. Until that is answered, the file
+is used for cut recovery only and **not** as a record of total deliveries.
 
 ---
 

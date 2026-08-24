@@ -1124,7 +1124,9 @@ The original panel note called it an "exception slice" and that turned out to be
 
 **How the engine was protected.** The one-line change to `c.dotOut` was made, then validated by snapshotting all three SKU series before and after: with the new input absent, **432 cells were byte-identical** — the change was provably a no-op on the existing path. That harness is what then showed the real data producing a 6× understatement, which is what caused the revert. After reverting, the engine reproduces the original baseline exactly **even with real DOT data loaded**.
 
-**The test, when a current export arrives.** Check whether it contains **orders with zero cuts**. A recent, non-crisis window with no clean orders means the export is filtered; clean orders present means it is a full extract and reading 2 was right. Only then consider restoring `c.dotDelivered ?? c.dlv ?? ...` at that line — and even then, only if it also proves complete against NetSuite for the same weeks.
+**A DOT report arrives WEEKLY** (Caroline, Aug 24 2026), which changes the shape of this open question: it resolves itself on the next upload rather than waiting on someone to go and pull a file. It also makes the staleness warning on the cut-recovery panel a **missed-upload signal** rather than an inherent property of the feed, and puts the DOT report in the weekly routine as card 5 at `/uploads`.
+
+**The test, on the next report.** Check whether it contains **orders with zero cuts**. A normal, non-crisis week with no clean orders in it means the export is filtered; clean orders present means it is a full extract and reading 2 was right. Only then consider restoring `c.dotDelivered ?? c.dlv ?? ...` at that line — and even then, only if it also proves complete against NetSuite for the same weeks.
 
 **Note what does NOT depend on this.** The PO reconciliation above holds regardless: NetSuite records deliveries on cut POs, and the DOT export supplies the original order quantity. `dot_order_history` is still the right table and the parser is still validated — it is the *vintage and completeness* of the file that is open, not the shape.
 

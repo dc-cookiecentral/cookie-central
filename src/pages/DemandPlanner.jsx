@@ -768,7 +768,7 @@ function Sources({ feeds, series }) {
     disc.push({
       title: "DOT cut recovery is not on the same clock as POS",
       body: "DOT data ends at week " + newest + "; POS runs to week " + latestPos + ".",
-      note: "The DOT export is pulled by hand and has no schedule. Cut recovery describes its own window, not the current one.",
+      note: "A DOT report arrives weekly, so a gap of two weeks or more means an upload was MISSED, not that none was due. Cut recovery describes the window it covers, not the current one.",
       tone: latestPos - newest >= 2 ? "warn" : "ok",
     });
   }
@@ -909,12 +909,14 @@ function Summary({ series, metrics }) {
 function DotServicePanel({ svc, latestDataWk }) {
   if (!svc.rows.length) return null;
   const max = Math.max(...svc.rows.map(r => r.trueOrdered));
-  // The DOT export is pulled by hand and has no schedule, so it drifts behind
-  // the weekly Retail Link uploads silently. The July 2026 file sat five weeks
-  // behind POS with nothing on screen to say so — and its window happens to be
-  // the supply crisis, which is exactly the data someone would misread as
-  // current. Compare against the newest week that has POS and say the gap out
-  // loud rather than trusting the reader to notice the axis labels.
+  // A DOT report now arrives WEEKLY (Caroline, Aug 24 2026), so this gap is a
+  // missed-upload signal rather than an inherent property of the feed — which
+  // makes it worth acting on rather than merely noting. Before that was
+  // established, the July 2026 file sat weeks behind POS with nothing on screen
+  // to say so, and its window happens to be the supply crisis: exactly the data
+  // someone would misread as current. Compare against the newest week that has
+  // POS and say the gap out loud rather than trusting the reader to notice the
+  // axis labels.
   const newestDot = Math.max(...svc.rows.map(r => r.wk));
   const weeksBehind = latestDataWk && newestDot ? latestDataWk - newestDot : 0;
   const stale = weeksBehind >= 2;
@@ -963,9 +965,11 @@ function DotServicePanel({ svc, latestDataWk }) {
       {stale && (
         <p className="text-[11px] mt-3 rounded-lg px-3 py-2"
           style={{ background: "#FDF3D8", border: "1px solid #E8D9A8", color: "#5C4A1F" }}>
-          <b>This panel is not current.</b> The DOT Order History is pulled by hand and the loaded file
-          ends at week {newestDot}, {weeksBehind} weeks behind the POS data above. Cut recovery here
-          describes that window, not today. Upload a fresh export at Uploads → DOT Report.
+          <b>This panel is not current.</b> The loaded DOT Order History ends at week {newestDot},
+          {weeksBehind} weeks behind the POS data above. A DOT report arrives <b>weekly</b>, so this
+          means {weeksBehind === 1 ? "an upload is due" : "uploads have been missed"} — not that none
+          was available. Cut recovery here describes that window, not today.
+          Upload the latest at Uploads → DOT Report.
         </p>
       )}
       <p className="text-[11px] mt-3 rounded-lg px-3 py-2" style={{ background: "#FDF6FA", color: "#8E1039" }}>
