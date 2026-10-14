@@ -119,10 +119,11 @@ label says **"Deliver by"**. Deliberate — renaming the column wasn't worth the
   preview builds share this database and this store, so a branch-build order is
   a real order with a distinguishable number.
 - **An unseeded first sign-in silently becomes internal `ops`, and this has
-  happened.** Aug 19: an account created as `samplesmgmt@…` (no `n`) missed the
-  `samplesmngmt@…` seed by one letter, provisioned as `ops`, and signed in with
-  access to POs, payments and inventory. Copy-paste addresses into the dashboard;
-  never retype them.
+  happened, twice.** The correct Cortina address is `samplesmgmt@…` — **no `n`**.
+  The Aug 11 seed was the typo (`samplesmngmt@…`), so the real address missed it
+  on Aug 19 and again on Oct 14, provisioning as `ops` with access to POs,
+  payments and inventory (fixed by `20261014200000`). Copy-paste addresses into
+  the dashboard, never retype them, and confirm spellings with the owner.
 - **V2's shipments API does not reflect ORDER status.** `shipment_status` is the
   label lifecycle (`pending`/`processing`/`label_purchased`/`on_hold`/`cancelled`).
   An order in **Awaiting Payment** has no shipment record at all (ADR-039); an

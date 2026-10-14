@@ -45,7 +45,7 @@ Distinct from the roster below, and the distinction is the whole of ADR-042: a
 | `caroline@dirtycookie.com` | `admin` | seeded `20260806235500` |
 | `david@dirtycookie.com` | `admin` | seeded `20260601160000` |
 | `paul@dirtycookie.com` | `admin` | **Paul Hardy, President.** Auth user since Jun 2 2026 and signed in that day; `20260814120000` added his `sales_reps` row and re-asserted the seed. Role verified `admin` Aug 19 |
-| `samplesmngmt@cortinafoods.com` | `cortina` | the one Cortina ordering account; seeded `20260811120000`. **Provisioned Aug 19** with a password (not a magic link — see the 2/hour email cap), `role='cortina'` verified. ⚠️ `last_sign_in_at` is still **null** — nobody has signed in on this account yet |
+| `samplesmgmt@cortinafoods.com` | `cortina` | the one Cortina ordering account — **no `n`**. Originally seeded as `samplesmngmt@` (typo) by `20260811120000`; the real address signed up Oct 14 2026, landed as `ops`, and was corrected to `cortina` by `20261014200000` |
 
 **Paul is `admin`, not `ops` or `cortina`, deliberately** — he is the President
 and is meant to see everything. `cortina` is gated to Sample Central alone by the
@@ -59,15 +59,17 @@ were needed.
 unseeded first sign-in provisions as internal `ops` and **seeding afterwards does
 not fix it** — only a manual `UPDATE` does, once someone notices.
 
-⚠️ **This fired for real on Aug 19, 2026.** An account was created by hand as
-`samplesmgmt@cortinafoods.com` — **no `n`** — while the seed is
-`samplesmngmt@cortinafoods.com`. The lookup is exact equality, so it missed, the
-account provisioned as internal **`ops`**, and it signed in. `InternalOnly`
-redirects only `cortina`, so it reached POs, payments, inventory and the audit
-log. It owned no rows (checked every user-id column in the schema) and was
-deleted; the correct account was re-created from the seed spelling and verified.
-**Copy-paste the address into the dashboard — never retype it.** Two addresses
-one letter apart is the whole failure mode.
+⚠️ **This fired for real on Aug 19 and again on Oct 14, 2026 — and the first
+fix was backwards.** The correct address is **`samplesmgmt@cortinafoods.com` — no
+`n`** (Caroline, Oct 14). The Aug 11 seed read `samplesmngmt@` (with an `n`), so
+the real address missed it, provisioned as internal **`ops`**, and signed in;
+`InternalOnly` redirects only `cortina`, so it reached POs, payments, inventory
+and the audit log. On Aug 19 that account was taken for the typo, deleted, and
+re-created under the wrong seed spelling — so on Oct 14 the real address signed
+up again as `ops`. `20261014200000` seeds the correct spelling, repairs the
+profile to `cortina`, and deletes the `samplesmngmt@` seed. **Copy-paste the
+address into the dashboard — never retype it — and confirm the spelling with the
+owner before seeding.** Two addresses one letter apart is the whole failure mode.
 
 ## Salesperson roster — loaded August 11, extended August 14
 
@@ -391,7 +393,7 @@ it. **Confirmed intentional by Caroline, Aug 19 2026.** Don't "fix" it back.
 | §3 rush automation rule | **done** (re-pointed to `Internal Notes contains RUSH`) |
 | §4 cold-chain product tags | **done** |
 | §1 store status mapping | verified correct as configured |
-| §A.1 Cortina user seeding | **done Aug 11.** The 25 reps needed no seeds — they are `sales_reps` rows, not logins. The single ordering account, `samplesmngmt@cortinafoods.com` ("Samples Management", role `cortina`), is seeded and verified (`20260811120000`). It has **not signed in yet**, which is precisely why the seed had to land first: an unseeded first sign-in provisions as internal `ops` and does not self-correct |
+| §A.1 Cortina user seeding | **done Aug 11.** The 25 reps needed no seeds — they are `sales_reps` rows, not logins. The single ordering account, `samplesmgmt@cortinafoods.com` ("Samples Management", role `cortina`), was seeded Aug 11 under a typo (`samplesmngmt@`, `20260811120000`), so its first real sign-in on Oct 14 2026 provisioned as internal `ops` — exactly the hazard the seed exists to prevent. Corrected by `20261014200000` (correct seed + profile repaired to `cortina`) |
 | §9 go-live cleanup | **done Aug 19.** Sequence was: raise the floor 1200 → **1206** and *deploy it*, cancel the ShipStation orders, purge the table, then remove `VITE_SAMPLE_TEST_MODE` and rebuild. Order matters — the counter derives from the table, so purging before the floor deploys reissues burnt numbers |
 | §3/§4 seasonal cold rule | **done Aug 19** — created in ShipStation by Caroline. ⚠️ Not verifiable from this repo: automation rules are not exposed by the V2 API and `shipstation-probe` reads orders only. If cold handling ever fails to fire, check the rule is keyed on **Raw SKU product tags**, not Item SKU — Item SKU rules are ignored on multi-item orders, and sample manifests usually are |
 

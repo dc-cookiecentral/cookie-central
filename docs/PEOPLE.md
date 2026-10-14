@@ -70,7 +70,7 @@ Caroline, David Landeck and Paul Hardy are also in `sales_reps`, as
 notification test recipients; Paul places sample orders himself. **28 active
 rows total: 25 Cortina + 3 Dirty Cookie.**
 
-**The one Cortina login is `samplesmngmt@cortinafoods.com`** ("Samples
+**The one Cortina login is `samplesmgmt@cortinafoods.com`** ("Samples
 Management", role `cortina`, seeded `20260811120000`) — one person entering
 samples on behalf of all 25 reps. Seed anyone **before** their first sign-in:
 `handle_new_auth_user` uses `COALESCE(seed.role, 'ops')` with
