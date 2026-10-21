@@ -144,6 +144,15 @@ label says **"Deliver by"**. Deliberate — renaming the column wasn't worth the
   the cancel erased itself, silently. Fixed via `NO_EXPORT_STATUSES` plus
   explicit `cancelled`/`on_hold` mappings, but **assume any status write you add
   will be re-exported within the window.**
+- **`shipped_at` and `label_created_at` are wall-clock values stored as UTC**,
+  not instants (`parseSSDate`; `<ShipDate>` is date-only → `00:00Z`). Read them
+  in local time and every ship date is a day early in the US — which shipped
+  unnoticed until Oct 21 2026. Use the `wallClockDate` helpers in
+  `SampleCentral.jsx`, never `new Date(...).toLocaleDateString()`.
+- **Never DELETE a test order — set `excluded = true`.** Shipment numbers are
+  minted from the max existing number, so a deleted row's number gets reissued.
+  Cancel it in ShipStation first: the UPDATE re-exports the row, and only
+  `cancelled`/`on_hold` are withheld from the export.
 - **`shipnotify` sends `Carrier` as a DISPLAY NAME** — `"UPS"`, not the carrier
   code `"ups"`, and `Service` arrives decorated as `"UPS® Ground"`. Anything
   matching on carrier must normalise, or it will match nothing and fail
@@ -192,7 +201,7 @@ and this section is the bug.**
 **Live and verified:** the ShipStation export, the Deliver By sweep (15-min cron,
 unattended, 3.9s — it caches `shipstation_order_id` and no longer pages history),
 the field contract, `shipstation-probe`, `cancelled` sync, both fulfilment routes
-(ADR-044), the issue log and cold-chain season (ADR-045), the Monthly Report tab,
+(ADR-044), the issue log and cold-chain season (ADR-045), the Reports tab (date-range filter),
 and the rebuilt **Shipments** tab.
 
 **Statuses:** `submitted`, `shipped` and `cancelled` work end to end.
