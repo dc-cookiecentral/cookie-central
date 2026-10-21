@@ -237,7 +237,7 @@ way, silently. The same filter is on the sweep, without which every Cortina
 order pages ShipStation's bucket history every 15 minutes hunting a shipment
 that does not exist.
 
-One table, not two: the monthly report needs both routes in one query. The
+One table, not two: the Reports tab needs both routes in one query. The
 separation is presentational — a "Cortina orders" section in the Shipments tab,
 with only the columns that can ever be filled (items, deliver-by, placed).
 
@@ -281,17 +281,64 @@ it, and needs no per-order signal precisely because it applies to everything.
 **Until then the two systems disagree, and the site is the one making the
 claim.**
 
-## Monthly report
+## Reports — renamed from Monthly Report, Oct 21 2026
 
-A tab, on-screen only (no CSV, by choice). Month picker, five stat tiles
-(shipments, cookies, freight, on-time, with-issues) and a table across **both**
-fulfilment routes. Windowed by ship date, falling back to order date for Cortina
-rows — which have no ship date and would otherwise appear in no month at all.
+A tab, on-screen only (no CSV, by choice). Five stat tiles (shipments, cookies,
+freight, on-time, with-issues) and a table across **both** fulfilment routes.
+Columns: Order, Order Date, Account, Salesperson, Shipped by, Label Bought,
+Shipped, **Shipping Cost** (was "Cost"), Deliver by, Delivered, Issues.
+
+**Date filter** (replaced the month picker on Oct 21): a From/To range, presets
+(This month, Last month, Last 30 days, Year to date, All time), and a choice of
+**which date** the range applies to:
+
+| Filter by | Column | Meaning |
+|---|---|---|
+| Ordered *(default)* | `created_at` | placed on the site |
+| Label bought | `label_created_at` | ShipStation bought the label |
+| Shipped | `shipped_at` | the ShipDate **on the label** — not a carrier scan; the site has no pickup event |
+
+Cortina orders have no label or ship date, so they only appear under
+**Ordered**. The tab says so under the controls rather than inventing a date.
 
 Two deliberate choices: Cortina rows show `n/a` rather than `—` in carrier
 columns ("not applicable", not "not yet known"), and **on-time counts only rows
 with both a deliver-by and an actual delivery date**, so Cortina orders are not
 phantom failures in a measure they cannot participate in.
+
+### Wall-clock dates — fixed Oct 21 2026
+
+`shipped_at` and `label_created_at` are **not real instants.** `parseSSDate`
+stores ShipStation's wall-clock values as if they were UTC, and `<ShipDate>` is
+date-only, so it lands at `00:00Z`. Rendered in local time, every ship date read
+**a day early** in the US (SMP-1209: shipped Oct 21, displayed Oct 20) and label
+times were hours off. Both tabs now read these two columns in UTC
+(`dayKey` / `wallClockDate` / `wallClockDateTime` at the top of
+`SampleCentral.jsx`). `created_at` and `delivered_at` are real timestamps and
+are still read in local time.
+
+Not fixed: the Shipments tab's 10-day "recently shipped" window still compares
+`shipped_at` as an instant — at most a few hours' drift at the edge.
+
+## Hidden test orders — Oct 21 2026
+
+`sample_shipments.excluded` (migration `20261021120000`, applied via the
+Management API) hides a row from **every** list and report total on the site.
+Set on five cancelled post-launch test orders: SMP-1206, -1207, -1210, -1211,
+-1212.
+
+- **A flag, not a DELETE:** shipment numbers are minted from the max existing
+  `shipment_no`, so deleting SMP-1212 would hand that number out again — and
+  ShipStation already holds it. The hook filters `excluded` **client-side** and
+  passes the unfiltered `allShipments` to `createShipment` for exactly this
+  reason. Don't move the filter into the query.
+- **No UI for it.** Hide an order by SQL:
+  `update sample_shipments set excluded = true where shipment_no = '…'`.
+  That bumps `updated_at` and puts the row in the next export window — harmless
+  only if it is `cancelled` or `on_hold` (`NO_EXPORT_STATUSES`). **Cancel it in
+  ShipStation first.**
+- The export and the Deliver By sweep do not read `excluded`; both already skip
+  cancelled orders.
 
 ## UI — rebuilt August 6
 

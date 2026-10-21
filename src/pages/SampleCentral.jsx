@@ -33,8 +33,24 @@ const TABS = [
   { key: 'shop', label: 'Order Samples' },
   { key: 'mission', label: 'Shipments' },
   { key: 'address', label: 'Address Book' },
-  { key: 'report', label: 'Monthly Report' },
+  { key: 'report', label: 'Reports' },
 ];
+
+// Calendar day (YYYY-MM-DD) a stored timestamp belongs to.
+// created_at is a real instant, so it is read in the viewer's timezone.
+// label_created_at and shipped_at are NOT: parseSSDate stores ShipStation's
+// wall-clock values as if they were UTC (ShipDate is date-only, so it lands at
+// 00:00Z). Reading those in local time puts every ship date a day early in the
+// US — so take the UTC date, which is the date ShipStation actually showed.
+const dayKey = (iso, wallClock) => {
+  if (!iso) return null;
+  if (wallClock) return new Date(iso).toISOString().slice(0, 10);
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+const wallClockDate = (iso) => (iso ? new Date(`${dayKey(iso, true)}T12:00:00`).toLocaleDateString() : null);
+// Same reasoning, with the time: format in UTC so 07:23 reads as 07:23.
+const wallClockDateTime = (iso) => (iso ? new Date(iso).toLocaleString(undefined, { timeZone: 'UTC', dateStyle: 'short', timeStyle: 'short' }) : null);
 
 // Stable identity for a custom line, so React keys survive a mid-list delete.
 const newLineId = () => (globalThis.crypto?.randomUUID?.() ?? `c${Date.now()}${Math.random().toString(36).slice(2, 7)}`);
@@ -148,7 +164,7 @@ export default function SampleCentral() {
       tp_account: header.third_party_billing ? header.tp_account.trim() : null,
       tp_postal_code: header.third_party_billing ? header.tp_postal_code.trim() : null,
     };
-    const { error: e, shipment } = await createShipment(h, items, data.shipments);
+    const { error: e, shipment } = await createShipment(h, items, data.allShipments);
     if (e) {
       // Reported INSIDE the sheet, not via the toast. The toast renders at the
       // top of <main>, which sits behind this sheet's overlay — the user would
@@ -936,7 +952,7 @@ const SHIPPED_COLS = {
       label: 'Shipped',
       render: ({ s }) => (
         <span className="text-[14px] text-dk whitespace-nowrap">
-          {s.shipped_at ? new Date(s.shipped_at).toLocaleDateString() : '—'}
+          {wallClockDate(s.shipped_at) || '—'}
         </span>
       ),
     },
@@ -1334,7 +1350,7 @@ function ShipmentCard({ s, cols, open, onToggle, canWrite, refresh, setToast }) 
                 <TrackingLink number={s.tracking_number} carrier={s.carrier} />{s.carrier ? ` · ${s.carrier}` : ''}{s.service ? ` · ${s.service}` : ''}
               </KV>
             )}
-            {s.shipped_at && <KV label="Shipped">{new Date(s.shipped_at).toLocaleDateString()}{s.label_created_at ? ` · label ${new Date(s.label_created_at).toLocaleString()}` : ''}</KV>}
+            {s.shipped_at && <KV label="Shipped">{wallClockDate(s.shipped_at)}{s.label_created_at ? ` · label ${wallClockDateTime(s.label_created_at)}` : ''}</KV>}
             {s.shipping_cost != null && <KV label="Shipping cost">${Number(s.shipping_cost).toFixed(2)}</KV>}
           </div>
 
@@ -1611,8 +1627,8 @@ function IssuePanel({ s, canWrite, refresh, setToast }) {
   );
 }
 
-// ── Monthly report ──────────────────────────────────────────────────────────
-// One month of samples: what went out, on whose account, what the freight cost,
+// ── Reports ────────────────────────────────────────────────────────────────
+// Samples over a chosen date range: what went out, on whose account, what the freight cost,
 // what the deadline was, when it actually landed, and what went wrong with it.
 //
 // Both fulfilment routes in one table, because the question is "what did we send
@@ -1624,29 +1640,65 @@ function IssuePanel({ s, canWrite, refresh, setToast }) {
 // a blank that looks like a missing value would be worse. The column shows "n/a"
 // rather than "—" to say "not applicable" rather than "not yet known".
 //
-// Windowed by the date the box SHIPPED, falling back to the order date for
-// Cortina rows — otherwise a Cortina order would never appear in any month.
-function ReportView({ data }) {
-  const months = useMemo(() => {
-    const set = new Map();
-    for (const s of data.shipments) {
-      const iso = s.shipped_at || s.created_at;
-      if (!iso) continue;
-      const d = new Date(iso);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      set.set(key, (set.get(key) || 0) + 1);
-    }
-    return [...set.keys()].sort().reverse();
-  }, [data.shipments]);
+// Filtered by a date range on ONE of three dates, chosen by the user:
+//   - Ordered       created_at        — when the order was placed on the site
+//   - Label bought  label_created_at  — when ShipStation bought the label
+//   - Shipped       shipped_at        — ShipStation's ShipDate on that label
+// "Shipped" is the date on the label, not a carrier scan: the site has no
+// pickup event (shipnotify fires on label purchase). Usually the same day as
+// the label; differs when a label is bought ahead and future-dated.
+//
+// Cortina orders never get a label or a ship date, so they only appear under
+// Ordered. That is the honest answer — "shipped in this range" is not a
+// question the site can answer for them.
+const REPORT_BASES = [
+  { key: 'ordered', label: 'Ordered', field: 'created_at' },
+  { key: 'label', label: 'Label bought', field: 'label_created_at' },
+  { key: 'shipped', label: 'Shipped', field: 'shipped_at' },
+];
 
-  const [month, setMonth] = useState(() => months[0] || '');
+
+const ymd = (d) => dayKey(d.toISOString(), false);
+function presetRange(key) {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  switch (key) {
+    case 'this_month': return [ymd(new Date(y, m, 1)), ymd(now)];
+    case 'last_month': return [ymd(new Date(y, m - 1, 1)), ymd(new Date(y, m, 0))];
+    case 'last_30': return [ymd(new Date(y, m, now.getDate() - 29)), ymd(now)];
+    case 'ytd': return [ymd(new Date(y, 0, 1)), ymd(now)];
+    default: return ['', ''];
+  }
+}
+const REPORT_PRESETS = [
+  { key: 'this_month', label: 'This month' },
+  { key: 'last_month', label: 'Last month' },
+  { key: 'last_30', label: 'Last 30 days' },
+  { key: 'ytd', label: 'Year to date' },
+  { key: 'all', label: 'All time' },
+];
+
+function ReportView({ data }) {
+  const [basis, setBasis] = useState('ordered');
+  const [[from, to], setRange] = useState(() => presetRange('this_month'));
+  const [preset, setPreset] = useState('this_month');
+  const applyPreset = (key) => { setPreset(key); setRange(presetRange(key)); };
+  const setFrom = (v) => { setPreset(null); setRange([v, to]); };
+  const setTo = (v) => { setPreset(null); setRange([from, v]); };
+
+  const { field } = REPORT_BASES.find((b) => b.key === basis);
+  const wallClock = field !== 'created_at';
+  // A reversed range is read as the range the user meant, not as "nothing".
+  const [lo, hi] = from && to && from > to ? [to, from] : [from, to];
 
   const rows = useMemo(() => data.shipments.filter((s) => {
-    const iso = s.shipped_at || s.created_at;
-    if (!iso) return false;
-    const d = new Date(iso);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === month;
-  }), [data.shipments, month]);
+    const day = dayKey(s[field], wallClock);
+    if (!day) return false;
+    if (lo && day < lo) return false;
+    if (hi && day > hi) return false;
+    return true;
+  }), [data.shipments, field, wallClock, lo, hi]);
 
   const cost = rows.reduce((n, s) => n + (Number(s.shipping_cost) || 0), 0);
   const cookies = rows.reduce((n, s) => n + (s.sample_shipment_items || []).reduce((m, i) => m + (i.qty || 0), 0), 0);
@@ -1665,16 +1717,39 @@ function ReportView({ data }) {
     </div>
   );
 
-  if (months.length === 0) return <div className="text-[14px] text-gr italic py-8 text-center">Nothing shipped yet.</div>;
-
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-2 mb-3">
-        <span className="text-[12px] text-gr uppercase font-bold tracking-[.4px]">Month</span>
-        <select value={month} onChange={(e) => setMonth(e.target.value)} aria-label="Report month" className="px-2 py-1 rounded border border-lt text-[14px] bg-cd">
-          {months.map((m) => <option key={m} value={m}>{m}</option>)}
-        </select>
-        <span className="text-[12px] text-gr">Windowed by ship date, or order date for Cortina orders.</span>
+      <div className="bg-cd border border-lt rounded-xl px-3 py-2 mb-3 flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[12px] text-gr uppercase font-bold tracking-[.4px]">Filter by</span>
+          <div role="radiogroup" aria-label="Date to filter by" className="inline-flex rounded border border-lt overflow-hidden">
+            {REPORT_BASES.map((b) => (
+              <button key={b.key} type="button" role="radio" aria-checked={basis === b.key} onClick={() => setBasis(b.key)}
+                className={`px-2.5 py-1 text-[14px] font-semibold border-r border-lt last:border-r-0 ${basis === b.key ? 'bg-pk text-white' : 'bg-cd text-dk'}`}>
+                {b.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[12px] text-gr uppercase font-bold tracking-[.4px]">From</span>
+          <input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} aria-label="From date" className="px-2 py-1 rounded border border-lt text-[14px] bg-cd" />
+          <span className="text-[12px] text-gr uppercase font-bold tracking-[.4px]">To</span>
+          <input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} aria-label="To date" className="px-2 py-1 rounded border border-lt text-[14px] bg-cd" />
+          <div className="flex flex-wrap gap-1">
+            {REPORT_PRESETS.map((p) => (
+              <button key={p.key} type="button" onClick={() => applyPreset(p.key)}
+                className={`px-2 py-0.5 rounded-full text-[12px] font-semibold border ${preset === p.key ? 'bg-dk text-white border-dk' : 'border-lt text-gr'}`}>
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="text-[12px] text-gr">
+          {basis === 'ordered' && 'Orders placed on the site in this range — both routes.'}
+          {basis === 'label' && 'Orders whose shipping label was bought in this range. Cortina orders have no label, so they are not included.'}
+          {basis === 'shipped' && 'Orders whose label ship date falls in this range. Cortina orders have no ship date, so they are not included.'}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4">
@@ -1689,21 +1764,26 @@ function ReportView({ data }) {
         <table className="w-full text-[14px]">
           <thead>
             <tr className="text-[12px] text-gr uppercase font-bold tracking-[.4px] border-b border-lt">
-              {['Order', 'Account', 'Salesperson', 'Shipped by', 'Shipped', 'Cost', 'Deliver by', 'Delivered', 'Issues'].map((h) => (
+              {['Order', 'Order Date', 'Account', 'Salesperson', 'Shipped by', 'Label Bought', 'Shipped', 'Shipping Cost', 'Deliver by', 'Delivered', 'Issues'].map((h) => (
                 <th key={h} className="text-left font-bold px-2 py-1.5 whitespace-nowrap">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
+            {rows.length === 0 && (
+              <tr><td colSpan={11} className="px-2 py-6 text-center text-gr italic">No orders in this range.</td></tr>
+            )}
             {rows.map((s) => {
               const cortinaRow = isCortinaFulfilled(s);
               return (
                 <tr key={s.id} className="border-b border-bg last:border-0 align-top">
                   <td className="px-2 py-1.5 font-mono font-bold text-dk whitespace-nowrap">{s.shipment_no}</td>
+                  <td className="px-2 py-1.5 whitespace-nowrap">{s.created_at ? new Date(s.created_at).toLocaleDateString() : '—'}</td>
                   <td className="px-2 py-1.5">{s.account || '—'}</td>
                   <td className="px-2 py-1.5">{s.sales_rep?.full_name || '—'}</td>
                   <td className="px-2 py-1.5 whitespace-nowrap">{cortinaRow ? <span className={`${chip} bg-sky-100 text-sky-800`}>Cortina</span> : 'Dirty Cookie'}</td>
-                  <td className="px-2 py-1.5 whitespace-nowrap">{s.shipped_at ? new Date(s.shipped_at).toLocaleDateString() : (cortinaRow ? 'n/a' : '—')}</td>
+                  <td className="px-2 py-1.5 whitespace-nowrap">{wallClockDate(s.label_created_at) || (cortinaRow ? 'n/a' : '—')}</td>
+                  <td className="px-2 py-1.5 whitespace-nowrap">{wallClockDate(s.shipped_at) || (cortinaRow ? 'n/a' : '—')}</td>
                   <td className="px-2 py-1.5 whitespace-nowrap">{s.shipping_cost != null ? `$${Number(s.shipping_cost).toFixed(2)}` : (cortinaRow ? 'n/a' : '—')}</td>
                   <td className="px-2 py-1.5 whitespace-nowrap">{s.required_by || '—'}</td>
                   <td className="px-2 py-1.5 whitespace-nowrap">{s.delivered_at ? new Date(s.delivered_at).toLocaleDateString() : (cortinaRow ? 'n/a' : '—')}</td>
