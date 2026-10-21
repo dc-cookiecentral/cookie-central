@@ -71,13 +71,13 @@ Short generic-looking addresses are sometimes aliases or shared mailboxes rather
 
 ## 8. ~~Who is the ordering account?~~ — **answered Aug 11, no need to ask**
 
-`samplesmngmt@cortinafoods.com`, displayed as **Samples Management**. Seeded and ready; it can sign in whenever Cortina is ready to start. Sign-in is by **magic link** — no password.
+`samplesmgmt@cortinafoods.com`, displayed as **Samples Management**. Seeded and ready; it can sign in whenever Cortina is ready to start. Sign-in is by **magic link** — no password.
 
 *Left here rather than deleted so the roster picture stays complete.*
 
 ## 9. Should anyone be copied on every shipment?
 
-ShipStation can blind-copy a single address on every shipment and delivery email — `samplesmngmt@cortinafoods.com` is the intended one.
+ShipStation can blind-copy a single address on every shipment and delivery email — `samplesmgmt@cortinafoods.com` is the intended one.
 
 - Is that still right, and is one address enough?
 

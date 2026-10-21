@@ -70,7 +70,7 @@ See `SHIPSTATION_INTEGRATION.md` in full.
 1. Supabase Edge Function for the order push (keys server-side, never client).
 2. Tag vocabulary + product-tag/order-tag strategy locked with co-man first.
 3. Webhook receiver (Edge Function) for status back → updates `shipments.status`.
-4. ShipStation-side config documented for Caroline to set: box mapping (packages + rules), CC of `samplesmngmt@cortinafoods.com` (Blind Copy + order-confirmation recipient), packing-slip token for collateral/warming instructions.
+4. ShipStation-side config documented for Caroline to set: box mapping (packages + rules), CC of `samplesmgmt@cortinafoods.com` (Blind Copy + order-confirmation recipient), packing-slip token for collateral/warming instructions.
 
 ---
 

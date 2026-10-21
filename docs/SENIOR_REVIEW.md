@@ -58,7 +58,7 @@ This is where the real risk lives. The prototype's integration panel already doc
 
 7. **Immutable once shipped; rate limit ~40/min.** Edits must land before fulfillment. Batch entry must queue and back off.
 
-8. **Email config is ShipStation-side, in two places.** The CC of `samplesmngmt@cortinafoods.com`: the **Blind Copy on Shipment and Delivery Email** field covers shipment + delivery (it's a BCC, both together). The outbound **order confirmation** to the salesperson is a separate recipient field — so "all orders, shipments, deliveries" means configuring it in **both** spots. Decide this explicitly.
+8. **Email config is ShipStation-side, in two places.** The CC of `samplesmgmt@cortinafoods.com`: the **Blind Copy on Shipment and Delivery Email** field covers shipment + delivery (it's a BCC, both together). The outbound **order confirmation** to the salesperson is a separate recipient field — so "all orders, shipments, deliveries" means configuring it in **both** spots. Decide this explicitly.
 
 9. **Auth & keys server-side only.** Keys expire (rotate before the first lapses); webhooks are signed (verify them). No key ever touches the front end — all ShipStation calls go through a Supabase Edge Function / server route.
 

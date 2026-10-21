@@ -30,17 +30,21 @@ launch has one list. (Origin: ADR-026 carried item b.)
 
 ### A.1 Seed every Cortina user BEFORE their first sign-in ✅ done — and it failed once, exactly as warned
 
-🔴 **THIS WENT WRONG FOR REAL ON AUG 19, 2026. Read this before creating any account.**
-An account was created by hand as `samplesmgmt@cortinafoods.com` — **no `n`** —
-while the seed is `samplesmngmt@cortinafoods.com`. The lookup is exact equality,
-so it missed; the account provisioned as internal **`ops`** and signed in.
-`InternalOnly` redirects only `cortina`, so it had purchase orders, payments,
-inventory, the Cookulator and the audit log. It owned no rows (every user-id
-column in the schema was checked) and was deleted; the correct account was
-re-created from the seed spelling and verified as `cortina`.
-**Copy-paste the address into the dashboard. Never retype it.** Two addresses one
-letter apart is the entire failure mode, and nothing in the system flags it —
-the wrong account simply works, with the wrong access.
+🔴 **THIS WENT WRONG FOR REAL — TWICE (AUG 19 AND OCT 14, 2026). Read this before creating any account.**
+**The correct address is `samplesmgmt@cortinafoods.com` — NO `n`** (confirmed by
+Caroline Oct 14 2026). The original Aug 11 seed was the typo: it read
+`samplesmngmt@` (with an `n`). The lookup is exact equality, so when the real
+address signed up on Aug 19 it missed the seed, provisioned as internal **`ops`**,
+and signed in. `InternalOnly` redirects only `cortina`, so it had purchase orders,
+payments, inventory, the Cookulator and the audit log. That account was taken for
+the typo and deleted, and an account was re-created under the *wrong* seed
+spelling — so on Oct 14 the real address signed up again and landed as `ops`
+again. Migration `20261014200000_seed_cortina_samplesmgmt.sql` seeds the correct
+spelling, repairs the profile to `cortina`, and deletes the `samplesmngmt@` seed.
+**Copy-paste the address into the dashboard. Never retype it — and confirm the
+spelling with the account owner before seeding.** Two addresses one letter apart
+is the entire failure mode, and nothing in the system flags it — the wrong
+account simply works, with the wrong access.
 
 ⚠️ **Order matters and the mistake is not self-correcting.** The
 `handle_new_auth_user` trigger provisions a profile on first sign-in using
@@ -56,13 +60,14 @@ Reps stopped being user accounts in migration `20260807000500` — they are rows
 person entering samples on behalf of many reps; only that person needs a login.
 
 - [x] Insert the Cortina **ordering account** into `user_role_seeds` **first** —
-  **DONE Aug 11, 2026.** The account is `samplesmngmt@cortinafoods.com`
-  ("Samples Management"), role `cortina`, seeded by migration
-  `20260811120000_seed_cortina_ordering_account.sql` and verified live.
-  **Provisioned and signed in Aug 19, 2026**, `role='cortina'` confirmed.
+  **DONE Aug 11, 2026 — under the wrong spelling; corrected Oct 14, 2026.** The
+  account is `samplesmgmt@cortinafoods.com` ("Samples Management"), role
+  `cortina`. Migration `20260811120000_seed_cortina_ordering_account.sql` seeded
+  it as `samplesmngmt@` (typo); `20261014200000_seed_cortina_samplesmgmt.sql`
+  seeds the correct spelling and repaired the live profile from `ops` to `cortina`.
 ```sql
 insert into user_role_seeds (email, full_name, role, title) values
-  ('samplesmngmt@cortinafoods.com', 'Samples Management', 'cortina', 'Cortina · sample ordering account')
+  ('samplesmgmt@cortinafoods.com', 'Samples Management', 'cortina', 'Cortina · sample ordering account')
 on conflict (email) do update set role = excluded.role;
 ```
 - [x] Only then provision the account. **Auth is no longer magic-link only** — the
@@ -176,9 +181,9 @@ Rule on **order tags / CustomFields — never on Item SKU** (SKU rules silently 
       handling, deliver-by, custom specs, third-party billing.
 - [ ] Do **not** use CustomFields for lists — 100-char silent truncation.
 
-## 7. Email / CC — copy `samplesmngmt@cortinafoods.com`
+## 7. Email / CC — copy `samplesmgmt@cortinafoods.com`
 Copy the sample-mgmt inbox on **all orders, shipments, deliveries** — two places:
-- [ ] **Shipment + delivery emails:** Store → Emails/Notifications → **"Blind Copy on Shipment and Delivery Email"** = `samplesmngmt@cortinafoods.com` (BCC; covers shipment + delivery together).
+- [ ] **Shipment + delivery emails:** Store → Emails/Notifications → **"Blind Copy on Shipment and Delivery Email"** = `samplesmgmt@cortinafoods.com` (BCC; covers shipment + delivery together).
 - [ ] **Order confirmation:** the salesperson (`sales_rep_id` → `sales_reps.email`, exported as **`BillTo Email`** *and* `CustomerCode`) is the recipient; add the sample-mgmt inbox as an additional recipient/notification if order-creation copies are also required. **`BillTo Email` is the notify target** — `CustomerCode` carries the same address but is an identity key for grouping a customer's orders, not something ShipStation mails (ADR-038). *(Was `salesperson_user_id`, dropped in migration `20260807001500`; reps are now a lookup list, not user accounts.)*
 
 ## 8. Verify — mapping test, no label needed
