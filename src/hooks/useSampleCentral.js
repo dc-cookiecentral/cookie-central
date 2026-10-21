@@ -56,7 +56,12 @@ export function useSampleCentral() {
     setData({
       catalog: catalog.data ?? [],
       addresses: addresses.data ?? [],
-      shipments: shipments.data ?? [],
+      // `excluded` hides test orders from every list and report total
+      // (migration 20261021120000). Filtered here, not in the query, so the
+      // hidden rows still count when minting the next shipment number —
+      // otherwise SMP-1212 would be handed out a second time.
+      shipments: (shipments.data ?? []).filter((s) => !s.excluded),
+      allShipments: shipments.data ?? [],
       templates: templates.data ?? [],
       salespeople: salespeople.data ?? [],
       settings: Object.fromEntries((settings.data ?? []).map((r) => [r.key, r.value])),
