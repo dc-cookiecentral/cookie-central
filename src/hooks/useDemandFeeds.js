@@ -56,6 +56,9 @@ const ITEM_TO_SKU = { 679640563: 'WC', 679640564: 'PBG', 683581675: 'CCF', 68666
 // the page can say so instead of quietly under-reporting. Adding a SKU here is
 // not enough on its own: ITEM_TO_SKU needs its Walmart prime item number and
 // DemandPlanner.jsx needs it in SKU_NAMES and its series list.
+//
+// Not to be confused with the Cortina LINE number, which is a third numbering:
+// BC is line 3888 but item 1324, and the order lines carry the item number.
 const CORTINA_ITEM_TO_SKU = { 1252: 'WC', 1251: 'PBG', 1287: 'CCF', 1324: 'BC' };
 
 // ⚠️ PostgREST caps a response at 1,000 rows and says NOTHING about it — no
