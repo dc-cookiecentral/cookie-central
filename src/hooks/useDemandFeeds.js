@@ -31,15 +31,32 @@ import { walmartWeekOf } from '../parsers/retailLinkSupplyPlan';
 // cutover happen on different days.
 // ─────────────────────────────────────────────────────────────────────────
 
-// Walmart Prime Item Nbr → the short codes the engine and UI use.
-// Mirrors WM_ITEM_TO_SKU in DemandPlanner.jsx; kept here too so the hook can
-// map without importing the page.
-const ITEM_TO_SKU = { 679640563: 'WC', 679640564: 'PBG', 683581675: 'CCF' };
+// Walmart Prime Item Nbr → the short codes the engine and UI use. This map is
+// the only place the translation lives; DemandPlanner.jsx carries the short
+// codes themselves (SKU_NAMES + its series list), never the item numbers.
+//
+// 686669913 ('BG WHT CHOC CURR', vendor stock BGBLKCRRT5947) is the fourth item
+// and is PRE-LAUNCH: Walmart forecasts it from wk 202637 but reports no POS and
+// no traited stores, so the All Item Detail parser drops its row ("ignored 1
+// item(s) with no sales and no traited stores in any week" on the WK35 and WK36
+// uploads). It therefore reaches this page through the FORECAST feed only. That
+// is correct and expected until it is traited — not a missing upload.
+const ITEM_TO_SKU = { 679640563: 'WC', 679640564: 'PBG', 683581675: 'CCF', 686669913: 'BC' };
 
 // Cortina/NetSuite item numbers → the same short codes. A DIFFERENT numbering
 // from the Walmart prime item numbers above; both appear in this file and
 // confusing them silently drops every line.
-const CORTINA_ITEM_TO_SKU = { 1252: 'WC', 1251: 'PBG', 1287: 'CCF' };
+//
+// ⚠️ An item number MISSING from this map is dropped from every series by the
+// `if (!sku) continue` below — no error, no gap on the chart, just a smaller
+// order book. Cortina added item 1324 (`WCCREAMSTUFBLKCRNTCOOKIEWM`) to the
+// NetSuite export in week 202635 and it was invisible here for two weeks while
+// carrying 22,845 cases / $135k — more than any other SKU over those weeks.
+// `unmappedOrderItems` below now reports whatever this map does not cover, so
+// the page can say so instead of quietly under-reporting. Adding a SKU here is
+// not enough on its own: ITEM_TO_SKU needs its Walmart prime item number and
+// DemandPlanner.jsx needs it in SKU_NAMES and its series list.
+const CORTINA_ITEM_TO_SKU = { 1252: 'WC', 1251: 'PBG', 1287: 'CCF', 1324: 'BC' };
 
 // ⚠️ PostgREST caps a response at 1,000 rows and says NOTHING about it — no
 // error, no flag, just a short array. `po_line_items` was already at 1,194 rows
@@ -68,6 +85,7 @@ export function useDemandFeeds() {
     dotDeliveries: null,
     otif: null,
     orders: null,
+    unmappedOrderItems: [],
     sources: { pos: 'seed', forecasts: 'seed', dotService: 'seed', otif: 'seed', orders: 'seed', dotDeliveries: 'seed' },
     asOf: null,
   });
@@ -99,7 +117,7 @@ export function useDemandFeeds() {
           .order('dot_order_number')),
         fetchAll(() => supabase
           .from('po_line_items')
-          .select('cortina_item_number, quantity_cases, line_total, cut_reason, actual_delivery_date, purchase_orders!inner(walmart_po_number, ship_date_original, retailer)')
+          .select('cortina_item_number, sku, quantity_cases, line_total, cut_reason, actual_delivery_date, purchase_orders!inner(walmart_po_number, ship_date_original, retailer)')
           .eq('purchase_orders.retailer', 'Walmart')
           // A stable sort is REQUIRED for paging: without an ORDER BY, Postgres
           // may return rows in a different order per page and the pages then
@@ -319,9 +337,44 @@ export function useDemandFeeds() {
           })()
         : null;
 
+      // ── What the SKU map did not cover ──
+      // Every line whose `cortina_item_number` is absent from CORTINA_ITEM_TO_SKU
+      // is skipped above. That is the right behaviour — the engine is keyed on
+      // short codes and cannot invent one — but skipping it SILENTLY is not, so
+      // report it and let the page show it. Same contract as `unmatchedCases` on
+      // dotDeliveries: surfaced, never swallowed.
+      const unmappedOrderItems = orderRows
+        ? [...orderRows
+            .reduce((m, r) => {
+              if (CORTINA_ITEM_TO_SKU[r.cortina_item_number]) return m;
+              const key = String(r.cortina_item_number ?? '\u2014');
+              const a = m.get(key) || { item: key, sku: r.sku ?? null, lines: 0, cases: 0, value: 0, firstWk: null, lastWk: null };
+              a.lines += 1;
+              a.cases += r.quantity_cases || 0;
+              a.value += r.line_total || 0;
+              const wk = walmartWeekOf(r.purchase_orders?.ship_date_original);
+              if (wk) {
+                a.firstWk = a.firstWk == null ? wk : Math.min(a.firstWk, wk);
+                a.lastWk = a.lastWk == null ? wk : Math.max(a.lastWk, wk);
+              }
+              m.set(key, a);
+              return m;
+            }, new Map())
+            .values()].sort((a, b) => b.cases - a.cases)
+        : [];
+
       // "As of" is the newest week with real POS, not the fetch time — the
       // page is only as current as the last file someone uploaded.
-      const asOf = pos?.length ? Math.max(...pos.map((p) => p.wk)) : null;
+      //
+      // ⚠️ Must skip the EMPTY forward weeks. `All Item Detail` carries every
+      // week of the fiscal year, not just elapsed ones: the WK36 file holds
+      // rows out to 202653 (Jan 30 2027) with every measure NULL. Taking a
+      // plain max over `wk` therefore dated the banner 16 weeks into the
+      // future — "Live Retail Link data through week 202653" — while the real
+      // data stopped at 202636. Filter on a POS value being present, which is
+      // the same test the page's own `latestDataWk` uses.
+      const posWithData = pos?.filter((p) => p.units != null) ?? [];
+      const asOf = posWithData.length ? Math.max(...posWithData.map((p) => p.wk)) : null;
 
       setState({
         loading: false,
@@ -332,6 +385,7 @@ export function useDemandFeeds() {
         dotDeliveries,
         otif,
         orders,
+        unmappedOrderItems,
         sources: {
           pos: pos ? 'live' : 'seed',
           forecasts: forecasts ? 'live' : 'seed',

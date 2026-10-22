@@ -116,6 +116,20 @@ function buildSkuSeries(input, sku) {
     }
   });
 
+  // A SKU can be live in the order book and in Walmart's forecast before it has
+  // a single week of POS — a pre-launch item being shipped in to fill shelves is
+  // exactly that (BC: 22,845 cases ordered, 266k units forecast, no POS and no
+  // traited stores yet). `lastActualIdx` is then -1, which would leave the
+  // "last 4 weeks" window empty and put the "next 4 weeks" window at the START
+  // of the fiscal year — February figures under a label saying next month. Fall
+  // back to the newest week ANY sku has POS for, which is what the rest of the
+  // page means by "now". Guarded, so a SKU with its own POS is untouched.
+  if (lastActualIdx < 0) {
+    const newestPosWk = Math.max(0, ...input.pos.filter(p => p.units != null).map(p => p.wk));
+    const at = weeks.indexOf(newestPosWk);
+    if (at >= 0) lastActualIdx = at;
+  }
+
   let baseVelocity = null;
   if (lastActualIdx >= 0) {
     const vels = cells.slice(Math.max(0, lastActualIdx - (P.l4wWindow - 1)), lastActualIdx + 1)
@@ -244,7 +258,12 @@ const F = {
   d2: v => (v == null ? "" : v.toFixed(2)),
   money: v => (v == null ? "" : "$" + Math.round(v).toLocaleString()),
 };
-const SKU_NAMES = { WC: "White Chocolate and Cookie Butter", PBG: "PB&J", CCF: "Chocolate Fudge" };
+// BC is the Black Currant launch — Cortina item 1324, Walmart prime item
+// 686669913. The name here is read off Walmart's own fields (item_desc
+// "BG WHT CHOC CURR", vendor stock "BGBLKCRRT5947"); if Dirty Cookie's official
+// name differs, this string is the only place to change it.
+const SKU_NAMES = { WC: "White Chocolate and Cookie Butter", PBG: "PB&J", CCF: "Chocolate Fudge",
+                    BC: "White Chocolate and Black Currant" };
 const gapColor = g => {
   if (g == null) return "#EFE4E9";
   const a = Math.abs(g);
@@ -897,6 +916,44 @@ function PlaceholderNotice() {
   );
 }
 
+function UnmappedItemsNotice({ items }) {
+  if (!items?.length) return null;
+  const cases = items.reduce((a, r) => a + r.cases, 0);
+  const value = items.reduce((a, r) => a + r.value, 0);
+  // Red, not amber: this is not a caveat about precision, it is volume the
+  // page is NOT showing. Every series on it understates the order book by
+  // exactly this much until the SKU map learns the item.
+  return (
+    <div className="rounded-xl px-4 py-3 text-[12px] mb-4"
+      style={{ background: "#F8CBCB", border: "1px solid #E2A1A1", color: "#8E1039" }}>
+      <div className="font-semibold mb-0.5">
+        {F.int(cases)} cases of NetSuite orders ({F.money(value)}) are missing from this page.
+      </div>
+      <div>
+        {items.length === 1 ? "Cortina item" : "Cortina items"}{" "}
+        {items.map((r) => r.item).join(", ")} {items.length === 1 ? "is" : "are"} not mapped to a SKU,
+        so every line carrying {items.length === 1 ? "it" : "them"} is excluded from orders, fill rate,
+        cut counts and the forward cascade — on every SKU card.
+        <ul className="mt-1.5 space-y-0.5">
+          {items.map((r) => (
+            <li key={r.item} className="cc-mono text-[11px]">
+              item {r.item} · {F.int(r.cases)} cs · {F.money(r.value)} · {r.lines} lines ·
+              {r.firstWk ? ` wk ${String(r.firstWk).slice(4)}\u2013${String(r.lastWk).slice(4)}` : " no ship date"}
+              {r.sku ? ` · ${r.sku}` : ""}
+            </li>
+          ))}
+        </ul>
+        <div className="mt-1.5">
+          Fix: add the item to <span className="cc-mono">CORTINA_ITEM_TO_SKU</span> in{" "}
+          <span className="cc-mono">src/hooks/useDemandFeeds.js</span>, with its Walmart prime item
+          number in <span className="cc-mono">ITEM_TO_SKU</span> and the short code in{" "}
+          <span className="cc-mono">SKU_NAMES</span> here.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Summary({ series, metrics }) {
   return (
     <div className="flex flex-col gap-4">
@@ -1186,7 +1243,7 @@ export default function DemandPlanner() {
   const liveSeries = Object.keys(LABELS).filter(k => feeds.sources[k] === 'live').map(k => LABELS[k]);
   const seedSeries = Object.keys(LABELS).filter(k => feeds.sources[k] !== 'live').map(k => LABELS[k]);
   const anyLive = liveSeries.length > 0;
-  const series = useMemo(() => ["WC", "PBG", "CCF"].map(s => buildSkuSeries(input, s)), [input]);
+  const series = useMemo(() => ["WC", "PBG", "CCF", "BC"].map(s => buildSkuSeries(input, s)), [input]);
   const metrics = useMemo(() => series.map(s => sopSummary(s)), [series]);
 
   // Newest week that actually has POS — the yardstick every other feed's
@@ -1308,7 +1365,7 @@ export default function DemandPlanner() {
         )}
       </div>
       <main className="p-5 cc-sans">
-        {tab === "summary" && (<><PlaceholderNotice /><div className="mt-4" /><ServiceHealth series={series} otif={feeds.otif} /><div className="mt-4" /><Summary series={series} metrics={metrics} /><DotServicePanel svc={svc} latestDataWk={latestDataWk} /></>)}
+        {tab === "summary" && (<><UnmappedItemsNotice items={feeds.unmappedOrderItems} /><PlaceholderNotice /><div className="mt-4" /><ServiceHealth series={series} otif={feeds.otif} /><div className="mt-4" /><Summary series={series} metrics={metrics} /><DotServicePanel svc={svc} latestDataWk={latestDataWk} /></>)}
         {tab === "tracker" && <Tracker series={series} onEdit={onEdit} />}
         {tab === "sources" && <Sources feeds={feeds} series={series} />}
       </main>
