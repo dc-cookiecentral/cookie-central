@@ -611,7 +611,9 @@ Added by `20260824120000_retail_link_demand_feeds.sql`. The demand side of the W
 
 ⚠️ **All three UPSERT, and that is a correctness requirement.** Walmart restates POS after the fact — week 202622 moved 1,322 → 2,343 units for PBG between the Aug 13 snapshot and the WK28 export. The later file must win. An insert-based importer would preserve a number Walmart has withdrawn.
 
-`item_number` is the Walmart **Prime Item Nbr** and is the durable key everywhere. The short codes the planner displays (WC / PBG / CCF) are a display concern, mapped in `WM_ITEM_TO_SKU` in `src/pages/DemandPlanner.jsx` and mirrored in `src/hooks/useDemandFeeds.js` — deliberately **not** stored, so adding an item needs no migration.
+`item_number` is the Walmart **Prime Item Nbr** and is the durable key everywhere. The short codes the planner displays (WC / PBG / CCF / BC) are a display concern, mapped in `ITEM_TO_SKU` in `src/hooks/useDemandFeeds.js` — deliberately **not** stored, so adding an item needs no migration. (`DemandPlanner.jsx` holds the short codes themselves, in `SKU_NAMES` and its series list, never the item numbers. An earlier `WM_ITEM_TO_SKU` constant in the page no longer exists.)
+
+⚠️ **An item number absent from that map is dropped from every series with no error** — that is how the BC launch (Cortina 1324 / Walmart 686669913) stayed invisible for two weeks, carrying 22,845 cases. The hook now reports unmapped items to the page. See ADR-063.
 
 ### `retail_link_pos_weekly` — POS by item by Walmart week
 Source: the `All Item Detail` sheet of `Dirty Cookie WK##.xlsx`. Long-format in the file (one row per item × measure, ~55 week columns); pivoted to one row per week here. **One upload backfills the entire year.**
@@ -619,7 +621,7 @@ Source: the `All Item Detail` sheet of `Dirty Cookie WK##.xlsx`. Long-format in 
 | Column | Type | Notes |
 |--------|------|-------|
 | `walmart_week` | int NOT NULL | e.g. `202628` — Walmart week, Sat–Fri |
-| `item_number` | text NOT NULL | Prime Item Nbr, e.g. `'679640563'` |
+| `item_number` | text NOT NULL | Prime Item Nbr, e.g. `'679640563'`. Four are ours: `679640563` WC, `679640564` PBG, `683581675` CCF, `686669913` BC |
 | `item_desc` | text | |
 | `pos_units`, `pos_dollars` | numeric | "POS Qty" / "POS Sales $" |
 | `pos_units_if_instock` | numeric | Walmart's own un-suppressed demand. The engine derives `trueDemand` as `units ÷ instock`; the two disagree slightly (WC 202620: `5920/0.9459 = 6258` vs `6240.272` supplied). **Prefer the supplied column** — `useDemandFeeds` hands the engine an in-stock that reproduces it exactly |
@@ -634,7 +636,9 @@ Source: the `All Item Detail` sheet of `Dirty Cookie WK##.xlsx`. Long-format in 
 
 `UNIQUE (walmart_week, item_number)`; indexed on `walmart_week`.
 
-⚠️ **Only weeks up to the file's own week are written.** Later week columns exist and read `0` — a future week has not happened, and storing that zero is undetectable downstream because null and 0 mean different things to the engine.
+⚠️ **Only weeks up to the file's own week are written AS ACTUALS** — later week columns exist and read `0`, and storing that zero would be undetectable downstream because null and 0 mean different things to the engine.
+
+⚠️ **But forward-week rows DO exist, carrying `wmt_forecast_units` and nothing else.** That one measure is deliberately exempt from the file-week bound (ADR-054: it is the only copy of Walmart's forecast comparable against the `Forecast` sheet's), so one upload lands a row for every week to the end of the fiscal year — the WK36 file reaches `202653`, i.e. Jan 30 2027, with every other column NULL. **A row existing for a week is therefore not evidence that week has data.** Anything asking "what is the newest week we have?" must test a POS value, not `max(walmart_week)`; `asOf` in `useDemandFeeds` did the latter until Oct 12 2026 and dated the page sixteen weeks into the future. This paragraph used to say only bounded weeks were written, which is what made that bug invisible.
 
 ### `retail_link_forecast` — Walmart forecast, snapshot × target
 Source: the `Forecast` sheet. One row per (item × `walmart_calendar_week`); a pure forward view from the file's week.

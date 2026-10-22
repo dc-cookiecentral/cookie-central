@@ -1,7 +1,8 @@
 # Demand Planner — what to trust, and what not to
 
 **For everyone using `/demand-planner`, not just whoever is building it.**
-Last reviewed: **August 24, 2026**, the day the live feeds went in.
+Last reviewed: **October 13, 2026**. First written Aug 24 2026, the day the live
+feeds went in; §2 and §4 have changed status since and §8 is new.
 
 The page went live on real Walmart data on Aug 24 2026. Most of it is solid and
 reconciles to Walmart's own totals. **Some of it does not, and looks exactly as
@@ -45,33 +46,50 @@ page existed.
 
 ---
 
-## 🔴 2. A page elsewhere in the app will start silently losing data in ~2 months
+## 🔴 2. A page elsewhere in the app IS silently losing data — this already happened
 
 **Not the Demand Planner — this affects Product Orders, Payments and Alerts.**
 
 Supabase returns a **maximum of 1,000 rows** per query and gives no error when it
-truncates. `purchase_orders` is at **892 rows** and grows about **45–50 per
-month** from the nightly Cortina export. Around **November 2026** it crosses
-1,000, and from that day:
+truncates. This was written on Aug 24 2026 as a forecast: `purchase_orders` stood
+at 892 rows and was projected to cross 1,000 "around November 2026".
+
+**It crossed. Verified Oct 12 2026:**
+
+```
+purchase_orders   1,265 rows   → an unpaged query returns exactly 1,000
+po_line_items     1,606 rows   → an unpaged query returns exactly 1,000
+```
+
+Confirmed by measurement, not inference — the response is 1,000 rows long with
+HTTP 200 and no warning. So, today:
 
 - **Product Orders** silently stops showing some POs
 - **Payments** silently misses invoices
 - **Alerts** silently misses at-risk orders
 
 No error message. No empty state. Just fewer rows than reality, on pages people
-trust.
+trust. The Alerts case is the worst: a missing alert is indistinguishable from
+"nothing is wrong".
+
+✅ **What limits the damage right now:** all three surfaces are currently hidden
+from the sidebar (`hidden: true` in `src/components/Sidebar.jsx`). `AlertsPanel`
+is mounted only in `ProductOrders.jsx` and `WeeklyReport.jsx`, both hidden. So
+nobody is being shown truncated numbers *through the nav* — but the routes still
+resolve, and anyone who types `/orders` or `/payments` gets short data with no
+indication. **Product Orders is due back around Oct 2026, which makes this a
+blocker for that work rather than a background chore.**
 
 **Tracked as an open ticket** at the top of `BUILD_PLAN.md` — impact table, fix,
 acceptance criteria and the count-check command. **This is pre-existing** — not
-caused by the Demand Planner work — but it was found during it, and it has a date
-attached. The fix is the same pattern
-already used in `src/hooks/useDemandFeeds.js` (`fetchAll`, which pages through
-in 1,000-row chunks). The hooks needing it: `usePurchaseOrders.js`,
-`usePayments.js`, `useAlerts.js`.
+caused by the Demand Planner work — but it was found during it. The fix is the
+same pattern already used in `src/hooks/useDemandFeeds.js` (`fetchAll`, which
+pages through in 1,000-row chunks). The hooks needing it:
+`usePurchaseOrders.js`, `usePayments.js`, `useAlerts.js`.
 
-⚠️ It has already bitten once. `po_line_items` (1,194 rows) was silently
-truncated on the Demand Planner's first day live — the order book was missing
-~16% of its lines and nothing indicated it.
+⚠️ It had already bitten once before crossing. `po_line_items` (1,194 rows) was
+silently truncated on the Demand Planner's first day live — the order book was
+missing ~16% of its lines and nothing indicated it.
 
 ---
 
@@ -89,15 +107,21 @@ which is real, live, and covers orders and cuts.
 
 ---
 
-## 🟠 4. The DOT data on screen is three weeks behind — and that is now a signal
+## 🟠 4. The DOT data on screen is months behind — and that is a missed upload, not a limitation
 
 **A DOT report arrives every week** (confirmed Aug 24 2026), so it belongs in the
 weekly upload routine alongside the Retail Link files — it is card 5 at
 `/uploads`.
 
-The currently loaded export was pulled **2026-07-16** and ends at Walmart week
-**202625**, while POS runs to **202628**. The cut-recovery panel warns when this
-happens.
+⚠️ **As of Oct 13 2026 this has got worse, not better.** The last DOT upload of
+any kind was **Aug 24 2026** (`Order History (6).xlsx`), and the export it
+carried was pulled **2026-07-16**, ending at Walmart week **202625** — while POS
+now runs to **202636**. That is roughly **eleven weeks** of cut recovery nobody
+has loaded, against a report that arrives weekly. The Retail Link files are being
+kept current (WK36 went in Oct 12); this one is being skipped.
+
+The cut-recovery panel warns when this happens, and the panel's window describes
+the weeks it covers, not the current ones.
 
 **Because the report is weekly, a gap of two weeks or more means an upload was
 missed — not that none was available.** Treat the warning as an action, not a
@@ -165,6 +189,46 @@ ours.** Nobody has adjudicated this.
   demand forecast would double-count.
 - **Re-uploading a week you already have is correct, not a mistake.** Walmart
   restates POS after the fact and every feed upserts, so the later file wins.
+- **`All Item Detail` writes rows for weeks that have not happened yet**, carrying
+  a Walmart forecast and nothing else — out to the end of the fiscal year. That is
+  deliberate (it is the only copy of Walmart's forecast that can be compared
+  against the Forecast sheet's), but it means a row existing for a week is not
+  evidence that week has data. The banner's "as of" filters on an actual POS
+  value; until Oct 12 2026 it did not, and read 16 weeks into the future.
+
+---
+
+## 🟠 8. A new SKU can be missing from this page entirely — and now it says so
+
+**This happened, undetected, for two weeks.** Cortina started shipping a fourth
+Walmart item in week **202635 (Sep 26 2026)** — Cortina item **1324**, Walmart
+prime item **686669913**, "BG WHT CHOC CURR", mapped here as **BC** (White
+Chocolate and Black Currant). Both item-number maps in `useDemandFeeds.js` were
+hardcoded to three SKUs, so every line carrying it was dropped with no error:
+**22,845 cases / $135,474 of NetSuite orders** and **266,392 units of Walmart
+forecast**, more volume than any existing SKU over those weeks, absent from every
+chart. Fixed Oct 12 2026 (ADR-063).
+
+**What you need to know as a user of this page:**
+
+- **If a red band appears at the top of the S&OP summary** saying *N cases of
+  NetSuite orders are missing from this page*, believe it and act on it. It names
+  the Cortina item number, the cases, the dollars and the weeks. Every figure on
+  the page understates the order book by exactly that much until someone adds the
+  item. It is not a rounding caveat.
+- **Nothing on the page was ever visibly broken by this.** The orders series
+  computed, the banner said "live", every number was internally consistent — it
+  was simply short. Under-reporting has no symptom, which is the whole reason the
+  band now exists.
+- **BC's name is provisional.** It was read off Walmart's own item description and
+  vendor stock number (`BGBLKCRRT5947`), not from a Dirty Cookie product list.
+  Correct it in `SKU_NAMES` in `src/pages/DemandPlanner.jsx` if it is wrong.
+- **BC shows no POS, and that is correct.** It is not traited at shelf yet:
+  Walmart forecasts it but reports no sales and no traited stores, so its
+  `All Item Detail` row is dropped by design. It reaches the page through the
+  forecast feed alone until it starts selling. **Do not read its blank POS as a
+  missed upload.** Its fill rate reads near zero for the same reason — deliveries
+  against those 22,845 cases are still in flight.
 
 ---
 
@@ -179,6 +243,6 @@ present in the bundle. They were: in code that could never execute.
 throws. Run it before shipping. It covers this page only; the rest of the app has
 no equivalent.
 
-Background and reasoning: **ADR-053 → ADR-062** in `DECISIONS.md`, the "As built"
+Background and reasoning: **ADR-053 → ADR-063** in `DECISIONS.md`, the "As built"
 section of `DEMAND_PLANNER_FORMULAS.md`, and `RUNBOOK.md` §2.7 for the weekly
 upload routine.

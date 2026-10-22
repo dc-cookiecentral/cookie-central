@@ -233,7 +233,14 @@ door growth belongs in the seasonality multiplier until a traited-store forecast
 
 **Status: August 24, 2026 — LIVE.** All four migrations
 (`20260824120000`–`150000`) are applied to the remote database and all six
-exports have been uploaded, so the page runs on real Walmart data. The sections
+exports have been uploaded, so the page runs on real Walmart data.
+
+**Updated Oct 13 2026 — the page now carries FOUR SKUs.** `BC` (Cortina item
+1324 / Walmart prime item 686669913) joined in week 202635 and was silently
+dropped by both hardcoded item maps for two weeks, taking 22,845 cases of orders
+and 266k units of forecast with it. The maps now report what they cannot
+translate, and the banner's "as of" no longer reads into the future. See ADR-063
+and §8 of `DEMAND_PLANNER_KNOWN_ISSUES.md`. The sections
 this replaces were written before anyone had read a real export and several of
 their conclusions were wrong; the corrections are called out below so the same
 wrong turns are not taken twice.
@@ -254,6 +261,19 @@ marked as such in the UI.
 | `production` | — `production_runs` holds 5 rows | SEED |
 | `dot` | 🔴 **no such feed exists** — there is no DOT on-hand report | permanently empty; engine uses `params.dotOpeningAnchor` |
 
+⚠️ **An item number missing from either map drops every line carrying it, with no error.** `useDemandFeeds` now returns `unmappedOrderItems` — item number, lines, cases, value, Cortina SKU string and week range for anything `CORTINA_ITEM_TO_SKU` cannot translate — and the page renders it as a red band naming the cases and dollars it is not showing. Empty when the maps are complete. The two maps and the short codes:
+
+```
+WC  → Walmart 679640563 · Cortina 1252   (White Chocolate and Cookie Butter)
+PBG → Walmart 679640564 · Cortina 1251   (PB&J)
+CCF → Walmart 683581675 · Cortina 1287   (Chocolate Fudge)
+BC  → Walmart 686669913 · Cortina 1324   (White Chocolate and Black Currant — name PROVISIONAL)
+```
+
+Adding a SKU takes three edits and no migration: `ITEM_TO_SKU` and `CORTINA_ITEM_TO_SKU` in `src/hooks/useDemandFeeds.js`, then `SKU_NAMES` and the series list in `src/pages/DemandPlanner.jsx`.
+
+⚠️ **A SKU can be live in the order book and the forecast with no POS at all.** `BC` is pre-launch at shelf — Walmart forecasts it but reports no sales and no traited stores, so `retail_link.js` drops its `All Item Detail` row by design (the per-ITEM filter of ADR-055, which logs "ignored 1 item(s) with no sales and no traited stores in any week"). `buildSkuSeries` therefore falls back to the newest week *any* SKU has POS for when a SKU's own `lastActualIdx` is `-1`; without that, its last-4-week window is empty and its next-4-week window sits at the start of the fiscal year. See ADR-063.
+
 ⚠️ **The `orders` series reads TWO different dates.** `req` and `cuts` bucket by the PO's *scheduled* delivery week; `dlv` and `rev` bucket by the line's *actual* delivery week (per line — DCs on one SO deliver on different days). Verified against SEED: `req` 49/49, `cuts` 49/49 exact. `cuts` is a **count of lines** carrying a cut reason, not a sum of cut cases. See ADR-059.
 
 🔴 **There is no DOT on-hand report** (Caroline, Aug 24 2026) — not "not yet", it does not exist. The Tracker's DOT rows are therefore a **model**, never actuals. Do not read `dotDoh` as measured.
@@ -262,7 +282,7 @@ marked as such in the UI.
 
 ⚠️ **Two different files are called "the DOT report".** `dot_order_history` (orders and cuts — live) and `dot_inventory` (pallet-level on-hand — does not exist). Neither substitutes for the other.
 
-🔴 **The loaded DOT export was pulled 2026-07-16** (weeks 202620–25 only). In it, 0 of 221 rows had no cut — either the export is exception-filtered, or that window is the documented supply crisis. **A DOT report now arrives weekly**, so the next one settles it: does it contain orders with zero cuts? See ADR-060. Either way it is **not** a usable record of total depot deliveries and must **not** drive `dotOut`; doing so understates DOT's outflow ~6× and suppresses the production recommendation. It is surfaced in the Tracker as "DOT delivered — cut orders only". See ADR-060 for how to turn it on if an unfiltered export arrives — and for the one test that tells them apart.
+🔴 **The loaded DOT export was pulled 2026-07-16** (weeks 202620–25 only) — and as of Oct 13 2026 it is still the only one loaded, roughly eleven weeks behind POS. No DOT upload has happened since Aug 24 2026. In it, 0 of 221 rows had no cut — either the export is exception-filtered, or that window is the documented supply crisis. **A DOT report now arrives weekly**, so the next one settles it: does it contain orders with zero cuts? See ADR-060. Either way it is **not** a usable record of total depot deliveries and must **not** drive `dotOut`; doing so understates DOT's outflow ~6× and suppresses the production recommendation. It is surfaced in the Tracker as "DOT delivered — cut orders only". See ADR-060 for how to turn it on if an unfiltered export arrives — and for the one test that tells them apart.
 
 `retail_link_supply_plan` is also ingested (Walmart's forward **order** plan, ADR-057) but is **not yet wired into the engine** — it lands and is queryable, and connecting it to the `orders` series is the next piece. ⚠️ It is not the store forecast: `retail_link_forecast` is what Walmart expects consumers to buy, the supply plan is what Walmart plans to order from us. Adding them together double-counts.
 
@@ -289,7 +309,10 @@ Six exports, in the order they appear on `/uploads` (ADR-057):
 
 Re-uploading weeks you already have is not just safe, it is how the numbers stay
 correct (see below). `/demand-planner` picks them up on next load; the banner's
-"as of" is the newest week **with data**, not the time of the fetch.
+"as of" is the newest week **with data**, not the time of the fetch — and "with
+data" means an actual POS value, not merely a row, because `All Item Detail`
+writes forward-week rows carrying only a forecast (ADR-054). Until Oct 12 2026
+"as of" took a plain max and read 202653, sixteen weeks into the future.
 
 ⚠️ **The paste-in Inputs tab was removed** on Aug 24 2026 — every feed it
 duplicated now has a real, persisted upload path, and a second lossy ingest route

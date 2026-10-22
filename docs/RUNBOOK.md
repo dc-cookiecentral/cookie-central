@@ -295,7 +295,7 @@ Open the browser devtools → Network → look for the failing Supabase request.
 
 Already happened once: `po_line_items` (1,194 rows) was truncated on the Demand Planner's first live day, dropping ~16% of the order book invisibly.
 
-**Currently at risk** — `purchase_orders` is at **892 rows**, growing ~45–50/month from the nightly Cortina export, so it crosses 1,000 around **Nov 2026**. When it does, **Product Orders**, **Payments** and **Alerts** start dropping POs. The hooks needing the fix: `usePurchaseOrders.js`, `usePayments.js`, `useAlerts.js`.
+⚠️ **It is happening again, now.** Measured Oct 12 2026: `purchase_orders` **1,265 rows** and `po_line_items` **1,606**, both returning exactly 1,000 unpaged. (This paragraph said "currently at risk… crosses 1,000 around Nov 2026" from Aug 24 until Oct 13; the daily `walmart_orders` ingest grows the table faster than the ~45–50/month that estimate assumed.) **Product Orders**, **Payments** and **Alerts** are dropping rows today — limited only by all three being hidden from the sidebar. The hooks needing the fix: `usePurchaseOrders.js`, `usePayments.js`, `useAlerts.js`. **Fix this before Product Orders comes back.**
 
 **Tracked** as an open ticket at the top of `BUILD_PLAN.md`. **The fix** is the `fetchAll` helper already in `src/hooks/useDemandFeeds.js` — page in 1,000-row chunks with a stable `ORDER BY` (without one, pages can overlap and skip).
 
@@ -330,12 +330,13 @@ Anything jumping → click through to the page that owns it.
 
 ### 6.2 · Weekly
 
-- **Row-count watch** — `purchase_orders` against the 1,000-row query cap (§5.9). At 892 as of Aug 24 2026.
-- **Demand Planner freshness** — the banner's "as of" week should track the latest Retail Link upload; the DOT panel warns when it lags POS.
+- **Row-count watch** — `purchase_orders` against the 1,000-row query cap (§5.9). ⚠️ **At 1,265 as of Oct 12 2026 — the cap is already crossed and three pages are truncating.** `po_line_items` is at 1,606. The watch is now a fix, not a watch.
+- **Demand Planner freshness** — the banner's "as of" week should track the latest Retail Link upload; the DOT panel warns when it lags POS. ⚠️ As of Oct 13 2026 the DOT Order History is ~11 weeks behind (last upload Aug 24 2026) while the Retail Link files are current — that gap is a missed upload, not a limitation.
+- **Unmapped SKU check** — if `/demand-planner` shows a red band saying cases of NetSuite orders are missing, Cortina has added an item number the app does not know. Act on it: every figure on the page understates the order book until it is mapped. See ADR-063.
 
 
-- Confirm the Bentonville weekly arrived: `SELECT week_number, report_date FROM weekly_reports ORDER BY report_date DESC LIMIT 3;`
-- Confirm DOT snapshot is fresh: `SELECT max(snapshot_date) FROM dot_inventory;` — should be within ~48 hours
+- ~~Confirm the Bentonville weekly arrived: `SELECT week_number, report_date FROM weekly_reports ORDER BY report_date DESC LIMIT 3;`~~ — ⚠️ **retired.** The Bentonville Retail Link email is discontinued (see the note at the top of this file); `weekly_reports` stopped at **2026-07-06** and that is correct, not a missed upload. The Retail Link data now arrives as the six `/uploads` exports instead.
+- ~~Confirm DOT snapshot is fresh: `SELECT max(snapshot_date) FROM dot_inventory;`~~ — ⚠️ **retired.** There is no DOT on-hand report and there never will be (ADR-059); `dot_inventory` is empty and will stay empty. The DOT file that *does* arrive weekly is the Order History (`dot_order_history`), checked by the Demand Planner freshness item above.
 
 ### 6.3 · Monitoring surfaces
 
@@ -347,7 +348,9 @@ Anything jumping → click through to the page that owns it.
 
 ## 7 · Migrations
 
-Apply order is **filename order**. The current list lives in `supabase/migrations/` — 68 files as of Aug 19, 2026, ledger in sync.
+Apply order is **filename order**. The current list lives in `supabase/migrations/` — **76 files as of Oct 13 2026, ledger verified in sync** (`npx supabase migration list`: every entry has `local` == `remote`, no drift, including the four Aug 24 Demand Planner files). Previously 68 files at Aug 19 2026.
+
+Still `db push --dry-run` first, every time: drift appears whenever SQL is applied by hand (SQL editor or Management API `/database/query` — neither writes a `schema_migrations` row), and an unrepaired push **replays** those files. If the dry-run list is longer than what you just wrote, that is drift — repair the ledger with `migration repair --status applied <versions...>` rather than pushing.
 
 ### Preferred: `db push`
 

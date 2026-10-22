@@ -14,12 +14,15 @@
   **Launched August 19, 2026 (ADR-046).** Test mode is off in Production, the test orders were cancelled and purged, the counter floor is 1206, and the seasonal cold rule exists in ShipStation. The first real order numbers `SMP-1206`. There is still no sandbox — **Preview** builds share the production database and store, so a branch-build order is a real order (kept `SMP-TEST-`-prefixed deliberately). **Current state + next steps: `sample-site/docs/SAMPLE_CENTRAL_STATUS.md`**, which is kept more current than this file.
 
   **August 21–23 2026 — three more things shipped.** The **EOS Tracker** went live at `/eos` (ADR-047; `docs/EOS.md`), and its scorecard was reshaped in a pre-launch review: 13 measurables with goals, ranges rather than ceilings where days-on-hand needed a floor, and To-Dos that hang off a measurable and carry forward until ticked. The **Walmart Demand Planner** went live at `/demand-planner`, initially on a static 2026-08-13 snapshot; **on August 24 it went LIVE on real Walmart data** — POS, Walmart forecast, OTIF, DOT cut recovery and NetSuite orders read the `retail_link_*` / `dot_order_history` tables, fed by six weekly uploads, with a **Service health** panel leading on in-store fill rate and OTIF and a **Sources** tab giving provenance for every figure (ADR-053→062; all four migrations applied, all six exports uploaded). Only `production` remains on `SEED`, and there is no DOT on-hand feed at all — so **days-on-hand and recommended production are not yet trustworthy and are flagged as such** in `DEMAND_PLANNER_KNOWN_ISSUES.md`. See `docs/DEMAND_PLANNER_FORMULAS.md` → "As built". And **five pages were hidden pending rework** (Weekly Report, Product Orders, Payments, EOM Snapshot, Lot Trace) — routes intact, nav entries flagged `hidden: true`, internal landing moved to `/inventory`.
+
+  **October 12–13 2026 — the first changes since Aug 24.** Seven quiet weeks in the repo while the app stayed in use: the daily Walmart order ingest kept running, Retail Link files were uploaded Oct 9 and Oct 12, and `purchase_orders` grew past the 1,000-row cap this plan had forecast for November (see the open ticket above — it is no longer a forecast). Shipped Oct 12: **a fourth Walmart SKU** (`BC` — Cortina item 1324 / Walmart prime item 686669913) which had been launching since week 202635 and was invisible on `/demand-planner`, dropped by a hardcoded three-SKU map along with 22,845 cases of orders and 266k units of Walmart forecast; the maps now **report any item number they cannot translate** rather than skipping it; and the banner's "as of" week stopped reading sixteen weeks into the future. **`BC`'s display name is provisional** — read off Walmart's own fields, not a Dirty Cookie product list. ADR-063. The docs were reviewed against the live database the same day; several standing claims were wrong and are corrected (`PEOPLE.md` account state, `DATA_MODEL.md` on forward-week rows, ADR-024's description of a table that has since been dropped).
 - **Phase 2 — Operations:** upcoming (weeks following Phase 1 ship).
 - **Phase 3 — Financials + Rollout:** late summer 2026.
 
-## 🔴 OPEN — Row-cap truncation, due before ~Nov 2026
+## 🔴 OPEN — Row-cap truncation. **NO LONGER PENDING: this crossed on or before Oct 12 2026**
 
 **Raised:** Aug 24 2026, during the Demand Planner live-data work.
+**Status:** ⚠️ **ACTIVE.** The forecast below came true early — see "Current state".
 **Severity:** silent data loss on pages the team trusts. No error, no empty state.
 **Owner:** unassigned.
 
@@ -27,7 +30,20 @@
 
 Supabase/PostgREST returns **at most 1,000 rows per query** and gives **no indication** when it truncates — the response is simply short. Any hook that reads a whole table without paging silently stops seeing rows past 1,000.
 
-**`purchase_orders` is at 892 rows** (Aug 24 2026), growing **~45–50/month** from the nightly Cortina export. It crosses 1,000 around **November 2026**.
+**`purchase_orders` was at 892 rows** (Aug 24 2026), growing **~45–50/month** from the nightly Cortina export, projected to cross 1,000 around **November 2026**.
+
+### Current state — measured Oct 12 2026
+
+```
+purchase_orders   1,265 rows   → an unpaged select returns exactly 1,000
+po_line_items     1,606 rows   → an unpaged select returns exactly 1,000
+```
+
+Both are truncating **now**, confirmed by measurement rather than inference: the response is 1,000 rows long, HTTP 200, no warning. It arrived ahead of the November estimate because the daily `walmart_orders` email ingest upserts the full ~1,229-line Walmart order book every day, which grows `purchase_orders` faster than the ~45–50/month figure assumed.
+
+✅ **What is limiting the damage:** all three affected surfaces are currently hidden from the sidebar (`hidden: true` in `src/components/Sidebar.jsx`), and `AlertsPanel` is mounted only in `ProductOrders.jsx` and `WeeklyReport.jsx` — both hidden. Nobody is being shown short data *through the nav*. The routes still resolve, though, so typing `/orders` or `/payments` gets truncated numbers with no indication.
+
+⚠️ **Product Orders is due back around Oct 2026. That makes this a blocker for that work, not a background chore.** Bringing the page back without paging its hook ships a page that silently drops 265 POs on day one.
 
 ### Impact when it crosses
 

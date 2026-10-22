@@ -130,6 +130,8 @@ Secrets live in **Vault**; Edge Functions read/write them via two `SECURITY DEFI
 1. **DB `products` table — 4 rows**, keyed by Cortina/Walmart SKU strings: `WMWHTCHCCHPCOOKIESTUFCBDC` (WCCB, cortina# 1252), `WMPBCOOKIESTUFGRPJLYDC` (PBG, 1251), `WMCHOCCHPCOOKIESTUFCHOCDC` (CCF, 1287, alias `C-F-S`), `C-WCCB-12-13-KF` (WCCB-KF, Kroger). This is the FK target of `po_line_items`, `dot_inventory`, `bill_of_materials`.
 2. **Static `src/data/itemMaster.js` — 2 rows** (`679640563` DC WHITE CHOC CKE, `679640564` DC PB COOKIE), the `/reference` → "Finished Goods" display seed only. A JS constant; nothing FK-references it. (These Walmart *item numbers* are what "delete 679640563/564" referred to — they live here, not in the DB `products` rows.)
 
+⚠️ **Outcome, recorded Oct 13 2026 — item 1 above describes July 14 2026 and is no longer the state of the database.** This decision was carried out: `20260714120000` renamed the old table to `products_legacy`, and `20260715130000` dropped `po_line_items.product_id`, `dot_inventory.product_id`, `bill_of_materials.product_id` and then `products_legacy` itself. **So there is no longer any database record of which Walmart prime item or Cortina item number corresponds to which product.** `po_line_items` keys off its text `sku` and `cortina_item_number` columns with no FK, and the only item-number→product translation left anywhere is the two hardcoded maps in `src/hooks/useDemandFeeds.js`. That is the structural reason the BC launch could vanish from `/demand-planner` for two weeks (ADR-063): there was nothing for it to fail to join against. Re-establishing a real catalogue entry for retail items is Spec Sheet work and is still open.
+
 **Naming collision:** The extension plan introduces a *new* table also named `products` — but semantically different: the **cookie atom / BOM base** (`code` PK, flavor/tier/form/prep/dough_oz/`sample_eligible`). The existing `products` is the **sellable retail SKU**, which in the Cookulator model corresponds to **`master_cases`**, not the new atom `products`. The two cannot coexist under one name.
 
 **Decision:**
@@ -1073,11 +1075,11 @@ Bucketing was chosen by measurement, not assumption. Using `Date` (order date) f
 **Two item numberings coexist in this system and confusing them fails silently.**
 
 ```
-Walmart prime item nbr   679640563 / 679640564 / 683581675   → Retail Link feeds
-Cortina/NetSuite item    1252      / 1251      / 1287        → the orders feed
+Walmart prime item nbr   679640563 / 679640564 / 683581675 / 686669913   → Retail Link feeds
+Cortina/NetSuite item    1252      / 1251      / 1287      / 1324        → the orders feed
 ```
 
-Both map to WC / PBG / CCF. `useDemandFeeds` carries both maps; a wrong one drops every line rather than erroring.
+Mapping to WC / PBG / CCF / BC. `useDemandFeeds` carries both maps; a wrong one drops every line rather than erroring. **An item MISSING from either map does the same thing**, which is how the BC launch went unnoticed for two weeks — see ADR-063.
 
 **🔴 There is no DOT on-hand report (Caroline, Aug 24 2026).** Not "not yet" — it does not exist. Consequences, all deliberate:
 
@@ -1192,8 +1194,41 @@ The planner uses **the Forecast sheet's raw rows** exclusively — one row per i
 - **Threshold flags suppressed** on those rows. Colouring a fabricated number red reads as a genuine alarm, which is worse than not colouring it at all.
 - **A non-dismissible notice** at the top of the tab everyone lands on, naming which side of the page is trustworthy and which is not. Not dismissible on purpose: it stops being true when `production` gets a real feed, not when somebody clicks.
 
-**A second risk, unrelated to this page but found here.** Supabase caps a query at 1,000 rows and reports nothing when it truncates. `purchase_orders` is at **892** and grows ~45–50/month, so around **November 2026** Product Orders, Payments and Alerts begin silently dropping rows. It already bit once: `po_line_items` (1,194) was truncated on this page's first live day, losing ~16% of the order book invisibly. Fix is the `fetchAll` helper in `useDemandFeeds.js`; the hooks needing it are named in `RUNBOOK.md` §5.9.
+**A second risk, unrelated to this page but found here.** Supabase caps a query at 1,000 rows and reports nothing when it truncates. `purchase_orders` is at **892** and grows ~45–50/month, so around **November 2026** Product Orders, Payments and Alerts begin silently dropping rows. It already bit once: `po_line_items` (1,194) was truncated on this page's first live day, losing ~16% of the order book invisibly. Fix is the `fetchAll` helper in `useDemandFeeds.js`; the hooks needing it are named in `RUNBOOK.md` §5.9. ⚠️ **Since (Oct 12 2026): it crossed, earlier than this estimate.** `purchase_orders` 1,265 and `po_line_items` 1,606, both measured returning exactly 1,000 unpaged. The daily `walmart_orders` ingest grows the table faster than ~45–50/month. Unfixed; see the ticket at the top of `BUILD_PLAN.md`.
 
 **A retraction carried into the launch docs.** This work reported to Caroline that "Walmart publishes its forecast twice, disagreeing by a different multiple per SKU (WC ×1.0, PB&J ×0.7, CCF ×5.0)" and suggested raising it with Bentonville. The statistic was computed over cells corrupted by a grand total sitting in a week column, and is **withdrawn**. The defensible remainder is one observation: CCF reads 26,549 at week 202629 against the Forecast sheet's 5,355. Recorded because a retracted number that reached a person does not un-reach them by being deleted from a file.
 
 **Verification standard, changed by failure.** This page shipped **blank** through three deploys each reported as "verified", because verification meant grepping the built bundle for expected strings — which were present, in code that could never execute (a temporal dead zone read of `series`). `scripts/smoke-render.mjs` now renders the component through `react-dom/server` across all six paths (3 tabs × live/empty feeds) and fails if it throws. **Grepping an artifact proves presence, not execution.** The rest of the app still has no equivalent check.
+
+## ADR-063: A hardcoded SKU map drops a product silently, so the page now reports what it cannot map
+
+**Oct 12 2026.** Reported as "the NetSuite report is not populating in the graphs."
+
+**What was actually wrong.** Cortina started shipping a fourth Walmart item in week **202635 (Sep 26 2026)** and nothing in the app knew. Both item-number maps in `useDemandFeeds.js` were hardcoded to three SKUs, and an unmatched line is dropped by `if (!sku) continue` — no error, no gap on a chart, just a smaller order book. The product was therefore invisible on both sides of `/demand-planner`:
+
+| Feed | Identifier | Dropped |
+|---|---|---|
+| NetSuite orders | Cortina item **1324** · `WCCREAMSTUFBLKCRNTCOOKIEWM` | 83 lines · **22,845 cases · $135,474** (wks 202635–202637) |
+| Walmart forecast | prime item **686669913** · `BG WHT CHOC CURR` · VSN `BGBLKCRRT5947` | 33 rows · **266,392 units** (wks 202637–202652) |
+
+More volume over those weeks than any existing SKU. The Oct 6 ship date alone is 9,843 cases.
+
+**The series was never broken, which is why it took two weeks to notice.** It computed 72 week×SKU cells, `sources.orders` read `live`, and every number on screen was internally consistent. It was *under-reporting*, and under-reporting has no symptom. A series that fails loudly gets fixed the same day.
+
+**Decision 1 — the map is no longer the only line of defence.** `useDemandFeeds` now returns `unmappedOrderItems`: every `cortina_item_number` it could not translate, with line count, cases, value, Cortina SKU string and week range. `/demand-planner` renders it as a **red band** at the top of the S&OP summary naming the exact cases and dollars the page is not showing, and which file to edit. It renders nothing when the maps are complete. Same contract as `unmatchedCases` on `dotDeliveries` (ADR-060) and the same principle as ADR-061: surfaced, never swallowed.
+
+Fixing only the map would have left the next launch to be found by eye. The map will go stale again — Cortina adds items without telling us, and that is not going to change.
+
+**Decision 2 — `BC` is mapped now, with a provisional name.** `SKU_NAMES.BC = "White Chocolate and Black Currant"`, read off Walmart's own `item_desc` ("BG WHT CHOC CURR") and vendor stock number (`BGBLKCRRT5947`). **This is not confirmed as Dirty Cookie's official product name** — but a provisional label on 22,845 visible cases beats a correct label on cases nobody can see. `SKU_NAMES` in `DemandPlanner.jsx` is the only place to change it.
+
+**BC has no POS, and that is correct — do not treat it as a missing upload.** Walmart forecasts the item but reports no sales and no traited stores, so `retail_link.js` drops its `All Item Detail` row by design (the per-ITEM filter that keeps anything which ever sold or was ever traited — ADR-055). That is the "ignored 1 item(s) with no sales and no traited stores in any week" warning on the WK35 and WK36 uploads. It reaches the engine through the **forecast** feed alone until it is traited at shelf.
+
+**Decision 3 — a SKU with no POS borrows the page's reference week.** `lastActualIdx` is derived from a SKU's own POS and was therefore `-1` for BC, which left its "last 4 weeks" window empty and put its "next 4 weeks" window at the **start of the fiscal year** — February figures under a label saying next month. It now falls back to the newest week *any* SKU has POS for, which is what the rest of the page means by "now". Guarded, so a SKU with its own POS is untouched. The pre-upload path that `-1` was originally written for still works: with no POS anywhere, the fallback finds nothing and the old behaviour stands.
+
+**A second bug, found on the way: `asOf` was 16 weeks in the future.** The banner read "Live Retail Link data through week **202653**" (Jan 30 2027) while real data stopped at 202636. `asOf` took a plain max over POS weeks, and `All Item Detail` **does** write forward-week rows — `wmt_forecast_units` is deliberately exempt from the file-week bound (ADR-054), so every week to the end of the fiscal year lands carrying a forecast and nothing else. `asOf` now filters on a POS value being present, the same test the page's own `latestDataWk` already used. `DATA_MODEL.md` said only weeks up to the file's own week are written, which is what made this invisible; it has been corrected.
+
+**Verified by running the real hook against the live database**, swapping only React so the effect fires eagerly, then rendering the real page with the payload it produced — `orders` 72→75 cells, `forecasts` 171→204, `asOf` 202653→202636, `unmappedOrderItems` one entry → empty, and a fourth card that plots. `scripts/smoke-render.mjs` passes all six paths. Grepping a bundle still proves presence, not execution (ADR-062).
+
+**Why there was nothing to catch it.** This is not only a missing map entry. The database holds **no record of which Walmart prime item or Cortina item number is which product** — the old finished-goods `products` table that carried `cortina_item_number` was renamed aside and dropped in July 2026 (ADR-024), along with `po_line_items.product_id`. `po_line_items` keys off text columns with no FK, so an unknown item number joins against nothing and violates no constraint. Two hardcoded maps in one hook are the entire translation layer. Re-establishing a real catalogue entry for retail items is Spec Sheet work and is still open; until then `unmappedOrderItems` is the only thing standing between a new SKU and silence.
+
+**The class of bug worth remembering.** Three places in this repo translate an external identifier through a hardcoded literal: both maps here, and `MEASURES` in `retailLink.js` (which at least reports unrecognised Data Types). Any of them meeting an unknown value drops data. The pattern that fixes it is not a better map — it is counting what fell through and showing it.
