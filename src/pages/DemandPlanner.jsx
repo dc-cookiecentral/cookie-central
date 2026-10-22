@@ -50,10 +50,19 @@ const DEFAULT_PARAMS = {
   gapThreshold: 0.15, l4wWindow: 4, defaultStores: 2200, dotOpeningAnchor: 250,
   overstockDoh: 28,
 };
+// Per-SKU pack, over DEFAULT_PARAMS. The three frozen doughs are 12 units a
+// case (Walmart warehouse pack, Item 360); Black Currant is 10 pouches a case
+// and 96 cases a pallet (Item 360 + Caroline, Oct 22 2026). Before this every
+// SKU was divided by 12, which understated BC's shopper-side cases by a sixth.
+// BC's MOQ is unknown, so it still uses the default.
+const SKU_PACK = { BC: { unitsPerCase: 10, casesPerPallet: 96 } };
+const packOf = sku => ({
+  unitsPerCase: DEFAULT_PARAMS.unitsPerCase, casesPerPallet: DEFAULT_PARAMS.casesPerPallet, ...(SKU_PACK[sku] || {}),
+});
 const ceilTo = (v, moq) => (v <= 0 ? 0 : Math.ceil(v / moq) * moq);
 
 function buildSkuSeries(input, sku) {
-  const P = { ...DEFAULT_PARAMS, ...(input.params || {}) };
+  const P = { ...DEFAULT_PARAMS, ...(input.params || {}), ...(SKU_PACK[sku] || {}) };
   const weeks = input.weeks;
   const N = weeks.length;
   const posMap = new Map(input.pos.filter(r => r.sku === sku).map(r => [r.wk, r]));
@@ -258,12 +267,17 @@ const F = {
   d2: v => (v == null ? "" : v.toFixed(2)),
   money: v => (v == null ? "" : "$" + Math.round(v).toLocaleString()),
 };
-// BC is the Black Currant launch — Cortina item 1324, Walmart prime item
-// 686669913. The name here is read off Walmart's own fields (item_desc
-// "BG WHT CHOC CURR", vendor stock "BGBLKCRRT5947"); if Dirty Cookie's official
-// name differs, this string is the only place to change it.
-const SKU_NAMES = { WC: "White Chocolate and Cookie Butter", PBG: "PB&J", CCF: "Chocolate Fudge",
-                    BC: "White Chocolate and Black Currant" };
+// Official Walmart product names, from the Item 360 export (Oct 22 2026),
+// without Walmart's trailing marketing copy. They match master_cases.name.
+// "bettergoods" is Walmart's private-label brand and is lower-case by design.
+// BC is the Black Currant launch: Cortina item 1324 (Cortina line 3888),
+// Walmart prime item 686669913, UPC 194346715947.
+const SKU_NAMES = {
+  WC: "bettergoods Jumbo Cookie Butter-Stuffed White Chocolate Chip Cookie Dough",
+  PBG: "bettergoods Jumbo Grape Jelly-Stuffed Peanut Butter Cookie Dough",
+  CCF: "bettergoods Jumbo Chocolatey Fudge Stuffed Chocolate Chip Cookies",
+  BC: "bettergoods White Chocolate Black Currant Cookies",
+};
 const gapColor = g => {
   if (g == null) return "#EFE4E9";
   const a = Math.abs(g);
@@ -297,9 +311,8 @@ function Stat({ label, value, tone, src, placeholder }) {
 }
 
 const FLOW_COLORS = { pos: "#2D2235", fcst: "#C2185B", depot: "#E8A33D", dot: "#3E8E5A" };
-const UNITS_PER_CASE = 12;
-
 function buildFlow(s) {
+  const UNITS_PER_CASE = packOf(s.sku).unitsPerCase;
   return s.cells.map((c, i) => ({
     wl: String(c.wk).slice(4),
     wk: c.wk,
@@ -332,8 +345,8 @@ function FlowLegend() {
         </span>
       </div>
       <div className="mt-1 opacity-80">
-        <b>1 case = 12 retail units.</b> POS, store on-hand, and the Walmart forecast arrive in units
-        (shopper-facing systems) and are charted ÷12; NetSuite, DOT, and production are already in cases.
+        <b>1 case = 12 retail units (Black Currant: 10).</b> POS, store on-hand, and the Walmart forecast arrive in units
+        (shopper-facing systems) and are charted ÷12 (÷10 for Black Currant); NetSuite, DOT, and production are already in cases.
         A healthy chain reads left-to-right in time: DC → DOT leads, depletions follow, POS confirms, and
         Walmart's forecast should trend off POS history — a line breaking away from its neighbors is the early warning.
       </div>
@@ -345,6 +358,7 @@ function chainChips(s) {
   const i = s.lastActualIdx;
   if (i < 0) return [];
   const l4 = s.cells.slice(Math.max(0, i - 3), i + 1);
+  const UNITS_PER_CASE = packOf(s.sku).unitsPerCase;
   const inSum = l4.reduce((a, c) => a + (c.actual ?? 0), 0);
   const thruSum = l4.reduce((a, c) => a + (c.dlv ?? 0), 0);
   const outSum = Math.round(l4.reduce((a, c) => a + (c.pos ?? 0), 0) / UNITS_PER_CASE);
@@ -371,6 +385,7 @@ function FlowCard({ s, m }) {
   const ticks = data.filter((d, i) => i === 0 || d.month !== data[i - 1].month).map(d => d.wl);
   const todayWl = s.lastActualIdx >= 0 ? data[s.lastActualIdx].wl : null;
   const chips = chainChips(s);
+  const UNITS_PER_CASE = packOf(s.sku).unitsPerCase;
   const g = m.n4wGap;
   const gTone = g != null && Math.abs(g) > 0.15 ? (Math.abs(g) > 0.4 ? "#C2185B" : "#B87514") : "#3E8E5A";
   const fmtTip = (v, name) => {
@@ -1173,7 +1188,7 @@ function Tracker({ series, onEdit }) {
         </section>
       ))}
       <p className="text-xs opacity-60 max-w-3xl">
-        Units vs cases: rows labeled (units) are shopper-facing feeds; everything in (cs) is cases — 1 case = 12 units, and the Demand row converts ÷12 exactly once. Pink rule = last week with POS actuals; tinted columns are forecast. Blue cells are
+        Units vs cases: rows labeled (units) are shopper-facing feeds; everything in (cs) is cases — 1 case = 12 units (10 for Black Currant), and the Demand row converts exactly once. Pink rule = last week with POS actuals; tinted columns are forecast. Blue cells are
         editable — change a seasonality multiplier or key a consensus override and the whole
         cascade (demand, DC/DOT inventory, production recs) recomputes instantly.
       </p>
@@ -1244,7 +1259,7 @@ export default function DemandPlanner() {
   const seedSeries = Object.keys(LABELS).filter(k => feeds.sources[k] !== 'live').map(k => LABELS[k]);
   const anyLive = liveSeries.length > 0;
   const series = useMemo(() => ["WC", "PBG", "CCF", "BC"].map(s => buildSkuSeries(input, s)), [input]);
-  const metrics = useMemo(() => series.map(s => sopSummary(s)), [series]);
+  const metrics = useMemo(() => series.map(s => sopSummary(s, packOf(s.sku).casesPerPallet)), [series]);
 
   // Newest week that actually has POS — the yardstick every other feed's
   // freshness is measured against. MUST stay below `series`: reading it above
@@ -1313,7 +1328,7 @@ export default function DemandPlanner() {
             Today · WM Week 28
           </span>
           <span className="px-2 py-0.5 rounded-full mr-2 cc-mono" style={{ background: "#EFE4E9", color: "#2D2235" }}>
-            1 cs = 12 units · 21 cs/layer · 189 cs/pallet
+            1 cs = 12 units · 21 cs/layer · 189 cs/pallet · BC: 10 units, 96 cs/pallet
           </span>
           data thru wk 202627 (8/1–8/7) · NetSuite batch 8/13
         </div>
