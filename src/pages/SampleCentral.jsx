@@ -12,7 +12,7 @@ import {
   productLabel, derivedTemp, effectiveTemp, tempReason, groupCatalog,
   SHIP_STATUSES, EXCEPTION_STATUSES, OPEN_STATUSES, RECENT_DAYS,
   COLLATERAL_OPTIONS, RUSH_NOTICE,
-  pipelineIndex, deliverByState,
+  pipelineIndex, deliverByState, deliveryCountdown, deliveryOutcome,
   TP_CARRIERS, TP_NOTICE, tpComplete,
   TEST_MODE, SHIPMENT_PREFIX, trackingUrl,
   ISSUE_FLAGS, issueLabel,
@@ -255,7 +255,7 @@ export default function SampleCentral() {
             {tab === 'shop' && <CatalogView data={data} filter={filter} setFilter={setFilter} cart={cart} setQty={setQty} addToCart={addToCart} />}
             {tab === 'mission' && <MissionView data={data} canWrite={canWrite} refresh={refresh} setToast={setToast} />}
             {tab === 'address' && <AddressView data={data} refresh={refresh} canWrite={canWrite} setToast={setToast} />}
-            {tab === 'report' && <ReportView data={data} />}
+            {tab === 'report' && <ReportView data={data} canWrite={canWrite} refresh={refresh} setToast={setToast} />}
           </>
         )}
       </main>
@@ -1263,11 +1263,6 @@ function MissionView({ data, canWrite, refresh, setToast }) {
 function ShipmentCard({ s, cols, open, onToggle, canWrite, refresh, setToast }) {
   const items = s.sample_shipment_items || [];
   const hasCustom = items.some((i) => i.custom);
-  const addr = s.address || {};
-  // pipelineIndex, not indexOf: `processing` is off the stepper but still a legal
-  // DB value, and indexOf would return -1 and grey every dot — reading as "stuck
-  // at the start" on an order that is progressing normally.
-  const stIdx = pipelineIndex(s.status);
   const due = deliverByState(s.required_by, s.status);
   const ctx = { s, items, hasCustom, due };
   return (
@@ -1293,111 +1288,129 @@ function ShipmentCard({ s, cols, open, onToggle, canWrite, refresh, setToast }) 
 
       {open && (
         <div className="border-t border-lt px-3 py-3">
-          {/* An exception is not a stage. Rendering the stepper for a cancelled
-              order greys every dot (indexOf → -1) and reads as "stuck at the
-              start", which is worse than saying plainly what happened. */}
-          {EXCEPTION_STATUSES.includes(s.status) ? (
-            <div className={`mb-3 px-2.5 py-2 rounded-lg border text-[14px] ${s.status === 'cancelled' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
-              <span className="font-bold">{s.status === 'cancelled' ? 'Cancelled' : 'On hold'} in ShipStation.</span>{' '}
-              {s.status === 'cancelled'
-                ? 'This shipment will not go out. Raise a new request if it is still needed.'
-                : 'Fulfilment is paused. It returns to the queue when the co-man releases it.'}
-            </div>
-          ) : (
-          <div className="mb-3">
-            <div className="flex items-center gap-1">
-              {SHIP_STATUSES.map((p, i) => (
-                <div key={p} className="flex items-center gap-1">
-                  <span className={`w-2 h-2 rounded-full ${i < stIdx ? 'bg-green-500' : i === stIdx ? 'bg-pk' : 'bg-lt'}`} />
-                  <span className={`text-[12px] ${i === stIdx ? 'font-bold text-dk' : 'text-gr'}`}>
-                    {p === 'shipped' ? 'in transit' : p}
-                  </span>
-                  {i < SHIP_STATUSES.length - 1 && <span className="w-4 h-px bg-lt mx-1" />}
-                </div>
-              ))}
-            </div>
-            {/* Delivery IS tracked now (ADR-043): the 15-minute sweep reads the
-                carrier's track log per label and promotes shipped → delivered.
-                The caption that used to sit here apologised for delivery never
-                arriving; it would now be a lie. What is still worth saying is
-                when the carrier expects it, and that only while in transit. */}
-            {s.status === 'delivered' && s.delivered_at && (
-              <div className="text-[12px] text-gr mt-1">
-                Delivered {new Date(s.delivered_at).toLocaleDateString()}
-              </div>
-            )}
-          </div>
-          )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <KV label="Ship to">
-              {addr.contact_name || '—'}{addr.company ? ` · ${addr.company}` : ''}<br />
-              {addr.street}, {addr.city}, {addr.state} {addr.zip}
-            </KV>
-            <KV label="Deliver by">{s.required_by || '—'}</KV>
-            <KV label="Collateral">
-              {(s.collateral || []).length ? (s.collateral || []).map((c) => (
-                <span key={c} className="inline-block text-[12px] font-semibold px-2 py-px rounded bg-bg border border-lt mr-1 mb-1">{c}</span>
-              )) : '—'}
-            </KV>
-            <KV label="Billing">
-              {s.third_party_billing
-                ? `${s.tp_carrier || '—'} · acct ${s.tp_account || '—'} · ${s.tp_postal_code || '—'}`
-                : 'Dirty Cookie account'}
-            </KV>
-            {s.tracking_number && (
-              <KV label="Tracking">
-                <TrackingLink number={s.tracking_number} carrier={s.carrier} />{s.carrier ? ` · ${s.carrier}` : ''}{s.service ? ` · ${s.service}` : ''}
-              </KV>
-            )}
-            {s.shipped_at && <KV label="Shipped">{wallClockDate(s.shipped_at)}{s.label_created_at ? ` · label ${wallClockDateTime(s.label_created_at)}` : ''}</KV>}
-            {s.shipping_cost != null && <KV label="Shipping cost">${Number(s.shipping_cost).toFixed(2)}</KV>}
-          </div>
-
-          <div className="mt-3">
-            <div className="text-[12px] text-gr uppercase font-bold tracking-wider mb-1">Samples</div>
-            <div className="divide-y divide-bg border border-lt rounded-lg">
-              {items.map((i) => (
-                <div key={i.id || i.product_code || i.custom_spec} className="flex justify-between items-center px-2 py-1.5">
-                  <span className="text-[14px] text-dk">
-                    {i.custom && <span className="text-[12px] font-semibold px-1.5 py-px rounded bg-pink-100 text-pk mr-1">Custom</span>}
-                    {i.description || i.product_code || i.custom_spec}
-                    {i.project_no ? <span className="text-[12px] text-gr"> (proj {i.project_no})</span> : null}
-                  </span>
-                  <span className="text-[14px] font-bold text-dk">×{i.qty}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {s.notes && (
-            <div className="mt-3">
-              <div className="text-[12px] text-gr uppercase font-bold tracking-wider mb-1">Notes from the order</div>
-              <div className="text-[14px] text-dk">{s.notes}</div>
-            </div>
-          )}
-
-          {/* Delivered only. Every flag in the vocabulary — arrived late, damaged
-              in transit, packaging, wrong items — is something you can only know
-              once the box has landed, so offering the panel earlier invites a
-              guess. The `|| s.issue_at` keeps an already-logged issue visible
-              (and clearable) if an order somehow moves back out of delivered;
-              hiding a record that exists would be worse than showing it late. */}
-          {(s.status === 'delivered' || s.issue_at) && (
-            <IssuePanel s={s} canWrite={canWrite} refresh={refresh} setToast={setToast} />
-          )}
-
-          {/* Cortina orders only. A ShipStation order already gets a
-              notification when the co-man buys the label; offering these there
-              would invite a second, conflicting confirmation. */}
-          {isCortinaFulfilled(s) && <OrderSheetActions s={s} setToast={setToast} />}
-
-          <div className="text-[12px] text-gr mt-3">
-            Status is set by ShipStation — <span className="font-semibold">submitted</span> on creation, <span className="font-semibold">shipped</span> when the co-man buys a label.
-          </div>
+          <ShipmentDetail s={s} canWrite={canWrite} refresh={refresh} setToast={setToast} />
         </div>
       )}
     </div>
+  );
+}
+
+// The expanded view of one shipment: stepper, ship-to, billing, tracking,
+// samples, notes, the issue log and (Cortina only) the order-sheet actions.
+// Shared by the Shipments card and the Reports detail window, so the two can
+// never drift into showing different things about the same order.
+function ShipmentDetail({ s, canWrite, refresh, setToast }) {
+  const items = s.sample_shipment_items || [];
+  const addr = s.address || {};
+  // pipelineIndex, not indexOf: `processing` is off the stepper but still a legal
+  // DB value, and indexOf would return -1 and grey every dot — reading as "stuck
+  // at the start" on an order that is progressing normally.
+  const stIdx = pipelineIndex(s.status);
+  return (
+    <>
+      {/* An exception is not a stage. Rendering the stepper for a cancelled
+          order greys every dot (indexOf → -1) and reads as "stuck at the
+          start", which is worse than saying plainly what happened. */}
+      {EXCEPTION_STATUSES.includes(s.status) ? (
+        <div className={`mb-3 px-2.5 py-2 rounded-lg border text-[14px] ${s.status === 'cancelled' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
+          <span className="font-bold">{s.status === 'cancelled' ? 'Cancelled' : 'On hold'} in ShipStation.</span>{' '}
+          {s.status === 'cancelled'
+            ? 'This shipment will not go out. Raise a new request if it is still needed.'
+            : 'Fulfilment is paused. It returns to the queue when the co-man releases it.'}
+        </div>
+      ) : (
+      <div className="mb-3">
+        <div className="flex items-center gap-1">
+          {SHIP_STATUSES.map((p, i) => (
+            <div key={p} className="flex items-center gap-1">
+              <span className={`w-2 h-2 rounded-full ${i < stIdx ? 'bg-green-500' : i === stIdx ? 'bg-pk' : 'bg-lt'}`} />
+              <span className={`text-[12px] ${i === stIdx ? 'font-bold text-dk' : 'text-gr'}`}>
+                {p === 'shipped' ? 'in transit' : p}
+              </span>
+              {i < SHIP_STATUSES.length - 1 && <span className="w-4 h-px bg-lt mx-1" />}
+            </div>
+          ))}
+        </div>
+        {/* Delivery IS tracked now (ADR-043): the 15-minute sweep reads the
+            carrier's track log per label and promotes shipped → delivered.
+            The caption that used to sit here apologised for delivery never
+            arriving; it would now be a lie. What is still worth saying is
+            when the carrier expects it, and that only while in transit. */}
+        {s.status === 'delivered' && s.delivered_at && (
+          <div className="text-[12px] text-gr mt-1">
+            Delivered {new Date(s.delivered_at).toLocaleDateString()}
+          </div>
+        )}
+      </div>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <KV label="Ship to">
+          {addr.contact_name || '—'}{addr.company ? ` · ${addr.company}` : ''}<br />
+          {addr.street}, {addr.city}, {addr.state} {addr.zip}
+        </KV>
+        <KV label="Deliver by">{s.required_by || '—'}</KV>
+        <KV label="Collateral">
+          {(s.collateral || []).length ? (s.collateral || []).map((c) => (
+            <span key={c} className="inline-block text-[12px] font-semibold px-2 py-px rounded bg-bg border border-lt mr-1 mb-1">{c}</span>
+          )) : '—'}
+        </KV>
+        <KV label="Billing">
+          {s.third_party_billing
+            ? `${s.tp_carrier || '—'} · acct ${s.tp_account || '—'} · ${s.tp_postal_code || '—'}`
+            : 'Dirty Cookie account'}
+        </KV>
+        {s.tracking_number && (
+          <KV label="Tracking">
+            <TrackingLink number={s.tracking_number} carrier={s.carrier} />{s.carrier ? ` · ${s.carrier}` : ''}{s.service ? ` · ${s.service}` : ''}
+          </KV>
+        )}
+        {s.shipped_at && <KV label="Shipped">{wallClockDate(s.shipped_at)}{s.label_created_at ? ` · label ${wallClockDateTime(s.label_created_at)}` : ''}</KV>}
+        {s.shipping_cost != null && <KV label="Shipping cost">${Number(s.shipping_cost).toFixed(2)}</KV>}
+      </div>
+
+      <div className="mt-3">
+        <div className="text-[12px] text-gr uppercase font-bold tracking-wider mb-1">Samples</div>
+        <div className="divide-y divide-bg border border-lt rounded-lg">
+          {items.map((i) => (
+            <div key={i.id || i.product_code || i.custom_spec} className="flex justify-between items-center px-2 py-1.5">
+              <span className="text-[14px] text-dk">
+                {i.custom && <span className="text-[12px] font-semibold px-1.5 py-px rounded bg-pink-100 text-pk mr-1">Custom</span>}
+                {i.description || i.product_code || i.custom_spec}
+                {i.project_no ? <span className="text-[12px] text-gr"> (proj {i.project_no})</span> : null}
+              </span>
+              <span className="text-[14px] font-bold text-dk">×{i.qty}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {s.notes && (
+        <div className="mt-3">
+          <div className="text-[12px] text-gr uppercase font-bold tracking-wider mb-1">Notes from the order</div>
+          <div className="text-[14px] text-dk">{s.notes}</div>
+        </div>
+      )}
+
+      {/* Delivered only. Every flag in the vocabulary — arrived late, damaged
+          in transit, packaging, wrong items — is something you can only know
+          once the box has landed, so offering the panel earlier invites a
+          guess. The `|| s.issue_at` keeps an already-logged issue visible
+          (and clearable) if an order somehow moves back out of delivered;
+          hiding a record that exists would be worse than showing it late. */}
+      {(s.status === 'delivered' || s.issue_at) && (
+        <IssuePanel s={s} canWrite={canWrite} refresh={refresh} setToast={setToast} />
+      )}
+
+      {/* Cortina orders only. A ShipStation order already gets a
+          notification when the co-man buys the label; offering these there
+          would invite a second, conflicting confirmation. */}
+      {isCortinaFulfilled(s) && <OrderSheetActions s={s} setToast={setToast} />}
+
+      <div className="text-[12px] text-gr mt-3">
+        Status is set by ShipStation — <span className="font-semibold">submitted</span> on creation, <span className="font-semibold">shipped</span> when the co-man buys a label.
+      </div>
+    </>
   );
 }
 
@@ -1631,9 +1644,10 @@ function IssuePanel({ s, canWrite, refresh, setToast }) {
 // Samples over a chosen date range: what went out, on whose account, what the freight cost,
 // what the deadline was, when it actually landed, and what went wrong with it.
 //
-// Both fulfilment routes in one table, because the question is "what did we send
-// in July" and splitting that by who packed the box makes it two questions. The
-// route is a column instead.
+// Both fulfilment routes in one report, because the question is "what did we
+// send in July" and splitting that by who packed the box makes it two
+// questions. Cortina orders get their own status section and a filter rather
+// than a column.
 //
 // Cortina rows are deliberately sparse: no cost, no actual delivery date. Those
 // orders never touch a carrier, so the site has nothing to report and inventing
@@ -1679,10 +1693,104 @@ const REPORT_PRESETS = [
   { key: 'all', label: 'All time' },
 ];
 
-function ReportView({ data }) {
+// One break per status, in the order an order moves through them. Cortina
+// orders get their own section, as on the Shipments tab: they never leave
+// `submitted` (nothing exists to advance them), so filing them under In
+// process would leave them looking stuck forever. The last two only render
+// when they have rows — an empty "Cancelled" heading is noise.
+const REPORT_SECTIONS = [
+  { key: 'in_process', label: 'In process', note: 'ordered, not yet shipped', always: true,
+    test: (s) => !isCortinaFulfilled(s) && OPEN_STATUSES.includes(s.status) },
+  { key: 'shipped', label: 'Shipped', note: 'in transit', always: true,
+    test: (s) => !isCortinaFulfilled(s) && s.status === 'shipped' },
+  { key: 'delivered', label: 'Delivered', note: 'arrived', always: true,
+    test: (s) => !isCortinaFulfilled(s) && s.status === 'delivered' },
+  { key: 'cortina', label: 'Cortina orders', note: 'shipped by Cortina — no label or tracking',
+    test: isCortinaFulfilled },
+  { key: 'exceptions', label: 'Cancelled / on hold', note: 'set in ShipStation',
+    test: (s) => !isCortinaFulfilled(s) && EXCEPTION_STATUSES.includes(s.status) },
+];
+const reportSectionOf = (s) => REPORT_SECTIONS.find((sec) => sec.test(s))?.key;
+
+const REPORT_COLUMNS = ['Order', 'Order Date', 'Account', 'Salesperson', 'Label Bought', 'Shipped', 'Shipping Cost', 'Deliver by', 'Delivered', 'Issues'];
+
+// What the Deliver by / Delivered pair is FOR changes at delivery. Until the
+// box lands the question is "when is it due, and how far out is that" — a
+// countdown. Once it lands the deadline is history and the only question is
+// "on time, or how late". Cortina orders and cancelled/on-hold ones get
+// neither: nothing will ever deliver them, so a countdown would just tick
+// into "overdue" forever.
+function deliveryView(s) {
+  if (s.delivered_at) return { outcome: deliveryOutcome(s.required_by, s.delivered_at) };
+  if (isCortinaFulfilled(s) || EXCEPTION_STATUSES.includes(s.status)) return {};
+  return { countdown: deliveryCountdown(s.required_by) };
+}
+// required_by is a bare YYYY-MM-DD; built as a LOCAL date so it does not
+// render as the day before west of Greenwich.
+const localDate = (ymd) => {
+  const [y, m, d] = String(ymd || '').split('-').map(Number);
+  return y && m && d ? new Date(y, m - 1, d).toLocaleDateString() : null;
+};
+
+// The CSV carries the table's columns plus what the table only implies — the
+// status (the section a row sits under), the delivery countdown or verdict,
+// the issue note — and the cookie count behind the stat tile. Dates are YYYY-MM-DD so a
+// spreadsheet sorts them as dates; cost is a bare number so it sums.
+function reportCsv(rows) {
+  const head = ['Status', ...REPORT_COLUMNS, 'Delivery', 'Issue note', 'Cookies'];
+  const cell = (v) => {
+    const t = v == null ? '' : String(v);
+    return /[",\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+  };
+  const body = rows.map((s) => {
+    const cortinaRow = isCortinaFulfilled(s);
+    const na = cortinaRow ? 'n/a' : '';
+    return [
+      REPORT_SECTIONS.find((sec) => sec.test(s))?.label ?? s.status,
+      s.shipment_no,
+      dayKey(s.created_at, false) ?? '',
+      s.account ?? '',
+      s.sales_rep?.full_name ?? '',
+      dayKey(s.label_created_at, true) ?? na,
+      dayKey(s.shipped_at, true) ?? na,
+      s.shipping_cost != null ? Number(s.shipping_cost).toFixed(2) : na,
+      s.required_by ?? '',
+      dayKey(s.delivered_at, false) ?? na,
+      (s.issue_flags || []).map(issueLabel).join('; '),
+      (() => { const v = deliveryView(s); return v.outcome?.label ?? v.countdown?.label ?? ''; })(),
+      s.issue_note ?? '',
+      (s.sample_shipment_items || []).reduce((m, i) => m + (i.qty || 0), 0),
+    ].map(cell).join(',');
+  });
+  // The BOM makes Excel read it as UTF-8 — without it an em dash or an
+  // accented account name turns to mojibake.
+  return `﻿${[head.map(cell).join(','), ...body].join('\r\n')}\r\n`;
+}
+
+function downloadCsv(name, text) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function ReportView({ data, canWrite, refresh, setToast }) {
   const [basis, setBasis] = useState('ordered');
   const [[from, to], setRange] = useState(() => presetRange('this_month'));
   const [preset, setPreset] = useState('this_month');
+  const [status, setStatus] = useState('all');
+  const [rep, setRep] = useState('all');
+  const [route, setRoute] = useState('all');
+  const [issuesOnly, setIssuesOnly] = useState(false);
+  const [q, setQ] = useState('');
+  const [selected, setSelected] = useState(() => new Set());
+  // An id, not the row: after an issue is saved, `refresh` replaces every row
+  // object, and the window has to show the new one.
+  const [openId, setOpenId] = useState(null);
   const applyPreset = (key) => { setPreset(key); setRange(presetRange(key)); };
   const setFrom = (v) => { setPreset(null); setRange([v, to]); };
   const setTo = (v) => { setPreset(null); setRange([from, v]); };
@@ -1691,14 +1799,37 @@ function ReportView({ data }) {
   const wallClock = field !== 'created_at';
   // A reversed range is read as the range the user meant, not as "nothing".
   const [lo, hi] = from && to && from > to ? [to, from] : [from, to];
+  const query = q.trim().toLowerCase();
 
   const rows = useMemo(() => data.shipments.filter((s) => {
     const day = dayKey(s[field], wallClock);
     if (!day) return false;
     if (lo && day < lo) return false;
     if (hi && day > hi) return false;
+    if (status !== 'all' && reportSectionOf(s) !== status) return false;
+    if (rep !== 'all' && s.sales_rep?.id !== rep) return false;
+    if (route === 'cortina' && !isCortinaFulfilled(s)) return false;
+    if (route === 'shipstation' && isCortinaFulfilled(s)) return false;
+    if (issuesOnly && !s.issue_at) return false;
+    if (query && ![s.shipment_no, s.account].some((f) => String(f || '').toLowerCase().includes(query))) return false;
     return true;
-  }), [data.shipments, field, wallClock, lo, hi]);
+  }), [data.shipments, field, wallClock, lo, hi, status, rep, route, issuesOnly, query]);
+
+  // Selection is only ever a subset of what is on screen. A tick on a row the
+  // filters have since hidden would otherwise ride along into the export,
+  // unseen — so anything filtered away is simply not counted.
+  const picked = rows.filter((s) => selected.has(s.id));
+  const exportRows = picked.length ? picked : rows;
+  const toggle = (ids, on) => setSelected((prev) => {
+    const next = new Set(prev);
+    ids.forEach((id) => (on ? next.add(id) : next.delete(id)));
+    return next;
+  });
+
+  const exportCsv = () => {
+    const name = `sample-report_${basis}_${lo || 'start'}_${hi || todayISO()}${picked.length ? '_selected' : ''}.csv`;
+    downloadCsv(name, reportCsv(exportRows));
+  };
 
   const cost = rows.reduce((n, s) => n + (Number(s.shipping_cost) || 0), 0);
   const cookies = rows.reduce((n, s) => n + (s.sample_shipment_items || []).reduce((m, i) => m + (i.qty || 0), 0), 0);
@@ -1706,8 +1837,10 @@ function ReportView({ data }) {
   const cortinaCount = rows.filter(isCortinaFulfilled).length;
   // On-time is only meaningful where BOTH dates exist. Counting a missing
   // delivery date as late would make Cortina orders look like failures.
-  const measurable = rows.filter((s) => s.required_by && s.delivered_at);
-  const onTime = measurable.filter((s) => new Date(s.delivered_at) <= new Date(`${s.required_by}T23:59:59`)).length;
+  const outcomes = rows.map((s) => deliveryOutcome(s.required_by, s.delivered_at)).filter(Boolean);
+  const onTime = outcomes.filter((o) => o.onTime).length;
+
+  const openShipment = openId ? data.shipments.find((s) => s.id === openId) : null;
 
   const Stat = ({ label, value, sub }) => (
     <div className="bg-cd border border-lt rounded-xl px-3 py-2">
@@ -1716,12 +1849,18 @@ function ReportView({ data }) {
       {sub && <div className="text-[12px] text-gr">{sub}</div>}
     </div>
   );
+  const label = 'text-[12px] text-gr uppercase font-bold tracking-[.4px]';
+  const control = 'px-2 py-1 rounded border border-lt text-[14px] bg-cd';
+
+  const sections = REPORT_SECTIONS
+    .map((sec) => ({ ...sec, rows: rows.filter(sec.test) }))
+    .filter((sec) => (status === 'all' ? sec.always || sec.rows.length : sec.key === status));
 
   return (
     <div>
-      <div className="bg-cd border border-lt rounded-xl px-3 py-2 mb-3 flex flex-col gap-2">
+      <div className="bg-cd border border-lt rounded-xl px-3 py-2 mb-3 flex flex-col gap-2 print:hidden">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[12px] text-gr uppercase font-bold tracking-[.4px]">Filter by</span>
+          <span className={label}>Filter by</span>
           <div role="radiogroup" aria-label="Date to filter by" className="inline-flex rounded border border-lt overflow-hidden">
             {REPORT_BASES.map((b) => (
               <button key={b.key} type="button" role="radio" aria-checked={basis === b.key} onClick={() => setBasis(b.key)}
@@ -1732,10 +1871,10 @@ function ReportView({ data }) {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[12px] text-gr uppercase font-bold tracking-[.4px]">From</span>
-          <input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} aria-label="From date" className="px-2 py-1 rounded border border-lt text-[14px] bg-cd" />
-          <span className="text-[12px] text-gr uppercase font-bold tracking-[.4px]">To</span>
-          <input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} aria-label="To date" className="px-2 py-1 rounded border border-lt text-[14px] bg-cd" />
+          <span className={label}>From</span>
+          <input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} aria-label="From date" className={control} />
+          <span className={label}>To</span>
+          <input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} aria-label="To date" className={control} />
           <div className="flex flex-wrap gap-1">
             {REPORT_PRESETS.map((p) => (
               <button key={p.key} type="button" onClick={() => applyPreset(p.key)}
@@ -1745,6 +1884,30 @@ function ReportView({ data }) {
             ))}
           </div>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={label}>Status</span>
+          <select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status" className={control}>
+            <option value="all">All</option>
+            {REPORT_SECTIONS.map((sec) => <option key={sec.key} value={sec.key}>{sec.label}</option>)}
+          </select>
+          <span className={label}>Salesperson</span>
+          <select value={rep} onChange={(e) => setRep(e.target.value)} aria-label="Salesperson" className={control}>
+            <option value="all">All</option>
+            {data.salespeople.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+          </select>
+          <span className={label}>Shipped by</span>
+          <select value={route} onChange={(e) => setRoute(e.target.value)} aria-label="Shipped by" className={control}>
+            <option value="all">All</option>
+            <option value="shipstation">Dirty Cookie</option>
+            <option value="cortina">Cortina</option>
+          </select>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Order no. or account"
+            aria-label="Search by order number or account" className={`${control} w-[180px]`} />
+          <label className="inline-flex items-center gap-1.5 text-[14px] text-dk">
+            <input type="checkbox" checked={issuesOnly} onChange={(e) => setIssuesOnly(e.target.checked)} />
+            With issues only
+          </label>
+        </div>
         <div className="text-[12px] text-gr">
           {basis === 'ordered' && 'Orders placed on the site in this range — both routes.'}
           {basis === 'label' && 'Orders whose shipping label was bought in this range. Cortina orders have no label, so they are not included.'}
@@ -1752,53 +1915,146 @@ function ReportView({ data }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-3">
         <Stat label="Shipments" value={rows.length} sub={cortinaCount ? `${cortinaCount} via Cortina` : 'all via ShipStation'} />
         <Stat label="Cookies" value={cookies} />
         <Stat label="Freight" value={`$${cost.toFixed(2)}`} sub="ShipStation orders only" />
-        <Stat label="On time" value={measurable.length ? `${onTime}/${measurable.length}` : '—'} sub={measurable.length ? 'with both dates' : 'no delivery dates yet'} />
+        <Stat label="On time" value={outcomes.length ? `${onTime}/${outcomes.length}` : '—'} sub={outcomes.length ? 'with both dates' : 'no delivery dates yet'} />
         <Stat label="With issues" value={withIssues} />
       </div>
 
-      <div className="overflow-x-auto border border-lt rounded-xl bg-cd">
-        <table className="w-full text-[14px]">
-          <thead>
-            <tr className="text-[12px] text-gr uppercase font-bold tracking-[.4px] border-b border-lt">
-              {['Order', 'Order Date', 'Account', 'Salesperson', 'Shipped by', 'Label Bought', 'Shipped', 'Shipping Cost', 'Deliver by', 'Delivered', 'Issues'].map((h) => (
-                <th key={h} className="text-left font-bold px-2 py-1.5 whitespace-nowrap">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && (
-              <tr><td colSpan={11} className="px-2 py-6 text-center text-gr italic">No orders in this range.</td></tr>
-            )}
-            {rows.map((s) => {
-              const cortinaRow = isCortinaFulfilled(s);
-              return (
-                <tr key={s.id} className="border-b border-bg last:border-0 align-top">
-                  <td className="px-2 py-1.5 font-mono font-bold text-dk whitespace-nowrap">{s.shipment_no}</td>
-                  <td className="px-2 py-1.5 whitespace-nowrap">{s.created_at ? new Date(s.created_at).toLocaleDateString() : '—'}</td>
-                  <td className="px-2 py-1.5">{s.account || '—'}</td>
-                  <td className="px-2 py-1.5">{s.sales_rep?.full_name || '—'}</td>
-                  <td className="px-2 py-1.5 whitespace-nowrap">{cortinaRow ? <span className={`${chip} bg-sky-100 text-sky-800`}>Cortina</span> : 'Dirty Cookie'}</td>
-                  <td className="px-2 py-1.5 whitespace-nowrap">{wallClockDate(s.label_created_at) || (cortinaRow ? 'n/a' : '—')}</td>
-                  <td className="px-2 py-1.5 whitespace-nowrap">{wallClockDate(s.shipped_at) || (cortinaRow ? 'n/a' : '—')}</td>
-                  <td className="px-2 py-1.5 whitespace-nowrap">{s.shipping_cost != null ? `$${Number(s.shipping_cost).toFixed(2)}` : (cortinaRow ? 'n/a' : '—')}</td>
-                  <td className="px-2 py-1.5 whitespace-nowrap">{s.required_by || '—'}</td>
-                  <td className="px-2 py-1.5 whitespace-nowrap">{s.delivered_at ? new Date(s.delivered_at).toLocaleDateString() : (cortinaRow ? 'n/a' : '—')}</td>
-                  <td className="px-2 py-1.5">
-                    {s.issue_at
-                      ? <div className="flex flex-wrap gap-1">{(s.issue_flags || []).map((f) => <span key={f} className={`${chip} bg-amber-100 text-amber-800`}>{issueLabel(f)}</span>)}</div>
-                      : <span className="text-gr">—</span>}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div className="flex flex-wrap items-center gap-2 mb-4 print:hidden">
+        <span className="text-[14px] text-gr">
+          {picked.length ? `${picked.length} selected` : 'Tick rows to export just those.'} Double-click an order to see its details or log an issue.
+        </span>
+        <div className="flex-1" />
+        {picked.length > 0 && (
+          <button type="button" onClick={() => setSelected(new Set())} className="text-[14px] text-pk font-semibold">Clear selection</button>
+        )}
+        <button type="button" onClick={exportCsv} disabled={!exportRows.length}
+          className="text-[14px] font-semibold px-3 py-1.5 rounded-lg bg-pk text-white disabled:opacity-50">
+          {picked.length ? `Export ${picked.length} selected (CSV)` : `Export all ${rows.length} (CSV)`}
+        </button>
       </div>
+
+      {sections.map((sec, n) => {
+        const ids = sec.rows.map((s) => s.id);
+        const allOn = ids.length > 0 && ids.every((id) => selected.has(id));
+        const sectionCost = sec.rows.reduce((t, s) => t + (Number(s.shipping_cost) || 0), 0);
+        return (
+          // A real page break when printed: each status starts on its own sheet.
+          <section key={sec.key} className={`mb-5 ${n > 0 ? 'print:break-before-page' : ''}`}>
+            <div className="flex items-baseline gap-2 mb-2">
+              <h3 className="text-[15px] font-extrabold text-dk uppercase tracking-[.4px]">{sec.label}</h3>
+              <span className="text-[14px] text-gr">
+                {sec.rows.length} · {sec.note}{sectionCost ? ` · $${sectionCost.toFixed(2)} shipping` : ''}
+              </span>
+            </div>
+            <div className="overflow-x-auto border border-lt rounded-xl bg-cd">
+              <table className="w-full text-[14px]">
+                <thead>
+                  <tr className="text-[12px] text-gr uppercase font-bold tracking-[.4px] border-b border-lt">
+                    <th className="px-2 py-1.5 w-8 print:hidden">
+                      <input type="checkbox" checked={allOn} disabled={!ids.length} onChange={(e) => toggle(ids, e.target.checked)}
+                        aria-label={`Select all ${sec.label}`} />
+                    </th>
+                    {REPORT_COLUMNS.map((h) => (
+                      <th key={h} className="text-left font-bold px-2 py-1.5 whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sec.rows.length === 0 && (
+                    <tr><td colSpan={REPORT_COLUMNS.length + 1} className="px-2 py-4 text-center text-gr italic">None in this range.</td></tr>
+                  )}
+                  {sec.rows.map((s) => {
+                    const cortinaRow = isCortinaFulfilled(s);
+                    const { countdown, outcome } = deliveryView(s);
+                    return (
+                      <tr key={s.id} onDoubleClick={() => setOpenId(s.id)}
+                        className={`border-b border-bg last:border-0 align-top cursor-pointer select-none hover:bg-pc ${selected.has(s.id) ? 'bg-pc' : ''}`}>
+                        {/* The tick box swallows double-clicks, so ticking two rows quickly never opens one. */}
+                        <td className="px-2 py-1.5 print:hidden" onDoubleClick={(e) => e.stopPropagation()}>
+                          <input type="checkbox" checked={selected.has(s.id)} onChange={(e) => toggle([s.id], e.target.checked)}
+                            aria-label={`Select ${s.shipment_no}`} />
+                        </td>
+                        <td className="px-2 py-1.5 font-mono font-bold text-dk whitespace-nowrap">
+                          {/* Double-click has no keyboard equivalent, so the order number is also a button. */}
+                          <button type="button" onClick={() => setOpenId(s.id)} className="hover:text-pk hover:underline" aria-label={`Open ${s.shipment_no}`}>
+                            {s.shipment_no}
+                          </button>
+                        </td>
+                        <td className="px-2 py-1.5 whitespace-nowrap">{s.created_at ? new Date(s.created_at).toLocaleDateString() : '—'}</td>
+                        <td className="px-2 py-1.5">{s.account || '—'}</td>
+                        <td className="px-2 py-1.5">{s.sales_rep?.full_name || '—'}</td>
+                        <td className="px-2 py-1.5 whitespace-nowrap">{wallClockDate(s.label_created_at) || (cortinaRow ? 'n/a' : '—')}</td>
+                        <td className="px-2 py-1.5 whitespace-nowrap">{wallClockDate(s.shipped_at) || (cortinaRow ? 'n/a' : '—')}</td>
+                        <td className="px-2 py-1.5 whitespace-nowrap">{s.shipping_cost != null ? `$${Number(s.shipping_cost).toFixed(2)}` : (cortinaRow ? 'n/a' : '—')}</td>
+                        <td className="px-2 py-1.5 whitespace-nowrap">
+                          {/* Before delivery: the date and how far out it is. After: just the date — the verdict is next door. */}
+                          <div className={outcome ? 'text-gr' : 'text-dk'}>{localDate(s.required_by) || '—'}</div>
+                          {countdown && (
+                            <div className={`text-[12px] font-bold ${countdown.overdue ? 'text-red-700' : countdown.dueSoon ? 'text-amber-700' : 'text-gr'}`}>
+                              {countdown.label}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-2 py-1.5 whitespace-nowrap">
+                          {s.delivered_at ? (
+                            <>
+                              {outcome
+                                ? <span className={`${chip} ${outcome.onTime ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{outcome.label}</span>
+                                : <span className="text-[12px] text-gr">no deliver-by date</span>}
+                              <div className="text-[12px] text-gr">{new Date(s.delivered_at).toLocaleDateString()}</div>
+                            </>
+                          ) : <span className="text-gr">{cortinaRow ? 'n/a' : '—'}</span>}
+                        </td>
+                        <td className="px-2 py-1.5">
+                          {s.issue_at
+                            ? <div className="flex flex-wrap gap-1">{(s.issue_flags || []).map((f) => <span key={f} className={`${chip} bg-amber-100 text-amber-800`}>{issueLabel(f)}</span>)}</div>
+                            : <span className="text-gr">—</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        );
+      })}
+
+      {openShipment && (
+        <ShipmentDialog s={openShipment} canWrite={canWrite} refresh={refresh} setToast={setToast} onClose={() => setOpenId(null)} />
+      )}
     </div>
+  );
+}
+
+// The Reports detail window: the same detail the Shipments tab expands to,
+// issue log included, without leaving the report.
+function ShipmentDialog({ s, canWrite, refresh, setToast, onClose }) {
+  const ref = useRef(null);
+  useDialog(ref, onClose);
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/50 z-[60]" onClick={onClose} aria-hidden="true" />
+      <div
+        ref={ref} role="dialog" aria-modal="true" aria-labelledby="shipment-dialog-title"
+        className="fixed z-[70] inset-x-0 bottom-0 sm:inset-0 sm:m-auto sm:h-fit sm:max-w-[640px] max-h-[90vh] overflow-y-auto bg-cd rounded-t-2xl sm:rounded-2xl shadow-2xl p-4"
+      >
+        <div className="flex items-start justify-between gap-2 mb-3">
+          <div className="min-w-0">
+            <h2 id="shipment-dialog-title" className="text-[18px] font-extrabold text-dk font-mono">{s.shipment_no}</h2>
+            <div className="text-[14px] text-gr truncate">
+              {s.account || 'No account'} · {s.sales_rep?.full_name || 'Unknown'} · <StatusPill s={s.status} />
+            </div>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close" className="text-gr hover:text-dk text-[20px] leading-none px-1">×</button>
+        </div>
+        <ShipmentDetail s={s} canWrite={canWrite} refresh={refresh} setToast={setToast} />
+      </div>
+    </>
   );
 }
 

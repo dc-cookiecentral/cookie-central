@@ -311,10 +311,42 @@ claim.**
 
 ## Reports — renamed from Monthly Report, Oct 21 2026
 
-A tab, on-screen only (no CSV, by choice). Five stat tiles (shipments, cookies,
-freight, on-time, with-issues) and a table across **both** fulfilment routes.
-Columns: Order, Order Date, Account, Salesperson, Shipped by, Label Bought,
-Shipped, **Shipping Cost** (was "Cost"), Deliver by, Delivered, Issues.
+Five stat tiles (shipments, cookies, freight, on-time, with-issues) over
+**both** fulfilment routes. Columns: Order, Order Date, Account, Salesperson,
+Label Bought, Shipped, **Shipping Cost** (was "Cost"), Deliver by, Delivered,
+Issues. (*Shipped by* was dropped Oct 22. The Cortina section and the
+shipped-by filter carry the route now.)
+
+**Deliver by / Delivered (Oct 22 2026)** answer a different question before and
+after delivery. Until the order is delivered, *Deliver by* shows the date and a
+countdown (`5d left`, `due today`, `2d overdue`; amber within 2 days, red when
+past). Once it is delivered, *Delivered* shows **On time** or **N days late**,
+with the delivery date underneath. Days are compared as local calendar days,
+so arriving at any time on the deliver-by date counts as on time
+(`deliveryOutcome` in `src/utils/sampleCentral.js`). Cortina and cancelled/on-hold
+orders get no countdown, since nothing will ever deliver them. The CSV carries
+the same text in a *Delivery* column.
+
+**Status sections (Oct 22 2026):** the rows are split by status, in pipeline
+order: **In process** (`submitted`/`processing`), **Shipped**, **Delivered**,
+then **Cortina orders** and **Cancelled / on hold** when either has rows.
+Cortina rows get their own section for the same reason as on the Shipments tab:
+they never leave `submitted`. When printed, each section starts on a new page.
+
+**Filters, selection and CSV export (Oct 22 2026; this reverses the earlier
+"no CSV" choice):** status, salesperson, shipped-by, order-no./account search
+and "with issues only", on top of the date filter. The stat tiles follow the
+filters. Rows have tick boxes, and each section has a tick-all box. **Export**
+downloads the ticked rows, or every filtered row when none are ticked. Ticks on
+rows the filters have hidden are ignored. The CSV has the table's columns plus
+Status, Issue note and Cookies, with dates as `YYYY-MM-DD` and a UTF-8 BOM for
+Excel.
+
+**Detail window:** double-clicking a row (or clicking its order number, which is
+the keyboard route) opens the same detail the Shipments tab expands to,
+including the issue log. Both views render the shared `ShipmentDetail`
+component. The issue panel keeps its rule: it shows for delivered orders, or any
+order that already has an issue.
 
 **Date filter** (replaced the month picker on Oct 21): a From/To range, presets
 (This month, Last month, Last 30 days, Year to date, All time), and a choice of
