@@ -190,13 +190,26 @@ export const pipelineIndex = (status) =>
 // as the 19th anywhere west of Greenwich — an off-by-one on the exact field the
 // whole feature is about.
 export function deliverByState(requiredBy, status) {
-  if (!requiredBy || !OPEN_STATUSES.includes(status)) return null;
-  const [y, m, d] = String(requiredBy).split('-').map(Number);
+  if (!OPEN_STATUSES.includes(status)) return null;
+  return deliveryCountdown(requiredBy);
+}
+
+// Calendar days from `from` (a local Date, default today) to a YYYY-MM-DD
+// deliver-by date. Negative = past it. Null when there is no usable date.
+function daysToDeliverBy(requiredBy, from = new Date()) {
+  const [y, m, d] = String(requiredBy || '').split('-').map(Number);
   if (!y || !m || !d) return null;
-  const due = new Date(y, m - 1, d);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const days = Math.round((due - today) / 86400000);
+  const start = new Date(from);
+  start.setHours(0, 0, 0, 0);
+  return Math.round((new Date(y, m - 1, d) - start) / 86400000);
+}
+
+// The countdown alone, for any order not yet delivered — in transit included,
+// which deliverByState leaves out because the Shipments tab only shows it on
+// the Ordered section.
+export function deliveryCountdown(requiredBy) {
+  const days = daysToDeliverBy(requiredBy);
+  if (days == null) return null;
   return {
     days,
     overdue: days < 0,
@@ -207,6 +220,18 @@ export function deliverByState(requiredBy, status) {
       : days === 1 ? 'due tomorrow'
       : `${days}d left`,
   };
+}
+
+// After delivery the deadline stops being a countdown and becomes a verdict:
+// on time, or late by how many days. Compared as calendar days in local time —
+// arriving at 4pm on the deliver-by date is on time. Null when either date is
+// missing, so a Cortina order (never a delivery date) is not judged at all.
+export function deliveryOutcome(requiredBy, deliveredAt) {
+  if (!deliveredAt) return null;
+  const days = daysToDeliverBy(requiredBy, new Date(deliveredAt));
+  if (days == null) return null;
+  const late = Math.max(0, -days);
+  return { onTime: late === 0, daysLate: late, label: late === 0 ? 'On time' : `${late} day${late === 1 ? '' : 's'} late` };
 }
 
 // Off-pipeline states ShipStation can put an order into. They are NOT stages:
