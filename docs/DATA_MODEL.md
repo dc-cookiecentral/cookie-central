@@ -6,8 +6,7 @@
 ## Entity Relationship Overview
 
 ```
-subcategories ──< products
-products ──< po_line_items
+subcategories                                   (legacy; the old products FK is gone, see below)
 purchase_orders ──< po_line_items
 purchase_orders ──< shipments
 purchase_orders ──< invoices
@@ -38,6 +37,39 @@ The **systems@ AI email agent** (Phase 2, live) writes into `po_emails`, `po_lot
 `po_changes` (`change_source='email'`), `weekly_reports`, and `upload_log` (`source='email'`).
 See the Gmail-agent tables + functions at the end of this doc.
 
+## Spec Sheet + Sample Central tables (as built, Oct 2026)
+Consolidated from `DATA_MODEL_ADDITIONS.md` (the July *intent*) and checked against the live schema on 2026-10-22. **Rule: derived values (storage from prep, case net weight, shipment temp, the price list) are computed, never stored.**
+
+```
+wip_doughs        doughs (WIP)                              wip_sku, name, type, subtype, raw_base, mixins
+products          the cookie atom — code is the FK everywhere code (e.g. WCBC-1OZ-BAK-C), description, flavor, outer_cookie,
+                                                            stuffing, tier, form, prep, dough_oz, wip_dough, allergens,
+                                                            ingredients, nutrition, sample_eligible
+stuffings         filling list                              stuffing_id (ST-01…), name, type
+eaches            retail unit → products.code (FK)          each_sku, product_code, each_upc, cookies_per_each, pack_type,
+                                                            net_wt, brand, retail_price, dims, sample_eligible
+inners            inner case → eaches                       inner_sku, each_sku, eaches_per_inner, upc, gtin14
+master_cases      shipping case → cookies | eaches | inners case_id (MC-###), name, composed_of, unit_ref, unit_qty, channel,
+                                                            gtin14, product_sku, dims/weights, ti, hi, cases_per_pallet,
+                                                            shelf_life, storage_override, sample_eligible
+product_prices    the only stored price data                master_case_id, channel, list_price, effective_from/to
+price_list        VIEW: case + composition + price + derived storage / net weight
+
+addresses         ship-to book (retired, never deleted)     nickname, contact_name, company, street, city, state, zip, active
+sales_reps        Salesperson dropdown — NOT logins         full_name, email, company, active
+sample_shipments  one order (SMP-####)                      status (owned by ShipStation), account, address_id, sales_rep_id,
+                                                            temp/temp_override, required_by, rush, collateral, notes,
+                                                            fulfilled_by, third-party billing, tracking/carrier/service,
+                                                            label_created_at, shipped_at, shipping_cost, delivered_at,
+                                                            issue_flags/issue_note/issue_at, excluded (hidden test orders)
+sample_shipment_items  lines → products.code, or custom     product_code, custom, custom_spec, project_no, qty, description
+sample_templates  saved assortments                         name, items
+sample_settings   live switches (e.g. cold season)          key, value
+```
+
+**Walmart products:** `each_sku`, `unit_ref` and `product_sku` hold the **4-digit Cortina item number** (1251/1252/1287/1324). That is the SKU for Walmart products (confirmed Oct 22 2026). Dirty Cookie product codes (`PBJ-3OZ-RAW-C`) live in `products.code`. Walmart's prime item number (6796405xx) is used only by the Demand Planner maps.
+
+
 ## Tables
 
 ### subcategories
@@ -55,21 +87,8 @@ Defines UOM conversion chains per product category.
 | cases_per_pallet | int | 189 |
 | cookies_per_pallet | int | 9072 (computed) |
 
-### products
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid PK | |
-| sku | text UNIQUE | "C-F-SC-WCCB-12-12-WMT" |
-| short_name | text | "WCCB" |
-| full_name | text | |
-| subcategory_id | uuid FK → subcategories | |
-| retailer | text | "Walmart", "Kroger" |
-| status | text | active, upcoming, discontinued |
-| launch_date | date | |
-| cog_per_case | numeric | Editable (finance role) |
-| revenue_per_case | numeric | Editable (finance role) |
-| shelf_life_days | int | 270 |
-| notes | text | |
+### products — ⚠️ replaced July 2026
+The finished-goods `products` table this section used to describe (`sku`, `short_name`, `full_name`, `retailer`, …) was renamed and **dropped** in July 2026 (ADR-024/025, migrations `20260714120000` → `20260715130000`). `products` is now the Spec Sheet's cookie table — see **Spec Sheet + Sample Central tables** above. `po_line_items` keeps text `sku` / `cortina_item_number` with no FK; the item-number → SKU maps live in `src/hooks/useDemandFeeds.js`.
 
 ### purchase_orders
 | Column | Type | Notes |

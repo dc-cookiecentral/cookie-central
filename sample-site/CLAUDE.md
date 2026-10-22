@@ -64,8 +64,8 @@ drift that stood from Aug 11 was repaired on **Aug 19** (`migration repair
 --status applied`, after probing the live schema to confirm each was genuinely
 present).
 
-**As of Aug 23 2026 the ledger is IN SYNC: 72 registered, 72 files, 0
-unregistered.** It drifted by 3 earlier the same day — the EOS migrations applied
+**As of Oct 22 2026 the ledger is IN SYNC: 79 registered, 79 files, 0
+unregistered.** On Aug 23 (72 registered) it had drifted by 3 earlier that day — the EOS migrations applied
 through the Management API — and was repaired with
 `npx supabase migration repair --status applied <version>`, which marks a
 migration registered **without re-running it**. That is the right tool when the
@@ -212,15 +212,16 @@ and the rebuilt **Shipments** tab.
 `on_hold` **cannot** work without a V1 key, and `processing` is written by
 nothing, ever.
 
-**LAUNCHED Aug 19 2026.** Test mode is off in Production, `sample_shipments` is
-empty, the counter floor is **1206**, and the seasonal cold rule exists in
-ShipStation. The first real order will number `SMP-1206`.
+**LAUNCHED Aug 19 2026.** Test mode is off in Production, the counter floor is
+**1206**, and the seasonal cold rule exists in ShipStation. SMP-1206, 1207, 1210,
+1211 and 1212 turned out to be post-launch **test** orders. They are cancelled
+and hidden with `excluded = true` (their numbers stay used). **SMP-1208 and
+SMP-1209 are the first real orders.**
 
 **What is actually outstanding:**
-- **A real carrier `DE` has never been observed.** Every layer is proven; the
-  first genuine delivery is the remaining proof for ADR-043. The go-live purge
-  removed the only order that ever had a tracking number, so this now rides on
-  real traffic.
+- ~~A real carrier `DE` has never been observed.~~ **Closed Oct 21 2026:
+  SMP-1208 was delivered by UPS**, the first real carrier delivery and the last
+  proof ADR-043 needed.
 - **No custom SMTP.** Auth email is capped at **2/hour, project-wide** — magic
   link is unusable for anyone added later. Today's one Cortina account is
   password-provisioned, so nothing is blocked. `site_url` is also `http://` and
