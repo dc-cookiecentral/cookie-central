@@ -1,7 +1,7 @@
 # Cookie Central — Build Plan
 
 ## Timeline
-*(current as of August 13, 2026)*
+*(current as of October 22, 2026)*
 - **Start:** Wednesday May 21, 2026
 - **Phase 1 demo:** delivered June 2026 (Marc + David) ✅
 - **Phase 1 ship:** largely live. AI email reader (Day 10) ✅ and lot-traceability chain UI (Day 11) ✅ done. Remaining: Cortina NetSuite real-file reconciliation (waiting on Harshita's sample); DOT/QBO real-file reconciliation non-blocking.
@@ -11,13 +11,52 @@
 
   **August 12–13 (ADR-043→045):** `delivered` finally has a source — not the `/v2/tracking` path everyone had written off as a billing wall, but the per-label track endpoint that was available all along (ADR-043). Orders split into **two fulfilment routes**, with Cortina-shipped samples withheld from the export by an allowlist and confirmed by hand via a copy/print order sheet (ADR-044). The site took ownership of data ShipStation has no field for — a per-shipment **issue log** and a live **cold-chain season** switch (ADR-045) — plus a monthly report spanning both routes. A pre-onboarding UX/PM review shipped in three batches: a confirm step on the unrecallable submit, keyboard-accessible dialogs, address retirement, and a four-step type scale.
 
-  **Launched August 19, 2026 (ADR-046).** Test mode is off in Production, the test orders were cancelled and purged, the counter floor is 1206, and the seasonal cold rule exists in ShipStation. The first real order numbers `SMP-1206`. There is still no sandbox — **Preview** builds share the production database and store, so a branch-build order is a real order (kept `SMP-TEST-`-prefixed deliberately). **Current state + next steps: `sample-site/docs/SAMPLE_CENTRAL_STATUS.md`**, which is kept more current than this file.
+  **Launched August 19, 2026 (ADR-046).** Test mode is off in Production, the test orders were cancelled and purged, the counter floor is 1206, and the seasonal cold rule exists in ShipStation. The first real order numbers `SMP-1206`. *(Corrected Oct 22 2026: 1206, 1207, 1210, 1211 and 1212 turned out to be post-launch test orders, now hidden. The first real orders are SMP-1208 and SMP-1209. See Oct 21–22 below.)* There is still no sandbox — **Preview** builds share the production database and store, so a branch-build order is a real order (kept `SMP-TEST-`-prefixed deliberately). **Current state + next steps: `sample-site/docs/SAMPLE_CENTRAL_STATUS.md`**, which is kept more current than this file.
 
   **August 21–23 2026 — three more things shipped.** The **EOS Tracker** went live at `/eos` (ADR-047; `docs/EOS.md`), and its scorecard was reshaped in a pre-launch review: 13 measurables with goals, ranges rather than ceilings where days-on-hand needed a floor, and To-Dos that hang off a measurable and carry forward until ticked. The **Walmart Demand Planner** went live at `/demand-planner`, initially on a static 2026-08-13 snapshot; **on August 24 it went LIVE on real Walmart data** — POS, Walmart forecast, OTIF, DOT cut recovery and NetSuite orders read the `retail_link_*` / `dot_order_history` tables, fed by six weekly uploads, with a **Service health** panel leading on in-store fill rate and OTIF and a **Sources** tab giving provenance for every figure (ADR-053→062; all four migrations applied, all six exports uploaded). Only `production` remains on `SEED`, and there is no DOT on-hand feed at all — so **days-on-hand and recommended production are not yet trustworthy and are flagged as such** in `DEMAND_PLANNER_KNOWN_ISSUES.md`. See `docs/DEMAND_PLANNER_FORMULAS.md` → "As built". And **five pages were hidden pending rework** (Weekly Report, Product Orders, Payments, EOM Snapshot, Lot Trace) — routes intact, nav entries flagged `hidden: true`, internal landing moved to `/inventory`.
 
-  **October 12–13 2026 — the first changes since Aug 24.** Seven quiet weeks in the repo while the app stayed in use: the daily Walmart order ingest kept running, Retail Link files were uploaded Oct 9 and Oct 12, and `purchase_orders` grew past the 1,000-row cap this plan had forecast for November (see the open ticket above — it is no longer a forecast). Shipped Oct 12: **a fourth Walmart SKU** (`BC` — Cortina item 1324 / Walmart prime item 686669913) which had been launching since week 202635 and was invisible on `/demand-planner`, dropped by a hardcoded three-SKU map along with 22,845 cases of orders and 266k units of Walmart forecast; the maps now **report any item number they cannot translate** rather than skipping it; and the banner's "as of" week stopped reading sixteen weeks into the future. **`BC`'s display name is provisional** — read off Walmart's own fields, not a Dirty Cookie product list. ADR-063. The docs were reviewed against the live database the same day; several standing claims were wrong and are corrected (`PEOPLE.md` account state, `DATA_MODEL.md` on forward-week rows, ADR-024's description of a table that has since been dropped).
+  **October 12–13 2026 — the first changes since Aug 24.** Seven quiet weeks in the repo while the app stayed in use: the daily Walmart order ingest kept running, Retail Link files were uploaded Oct 9 and Oct 12, and `purchase_orders` grew past the 1,000-row cap this plan had forecast for November (see the open ticket above — it is no longer a forecast). Shipped Oct 12: **a fourth Walmart SKU** (`BC` — Cortina item 1324 / Walmart prime item 686669913) which had been launching since week 202635 and was invisible on `/demand-planner`, dropped by a hardcoded three-SKU map along with 22,845 cases of orders and 266k units of Walmart forecast; the maps now **report any item number they cannot translate** rather than skipping it; and the banner's "as of" week stopped reading sixteen weeks into the future. **`BC`'s display name is provisional** — read off Walmart's own fields, not a Dirty Cookie product list. ADR-063. *(Resolved Oct 22 2026: official name confirmed. See below.)* The docs were reviewed against the live database the same day; several standing claims were wrong and are corrected (`PEOPLE.md` account state, `DATA_MODEL.md` on forward-week rows, ADR-024's description of a table that has since been dropped).
+
+  **October 21–22 2026 — Sample Central reports; Walmart product spec.** PRs #59–#64; migrations `20261021120000`, `20261022150000`. Live and checked.
+
+  *Done*
+  - [x] Sample Central Reports: date-range filter, status sections, filters, CSV export, double-click detail with issue log, on-time / days-late delivery column — 2026-10-21/22
+  - [x] Five test orders hidden; ship dates no longer show a day early — 2026-10-21
+  - [x] Black Currant in the Spec Sheet (`WCBC-1OZ-BAK-C`: black currant stuffed with white chocolate, 1 oz × 7 per pouch, 10/case, 96/pallet, 9 months) — 2026-10-22
+  - [x] Walmart products matched to Walmart's Item 360: official bettergoods names, case GTINs, 12/case, $4.88 — 2026-10-22
+  - [x] Demand Planner: official names; BC converted at 10 units/case — 2026-10-22
+
+  *Decisions*
+  - Test orders are hidden (`excluded`), never deleted: deleting frees their shipment numbers for reuse.
+  - Reports get a CSV export, reversing August's "no CSV".
+  - Walmart SKUs are the 4-digit Cortina item numbers (1251/1252/1287/1324). Cortina's line number (BC 3888) is separate.
+  - Only Walmart's PB&J (1251) is grape; all other PB&J is strawberry jelly.
+  - BC is 1 oz × 7 per Caroline, overriding Walmart's "3 oz, 4 Count" listing.
+  - The three Walmart doughs stay at 12/case until the new count is set.
+
+  *To do*
+  - [ ] Confirm the case count on the ~10× $/case Walmart order lines before changing data (`DEMAND_PLANNER_KNOWN_ISSUES.md` §9; start with PO 6185610199)
+  - [ ] Walmart order uploads stuck at `processing`
+  - [ ] Re-measure ADR-063's BC figures (ask before amending)
+  - [ ] New case count for the three doughs; BC's MOQ (waiting on Caroline)
+  - [ ] Decide: issue logging before delivery? Rename "Freight" tile?
+  - [x] Refresh `sample-site/CLAUDE.md` "Current state" (first real delivery: SMP-1208, UPS, Oct 21) — 2026-10-22
+  - [ ] Minor: the Supply Plan upload summary converts eaches ÷ 12 for every item. BC is 10 per case (`src/parsers/retailLinkSupplyPlan.js:141`, display only).
+
 - **Phase 2 — Operations:** upcoming (weeks following Phase 1 ship).
 - **Phase 3 — Financials + Rollout:** late summer 2026.
+
+## Standing decisions (Spec Sheet, Sample Central, ShipStation)
+
+Rules set in the July 2026 senior review and build plan. They still hold. Full reasoning is in `DECISIONS.md`, ADR-024 to ADR-046.
+- **Compute derived values, never store them:** storage (from prep), case net weight, shipment temperature and the price list are views or render-time calculations.
+- **Reference by code or id, never by display text:** line items, templates and case compositions point at `products.code` and friends.
+- **ShipStation automation rules use tags, never item SKUs.** SKU rules silently skip multi-item orders, and sample orders are usually multi-item.
+- **ShipStation owns fulfilment and status:** box, service, label and email routing. The site sends intent and reads status back; it never sets status itself (ADR-032).
+- **One product spine:** Sample Central reads Spec Sheet products (`sample_eligible`) and keeps no product list of its own.
+- **Branch per change; Caroline reviews before merge.** Any deviation from a plan gets an ADR.
+
+*Folded in Oct 22 2026 (all in git history):* `EXTENSION_BUILD_PLAN.md`, `CLAUDE_CODE_TASKS.md` and `SENIOR_REVIEW.md` (the July plan, task list and review; that work is done, see Timeline) and `DATA_MODEL_ADDITIONS.md` (now the as-built section of `DATA_MODEL.md`). `PRELAUNCH.md`'s open items moved to the Launch checklist below.
 
 ## 🔴 OPEN — Row-cap truncation. **NO LONGER PENDING: this crossed on or before Oct 12 2026**
 
@@ -145,6 +184,14 @@ Module-by-module:
 - [ ] **Subdomain on dirtycookie.com** — hidden + protected entry. David owns the website infra; conversation needed on which subdomain (`ops.`/`central.`/something else), how to gate access beyond Supabase Auth (IP allowlist? Vercel password protection? basic auth at the edge?), and who manages DNS + the cert.
 - [x] **Anthropic console + ANTHROPIC_API_KEY** — provisioned + stored in Supabase Vault.
 - [x] **Gmail OAuth for systems@dirtycookie.com** — OAuth client provisioned; systems@ granted refresh-token consent; token stored in Vault. Agent connected and processing live mail.
+- [ ] **Rotate the Supabase `service_role` key.** It was shared into a dev session on 2026-06-02. That was precautionary, with no sign of exposure. Supabase → Project Settings → API → roll `service_role`. If `EDGE_CRON_BEARER` holds the same key, re-point it: `select public.set_secret('EDGE_CRON_BEARER', '<new key>');`. *(Moved from PRELAUNCH.md.)*
+- [x] **Demo and simulated POs removed:** PO14201…PO14400 and PO14451 are gone from `purchase_orders` (checked 2026-10-22). *(From PRELAUNCH.md.)*
+- [x] **Demand Planner supply-side numbers flagged as placeholder** in the UI — 2026-08-24. Still worth telling the team out loud. *(From PRELAUNCH.md.)*
+- [ ] **Add the DOT Order History to the weekly upload routine.** The last upload was 2026-08-24, still true on 2026-10-22. On the next one, check whether it contains orders with zero cuts. *(From PRELAUNCH.md.)*
+- [ ] **Don't raise the "CCF ×5.0 forecast" with Bentonville.** That figure was retracted; the defensible one is CCF 26,549 vs 5,355 at week 202629. *(From PRELAUNCH.md.)*
+- [ ] **Decide on Walmart's PB&J in-stock restatement** (weeks 21–27 revised from 0.62–0.69 up to 0.87–0.98). It moves the forecast. *(From PRELAUNCH.md.)*
+- [ ] **Run `node scripts/smoke-render.mjs` before any Demand Planner deploy.** The page shipped blank three times without it. *(From PRELAUNCH.md.)*
+- [x] **BC's name and short code confirmed** — 2026-10-22 (see Timeline). The Walmart products now exist in the Spec Sheet, keyed by Cortina item number. The Demand Planner still translates item numbers with hardcoded maps in `useDemandFeeds.js`; reading them from the Spec Sheet would stop a new SKU from disappearing silently. *(From PRELAUNCH.md.)*
 - [x] **AI Agent build (Day 10.1 – 10.5)** — Gmail OAuth, polling Edge Function (daily cron + button), six-way classification, structured extraction into `po_emails` + `po_lot_numbers` + `po_changes`, PO-detail AI Insight card swapped to live extraction, supplier-confirmation + emailed-Assemblers/weekly auto-capture. Deployed. (Cron migration `..150000` applied separately; see RUNBOOK §9.1.)
 
 ---

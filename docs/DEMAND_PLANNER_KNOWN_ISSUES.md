@@ -254,7 +254,14 @@ arrived in the latest Walmart order uploads:
 - **the dollars are right** and `quantity_cases` is too low, so the order book
   is short on cases instead.
 
-Nothing in the database can tell these apart. **Confirm the case count** by
+**Walmart's own figures say the flagged lines are the wrong ones** (added Oct 22
+2026, from the Item 360 export). Unit cost × pack gives exactly the normal
+prices: $3.08 × 12 = **$36.96** for the three doughs, and $3.39 × 10 = **$33.90**
+for BC. BC's flagged price is exactly 10×, and BC has 10 pouches a case, which
+suggests pouches were recorded as cases (the case count is short). That is a
+lead, not proof: the doughs' 10.5× fits neither reading cleanly.
+
+The database alone cannot settle it. **Confirm the case count** by
 opening `Walmart_Orders_2026-10-20.xlsx` and checking one line. A good one to
 start with is PO **6185610199**, item 1324, recorded as **75 cases / $25,443**.
 
