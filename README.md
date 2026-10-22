@@ -3,22 +3,30 @@
 Operational dashboard for Dirty Cookie's white-label retail business (Walmart + Kroger) through Cortina Foods.
 
 **Stack:** React + Vite + Tailwind + Supabase + Vercel
-**Status** *(Aug 24 2026)*: **Walmart Demand Planner is live on real data** — see the warning block below and `docs/DEMAND_PLANNER_KNOWN_ISSUES.md`. Previously *(Aug 23)*: Phase 1 demo shipped (June 2026); launch hardening in progress. All demo modules are live against Supabase, plus the `systems@` AI email agent (Day 10) and the Lot Traceability chain UI (Day 11). One ship blocker remains before Phase 1 is declared shipped: Cortina NetSuite real-file reconciliation (awaiting Harshita's export sample). See `docs/BUILD_PLAN.md`.
+**Status** *(Oct 13 2026)*: live and in use; **no code changes between Aug 24 and Oct 12 2026**. The Retail Link uploads are being kept current (WK36 went in Oct 12) and the daily Walmart order ingest is running; the DOT Order History has not been uploaded since Aug 24. Two open items carry real consequences — the row cap (now crossed) and the fourth SKU — both in the warning block below. Previously *(Aug 24)*: **Walmart Demand Planner is live on real data** — see `docs/DEMAND_PLANNER_KNOWN_ISSUES.md`. Previously *(Aug 23)*: Phase 1 demo shipped (June 2026); launch hardening in progress. All demo modules are live against Supabase, plus the `systems@` AI email agent (Day 10) and the Lot Traceability chain UI (Day 11). One ship blocker remains before Phase 1 is declared shipped: Cortina NetSuite real-file reconciliation (awaiting Harshita's export sample). See `docs/BUILD_PLAN.md`.
 
 > ## ⚠️ Using the Demand Planner? Read `docs/DEMAND_PLANNER_KNOWN_ISSUES.md` first.
 >
 > It went live on real Walmart data on **Aug 24 2026**. Most of it reconciles to
-> Walmart's own totals. Two things do not, and look just as convincing:
+> Walmart's own totals. These do not, and look just as convincing:
 >
 > 1. **Do not plan production off it yet.** DC/DOT days-on-hand and the
 >    recommended-production figures divide real demand by placeholder supply
 >    (`production_runs` holds 5 rows; there is no DOT on-hand feed). PB&J reads
 >    363.8 days on hand and every SKU recommends 0 cases. Trust POS, in-store
 >    fill, OTIF, forecast, orders and cut recovery — not the supply side.
-> 2. **`purchase_orders` is at 892 of Supabase's 1,000-row query cap**, growing
->    ~45–50/month. Around **Nov 2026** Product Orders, Payments and Alerts begin
->    silently dropping rows — no error, just less data. Fix is the `fetchAll`
->    pattern already in `src/hooks/useDemandFeeds.js`.
+> 2. ⚠️ **Supabase's 1,000-row query cap is now CROSSED — three pages are
+>    truncating today.** Measured Oct 12 2026: `purchase_orders` **1,265 rows**
+>    and `po_line_items` **1,606**, both returning exactly 1,000 unpaged, with no
+>    error. **Product Orders**, **Payments** and **Alerts** are dropping rows —
+>    limited only by all three currently being hidden from the sidebar, so fix
+>    this **before Product Orders comes back**. Fix is the `fetchAll` pattern
+>    already in `src/hooks/useDemandFeeds.js`. (This said "at 892… around Nov
+>    2026" until Oct 13 2026.)
+> 3. **A fourth Walmart SKU (`BC`) joined in week 202635** and was invisible on
+>    `/demand-planner` for two weeks — 22,845 cases of orders dropped by a
+>    hardcoded SKU map. Fixed Oct 12 2026; the page now reports any item number
+>    it cannot map. Its display name is **provisional**. See ADR-063.
 
 **Also in this repo — a separate project.** The **Sample Ordering Site (Sample Central)**, where Cortina salespeople build sample shipments that flow to the co-manufacturer through ShipStation. Built July–August 2026 (ADR-025→046) and **launched August 19, 2026** — test mode is off in Production, the table was purged, and the first real order numbers `SMP-1206`. There is still no ShipStation sandbox: **Preview** builds share the production database and store, so a branch-build order is a real order (kept `SMP-TEST-`-prefixed on purpose). It shares this repo, the Supabase project and some infrastructure, but its goals, data and decisions are separate; don't conflate the two.
 
@@ -59,11 +67,11 @@ The login form supports both **magic link** (default) and **password** (fallback
 
 ## Migrations
 
-Migrations live in `supabase/migrations/` — **68 files as of August 19, 2026**. The Supabase + GitHub integration is currently disabled, so nothing auto-applies on push.
+Migrations live in `supabase/migrations/` — **76 files as of October 13, 2026**. The Supabase + GitHub integration is currently disabled, so nothing auto-applies on push.
 
 **`npx supabase db push` works.** This README previously said it did not, on the grounds that there is no Docker locally. That was wrong: `db push` connects straight to the remote database and needs Docker only for the *local* stack (`supabase start`, `db diff`, `db reset`). Use `db push --dry-run` first — it prints exactly which files would apply — then `db push --yes`. Pasting into the SQL editor and POSTing to the Management API's `/database/query` endpoint both still work and are still fine for one-offs.
 
-✅ **The ledger is in sync as of August 19, 2026** — all 68 files registered.
+✅ **The ledger is in sync as of October 13, 2026** — all 76 files registered, re-verified with `npx supabase migration list` (every entry `local` == `remote`).
 
 ⚠️ **It drifts whenever you apply SQL by hand.** The Management API and the SQL editor execute statements without writing a `supabase_migrations.schema_migrations` row, so anything applied that way is invisible to the CLI — and a later `db push` will try to **replay** it. This had accumulated to 12 unregistered Sample Central migrations before being repaired (ADR-047).
 

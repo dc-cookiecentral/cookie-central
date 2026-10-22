@@ -113,8 +113,11 @@ role first if `ops` isn't what you want them to have.
 - [x] **Paul Hardy (President) — DONE Aug 14, 2026.** `paul@dirtycookie.com`,
   role **`admin`** (he is meant to see everything, so not `ops` and not the
   Sample-Central-only `cortina`), seeded by migration
-  `20260814120000_seed_paul_hardy.sql` and verified live. He has **not signed in
-  yet** — the seed is what makes that first sign-in safe. The same migration adds
+  `20260814120000_seed_paul_hardy.sql` and verified live. ⚠️ **Correction (Oct 13
+  2026): he had already signed in** — his `user_profiles` row dates from Jun 2
+  2026, so the "not signed in yet" written here on Aug 14 was wrong. His role
+  reads `admin`, so no harm done; the migration re-asserted a seed that matched.
+  The seed is still what makes a first sign-in safe for anyone who has not. The same migration adds
   his `sales_reps` row, since he places orders himself and the picker is a
   separate table from auth.
 

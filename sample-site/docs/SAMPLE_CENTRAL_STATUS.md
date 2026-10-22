@@ -2,7 +2,17 @@
 
 **As of August 19, 2026 — LAUNCHED.** Test mode is off, the table is empty and
 the first real order will number `SMP-1206`. The authoritative answer to "what's
-built, what's live, what's next." Design *rationale* lives in `DECISIONS.md` (ADR-024→046);
+built, what's live, what's next."
+
+⚠️ **Still zero orders as of Oct 13 2026 — eight weeks after launch.**
+`sample_shipments` and `sample_shipment_items` both hold **0 rows** (verified
+against the live database; both tables have a public-read policy, so that is a
+real zero and not RLS hiding anything). The first real order will still number
+`SMP-1206`. Nothing is broken that anyone has found — but nothing has been used
+either, and it is worth establishing whether that is genuinely no demand or the
+Cortina account never being used. See the account note below.
+
+Design *rationale* lives in `DECISIONS.md` (ADR-024→046);
 account-side setup lives in `SHIPSTATION_SETUP_CHECKLIST.md`. This file is state,
 not reasoning — if it disagrees with an ADR about *why*, the ADR wins. If it
 disagrees with an ADR about *what is true now*, this file wins.
@@ -33,7 +43,7 @@ disagrees with an ADR about *what is true now*, this file wins.
 | `CustomField1 / 2 / 3` | salesperson / account / manual temp override |
 | `ShippingMethod` | **not sent** — ShipStation owns service choice (ADR-031) |
 
-## Accounts — who can sign in (August 14)
+## Accounts — who can sign in (August 14; state re-verified Oct 12 2026)
 
 Distinct from the roster below, and the distinction is the whole of ADR-042: a
 `sales_reps` row is a **name in a dropdown**, a `user_role_seeds` row is a
@@ -46,6 +56,8 @@ Distinct from the roster below, and the distinction is the whole of ADR-042: a
 | `david@dirtycookie.com` | `admin` | seeded `20260601160000` |
 | `paul@dirtycookie.com` | `admin` | **Paul Hardy, President.** Auth user since Jun 2 2026 and signed in that day; `20260814120000` added his `sales_reps` row and re-asserted the seed. Role verified `admin` Aug 19 |
 | `samplesmgmt@cortinafoods.com` | `cortina` | the one Cortina ordering account — **no `n`**. Originally seeded as `samplesmngmt@` (typo) by `20260811120000`; the real address signed up Oct 14 2026, landed as `ops`, and was corrected to `cortina` by `20261014200000` |
+
+**Two accounts have appeared since this table was written** (both internal, neither Sample Central specific) — `ellen@dirtycookie.com` (`finance`, signed in Sep 1 2026) and `shahira@dirtycookie.com` (`admin`, signed in Oct 9 2026). There is also one unintended `ops` account, `dlandeck@gmail.com`, created Sep 18 2026 by the unseeded-sign-in fallback this section warns about — the hazard below is not hypothetical, and that is a separate incident from the Cortina account's. Full roster and the open decision: `docs/PEOPLE.md`.
 
 **Paul is `admin`, not `ops` or `cortina`, deliberately** — he is the President
 and is meant to see everything. `cortina` is gated to Sample Central alone by the
@@ -70,6 +82,15 @@ up again as `ops`. `20261014200000` seeds the correct spelling, repairs the
 profile to `cortina`, and deletes the `samplesmngmt@` seed. **Copy-paste the
 address into the dashboard — never retype it — and confirm the spelling with the
 owner before seeding.** Two addresses one letter apart is the whole failure mode.
+
+⚠️ **And again on Sep 18, 2026, by a different route.** `dlandeck@gmail.com` —
+a personal address with no seed — signed in and provisioned as internal `ops`.
+Nobody created it by hand; it was simply an unseeded sign-in. Unlike the Aug 19
+case it has **not** been resolved: the row is still there, still `ops`, with
+write access to `purchase_orders`, `production_runs` and `cortina_invoices`.
+Detail and the open decision: `docs/PEOPLE.md`. **The lesson generalises past
+typos — any address a person might plausibly use needs a seed, not just the one
+you expect.**
 
 ## Salesperson roster — loaded August 11, extended August 14
 
@@ -135,7 +156,12 @@ behind by exactly the count applied that way.
   Management API (`20260823120000`, `20260823140000`, `20260823160000`) —
   **and repaired the same day.**
 
-**Current state: 72 registered, 72 files, 0 unregistered. In sync.**
+- **Aug 24:** the four Demand Planner migrations (`20260824120000`–`150000`)
+  landed registered — no repair needed.
+
+**Current state: 76 registered, 76 files, 0 unregistered. In sync — re-verified
+Oct 13 2026** with `npx supabase migration list` (every entry `local` ==
+`remote`). Was 72/72 at Aug 23 2026.
 
 ✅ **`supabase db push` works.** This doc and the README both used to say it did
 not, for want of Docker. That was wrong: `db push` talks to the remote database

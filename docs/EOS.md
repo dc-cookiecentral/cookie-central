@@ -235,6 +235,6 @@ After 3–4 weeks of entries, set the remaining goals — Weekly Sales, Sales Pi
 - [ ] Triage the **32 open issues** — a meeting solves ~3
 - [ ] Fill in **GWC** on the 22 seats
 - [ ] Set the three financial goals
-- [ ] **Shahira and Marc are seeded but have never signed in** — confirm the role resolved afterwards; `ON CONFLICT (id) DO NOTHING` means a wrong one never self-corrects
+- [x] ~~**Shahira and Marc are seeded but have never signed in**~~ — **Shahira signed in Oct 9 2026 and resolved to `admin` correctly** (verified against `user_profiles`). **Marc still has not** — seed only, no profile row, despite `docs/PEOPLE.md` calling him the primary daily user. `ON CONFLICT (id) DO NOTHING` means a wrong role would never self-correct, so his seed (`ops`) is worth confirming as intended before he first signs in
 - [ ] Give `P0 · Transition to FreshCoast` an owner (its source issue has none either)
 - [ ] Record Ellen's surname

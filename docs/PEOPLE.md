@@ -2,14 +2,36 @@
 
 ## Dirty Cookie (Internal)
 
-| Person | Role | Email | Cookie Central Role | Notes |
-|--------|------|-------|-------------------|-------|
-| Shahira Marei | CEO / Founder | shahira@dirtycookie.com | admin | Final sign-off |
-| Marc Bouthillette | COO | marc@dirtycookie.com | ops | Primary daily user, production planning |
-| David Landeck | Biz Exec | david@dirtycookie.com | admin | Payment visibility, strategy |
-| Paul Hardy | President | paul@dirtycookie.com | admin | Also a `sales_reps` entry — places sample orders himself (`20260814120000`) |
-| Maria Restrepo | Ops | TBD | ops | PO confirmation alongside Marc — onboarding later |
-| Caroline Friedrich | Consultant | caroline@dirtycookie.com | admin | Builder, project lead. Seeded `20260806235500`; also a `sales_reps` entry. **`systems@` is a separate system account, not her sign-in** |
+**Account state verified against `user_profiles` on Oct 12 2026.** A seed row in
+`user_role_seeds` is not an account — the account exists only once the person has
+signed in and the trigger has created their `user_profiles` row. The "Signed in"
+column below is the difference, and it matters: an unseeded first sign-in
+provisions as `ops` and never self-corrects.
+
+| Person | Role | Email | Cookie Central Role | Signed in | Notes |
+|--------|------|-------|-------------------|-----------|-------|
+| Shahira Marei | CEO / Founder | shahira@dirtycookie.com | admin | ✅ **Oct 9 2026** | Final sign-off. Provisioned correctly as `admin` off her seed |
+| Marc Bouthillette | COO | marc@dirtycookie.com | ops | ❌ **never** | ⚠️ Described here as the primary daily user, but he has a seed only — no `user_profiles` row has ever been created for him |
+| David Landeck | Biz Exec | david@dirtycookie.com | admin | ✅ Jun 2 2026 | Payment visibility, strategy. ⚠️ See the `dlandeck@gmail.com` row below |
+| Paul Hardy | President | paul@dirtycookie.com | admin | ✅ Jun 2 2026 | Also a `sales_reps` entry — places sample orders himself (`20260814120000`) |
+| Ellen | Finance | ellen@dirtycookie.com | finance | ✅ **Sep 1 2026** | Owns 5 of the 13 EOS measurables. Seeded Aug 23 2026; **this file previously said she had not signed in — she has.** Surname still unrecorded |
+| Maria Restrepo | Ops | TBD | ops | ❌ never | PO confirmation alongside Marc — onboarding later; her `support@` seed was dropped in `20260601160000` |
+| Caroline Friedrich | Consultant | caroline@dirtycookie.com | admin | ✅ Aug 18 2026 | Builder, project lead. Seeded `20260806235500`; also a `sales_reps` entry. **`systems@` is a separate system account, not her sign-in** |
+
+### ⚠️ One account nobody intended: `dlandeck@gmail.com`
+
+A `user_profiles` row was created on **Sep 18 2026** for `dlandeck@gmail.com`
+with role **`ops`**, `full_name` "dlandeck" and a null title. That signature —
+the name being `split_part(email,'@','1')` and no title — is exactly the
+`COALESCE(seed.role,'ops')` fallback in `handle_new_auth_user` firing for an
+address with no seed. It is presumably David on a personal address.
+
+It currently holds `ops` write access to 34 tables including `purchase_orders`,
+`production_runs` and `cortina_invoices`. Because the insert is
+`ON CONFLICT (id) DO NOTHING`, **seeding the address now would not fix it** — it
+needs a manual `UPDATE` (RUNBOOK §3.2) or deleting the auth row if his
+`david@dirtycookie.com` admin account is the one he should be using. **Open
+decision — nobody has made it.**
 
 ### Names used in the EOS tracker
 
@@ -23,7 +45,7 @@
 | Paul | Paul Hardy — **`PJ` was a third label for the same person** (metrics said `PJ`, Rocks said `Paul`, the seat said `Paul (PJ)`). All normalised to **`Paul`** on Aug 23 2026: 4 measurables and 2 seats (Integrator, Planning) |
 | Caro | Caroline Friedrich — **`Caro` is the nickname and the name used throughout `/eos`** (normalised in `20260819120000`). Her full name stays here |
 
-**Ellen** — finance. Owns **5 of the 13 measurables** (Weekly Sales, Sales Pipeline, Cash Balance & Forecast, AR, AP), the largest share of anyone. **Seeded Aug 23 2026** as `ellen@dirtycookie.com`, role **`finance`** — least privilege that still carries EOS write, since every EOS table allows `admin`/`finance`/`ops`. She has **not signed in yet**. Her surname is still not recorded anywhere; `full_name` is just "Ellen" and should be corrected when someone knows it.
+**Ellen** — finance. Owns **5 of the 13 measurables** (Weekly Sales, Sales Pipeline, Cash Balance & Forecast, AR, AP), the largest share of anyone. **Seeded Aug 23 2026** as `ellen@dirtycookie.com`, role **`finance`** — least privilege that still carries EOS write, since every EOS table allows `admin`/`finance`/`ops`. **She signed in on Sep 1 2026** and was provisioned correctly (this paragraph said "not signed in yet" until Oct 13 2026). Her surname is still not recorded anywhere; `full_name` is just "Ellen" and should be corrected when someone knows it.
 
 **Deliberately NOT seeded — Caroline, Aug 23 2026:** **Sean** (owns Rock 2, hiring the Biz Dev role) and **Serina** (a seat owner). They appear as owners inside `/eos` because those fields are free text, but neither owns a measurable and neither is getting a Cookie Central login. **This is a decision, not an oversight — don't seed them.**
 
@@ -72,7 +94,14 @@ rows total: 25 Cortina + 3 Dirty Cookie.**
 
 **The one Cortina login is `samplesmgmt@cortinafoods.com`** ("Samples
 Management", role `cortina`, seeded `20260811120000`) — one person entering
-samples on behalf of all 25 reps. Seed anyone **before** their first sign-in:
+samples on behalf of all 25 reps. Its `user_profiles` row exists (created Aug 19
+2026, when it was provisioned with a password rather than a magic link) and the
+role reads `cortina`, verified Oct 12 2026. ⚠️ **Whether anyone has actually
+signed in on it cannot be checked from this repo** — `last_sign_in_at` lives in
+the `auth` schema, which the anon key cannot read (it 404s). It was still null as
+of Aug 19. Check it in the dashboard → Authentication → Users. As of Oct 12 2026
+`sample_shipments` holds **0 rows**, so no sample order has been placed since
+launch either way. Seed anyone **before** their first sign-in:
 `handle_new_auth_user` uses `COALESCE(seed.role, 'ops')` with
 `ON CONFLICT (id) DO NOTHING`, so an unseeded first sign-in silently becomes
 internal `ops` and seeding afterwards does not correct it.
