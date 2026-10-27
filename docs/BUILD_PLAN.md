@@ -35,13 +35,29 @@
   - The three Walmart doughs stay at 12/case until the new count is set.
 
   *To do*
-  - [ ] Confirm the case count on the ~10× $/case Walmart order lines before changing data (`DEMAND_PLANNER_KNOWN_ISSUES.md` §9; start with PO 6185610199)
-  - [ ] Walmart order uploads stuck at `processing`
+  - [ ] Confirm the case count on the ~10× $/case Walmart order lines before changing data (`DEMAND_PLANNER_KNOWN_ISSUES.md` §9; start with PO 6185610199). *Oct 26: BC resolved by Cortina; 12 dough lines still 10× on price. See Oct 23–26.*
+  - [x] Walmart order uploads stuck at `processing` — diagnosed 2026-10-23, fix still open (see Oct 23–26)
   - [ ] Re-measure ADR-063's BC figures (ask before amending)
   - [ ] New case count for the three doughs; BC's MOQ (waiting on Caroline)
   - [ ] Decide: issue logging before delivery? Rename "Freight" tile?
   - [x] Refresh `sample-site/CLAUDE.md` "Current state" (first real delivery: SMP-1208, UPS, Oct 21) — 2026-10-22
   - [ ] Minor: the Supply Plan upload summary converts eaches ÷ 12 for every item. BC is 10 per case (`src/parsers/retailLinkSupplyPlan.js:141`, display only).
+
+  **October 23–26 2026: Walmart ingest investigated.** No code or data changes.
+
+  *Done*
+  - [x] Stuck `processing` uploads diagnosed — 2026-10-23. The Oct 20 7 AM run missed that night's email, so two exports were waiting. Since then each run finishes the first waiting export, then is cut off (a time-out, no error) on the second. The next run retries it, and the backlog never clears. Happened again Oct 25. The backlog was cleared by manual runs on the evening of Oct 26 (not from this session); every export through `2026-10-26` is imported.
+  - [x] ~10× lines re-measured on the 10-26 export — 2026-10-26. Cortina is correcting them in NetSuite. **BC: resolved**: no 10× lines left; 26 lines (PO 6185610199 among them) are now 0 cases / $0. **Doughs: half resolved**: the `0120…` POs now read 21 cases a line, so quantity *was* the error. But 12 lines on SO11465/70/72/76/81/89 (items 1251/1252) still carry a 10× Item Rate ($41.07 vs $4.107), so $7,761.60 a line instead of $776.16, overstated by ~$83.8k.
+
+  *Decisions*
+  - None. A manual re-run and an importer fix were proposed and never answered.
+
+  *To do*
+  - [ ] Ask Cortina to correct the Item Rate on those 12 dough lines (no data changes on our side)
+  - [ ] Importer fix: when several `walmart_orders` emails are waiting, import only the newest (each export is full history) and mark the older ones replaced. Today it can also import an older file *after* a newer one (Oct 26: 10-26 → 10-25 → 10-26).
+  - [ ] Why the Oct 20 run missed its email, and why no `Walmart_Orders_2026-10-23` email exists
+  - [ ] Add the Item 360 finding and today's re-measure to `DEMAND_PLANNER_KNOWN_ISSUES.md` §9; re-measure ADR-063 now that BC is clean (ask before amending)
+  - Note: Item Rate in the export is **not a case price**. It looks per-pound (inferred, unconfirmed): $4.1067 × 9 lb = $36.96 for the doughs, $7.7045 × 4.4 lb = $33.90 for BC. `walmart_unit_price` therefore isn't a case price; use `line_total / quantity_cases`.
 
 - **Phase 2 — Operations:** upcoming (weeks following Phase 1 ship).
 - **Phase 3 — Financials + Rollout:** late summer 2026.
