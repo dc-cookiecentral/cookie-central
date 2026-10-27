@@ -1232,3 +1232,16 @@ Fixing only the map would have left the next launch to be found by eye. The map 
 **Why there was nothing to catch it.** This is not only a missing map entry. The database holds **no record of which Walmart prime item or Cortina item number is which product** — the old finished-goods `products` table that carried `cortina_item_number` was renamed aside and dropped in July 2026 (ADR-024), along with `po_line_items.product_id`. `po_line_items` keys off text columns with no FK, so an unknown item number joins against nothing and violates no constraint. Two hardcoded maps in one hook are the entire translation layer. Re-establishing a real catalogue entry for retail items is Spec Sheet work and is still open; until then `unmappedOrderItems` is the only thing standing between a new SKU and silence.
 
 **The class of bug worth remembering.** Three places in this repo translate an external identifier through a hardcoded literal: both maps here, and `MEASURES` in `retailLink.js` (which at least reports unrecognised Data Types). Any of them meeting an unknown value drops data. The pattern that fixes it is not a better map — it is counting what fell through and showing it.
+
+## ADR-064: An order ShipStation never imports is emailed to systems@
+
+**Oct 27 2026.** SMP-1213 was saved with ship-to state `New Jersey`. The export skips a non-2-letter state (one bad order would otherwise reject the batch), so ShipStation never saw it, and for four days the only trace was a function log and `not_yet_imported: 1` in a sweep response nobody reads.
+
+**Decision.** The Deliver By sweep emails `systems@dirtycookie.com` once when an open, Dirty-Cookie-fulfilled order still has no `shipstation_order_id` 60 minutes after submission. The site shows a "Not in ShipStation" flag on the same rule. The address form now normalises state names to codes (PR #65), so the original cause is closed too; the alert is the catch-all for causes nobody has found yet.
+
+- **Sender: systems@ via the existing Gmail grant** (`gmail.send` added), not a transactional provider. The August Resend scoping (amendment to ADR-044) stalled on a vendor account and an SPF merge on `dirtycookie.com`; sending through Workspace needs neither.
+- **60 minutes, not 30**: one ShipStation pull plus one 15-minute sweep must clear before it fires.
+- **Never-imported only**: an order with a cached id whose record later vanished (ADR-039) is not reported as never imported.
+- **Once per order** via `not_imported_alerted_at`; nothing latches on a failed send, so it retries next sweep. The latch write re-queues the order for export — intended, a free retry.
+
+**Same change, from the stress test:** `xmlSafe` strips XML-illegal control characters (one pasted U+000B invalidated the whole export document); a blank custom line no longer satisfies the item check; custom-line quantity is clamped 1–999 with a `qty >= 1` CHECK.

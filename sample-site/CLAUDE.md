@@ -158,6 +158,14 @@ label says **"Deliver by"**. Deliberate — renaming the column wasn't worth the
   code `"ups"`, and `Service` arrives decorated as `"UPS® Ground"`. Anything
   matching on carrier must normalise, or it will match nothing and fail
   invisibly.
+- **A control character anywhere in the export kills the whole batch.** XML 1.0
+  has no legal form for most of U+0000–U+001F, CDATA included. `xmlSafe` (inside
+  `cdata`/`xmlEscape`) strips them; any new free-text field must go through one
+  of those two.
+- **An order ShipStation never takes is now reported** — the sweep emails
+  systems@ after 60 min with no `shipstation_order_id`, and the site flags it
+  (ADR-064). Before Oct 27 the only trace was `not_yet_imported` in a response
+  nobody read. If the email never arrives, check the Gmail grant has `gmail.send`.
 - **`shipstation-deliverby/index.ts` has no unit tests** — the suite covers
   `_shared` only. A bug there (1,640 no-op UPDATEs, a 2-minute run)
   reached production and was caught by a live run. Verify changes by invoking
