@@ -8,6 +8,10 @@
 //      owns fulfilment state; without this a cancelled order shows as awaiting
 //      fulfilment forever and a salesperson chases a shipment that is gone.
 //
+// Plus a delivery poll (shipped → delivered) and, since Oct 2026, an import
+// alert: an order ShipStation still has not taken an hour after submission is
+// emailed to systems@ once (importAlertDue).
+//
 // The two directions do not conflict: the site is authoritative for the DATE,
 // ShipStation is authoritative for the STATE.
 //
@@ -35,7 +39,9 @@ import { handleCors, json } from '../_shared/cors.ts';
 import {
   SS_ACTIVE_BUCKETS, SS_SCAN_BUCKETS, syncedStatus,
   deliveredFromTrack, type TrackLog, SHIPSTATION_FULFILLER,
+  importAlertDue, importAlertEmail, IMPORT_ALERT_TO, type AlertOrder,
 } from '../_shared/shipstation.ts';
+import { refreshAccessToken, sendMessage, SYSTEM_SUBJECT_PREFIX } from '../_shared/gmail.ts';
 
 const SS = 'https://api.shipstation.com';
 
@@ -55,6 +61,8 @@ type Row = {
   // The V2 shipment_id, cached on first sight. Its whole purpose is to let a
   // steady-state sweep skip the bucket scan entirely — see shipmentsByNo.
   shipstation_order_id: string | null;
+  created_at: string | null;
+  not_imported_alerted_at: string | null;
 };
 
 /** ShipStation returns '2026-08-21T00:00:00Z'; we hold a plain date. Compare days. */
@@ -227,7 +235,7 @@ Deno.serve(async (req) => {
 
     const { data, error } = await supabase
       .from('sample_shipments')
-      .select('shipment_no, required_by, status, shipstation_order_id')
+      .select('shipment_no, required_by, status, shipstation_order_id, created_at, not_imported_alerted_at')
       .in('status', TRACKED_STATUSES)
       // Cortina-fulfilled orders have no ShipStation record at all. Without this
       // they would never resolve, so every run would add them to `unresolved`
@@ -322,6 +330,52 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── Import alert. An order ShipStation never took is otherwise invisible ──
+    // (SMP-1213, Oct 2026: four days, `not_yet_imported: 1` every run). One
+    // email per sweep covering every order that came due; latched per order so
+    // it is sent once. If the send fails nothing is latched and the next sweep
+    // retries — the usual cause is a Gmail grant without gmail.send (see the
+    // note in _shared/gmail.ts).
+    //
+    // The latch write bumps updated_at, which puts the order back in the next
+    // export window. That is a free retry, not a side effect to guard against:
+    // if the cause was transient, ShipStation simply takes it this time.
+    const alerted: string[] = [];
+    const nowMs = Date.now();
+    const due = rows.filter((r) => importAlertDue(r, pending.has(r.shipment_no), nowMs)).map((r) => r.shipment_no);
+    if (due.length) {
+      try {
+        const { data: detail, error: dErr } = await supabase
+          .from('sample_shipments')
+          .select('shipment_no, created_at, required_by, account, rush, sales_rep:sales_reps!sales_rep_id ( full_name, email ), address:addresses!address_id ( * )')
+          .in('shipment_no', due)
+          .order('created_at');
+        if (dErr) throw new Error(`read alert rows: ${dErr.message}`);
+
+        const [clientId, clientSecret, refreshToken] = await Promise.all([
+          getSecret(supabase, 'GMAIL_OAUTH_CLIENT_ID'),
+          getSecret(supabase, 'GMAIL_OAUTH_CLIENT_SECRET'),
+          getSecret(supabase, 'GMAIL_REFRESH_TOKEN'),
+        ]);
+        if (!clientId || !clientSecret || !refreshToken) throw new Error('Gmail OAuth secrets missing from Vault');
+        const accessToken = await refreshAccessToken(clientId, clientSecret, refreshToken);
+        const { subject, text } = importAlertEmail((detail ?? []) as unknown as AlertOrder[], SYSTEM_SUBJECT_PREFIX);
+        await sendMessage(accessToken, { to: IMPORT_ALERT_TO, subject, text });
+
+        const { error: latchErr } = await supabase
+          .from('sample_shipments')
+          .update({ not_imported_alerted_at: new Date().toISOString() })
+          .in('shipment_no', due);
+        // Sent but not latched means a repeat email next run — noisy, not lost.
+        if (latchErr) failed.push({ shipment_no: due.join(','), error: `alert latch: ${latchErr.message}` });
+        alerted.push(...due);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error(`shipstation-deliverby: import alert for ${due.join(', ')}: ${msg}`);
+        failed.push({ shipment_no: due.join(','), error: `import alert: ${msg}` });
+      }
+    }
+
     // ── 3. Delivery poll. Shipped orders only — a separate query, because ──
     // TRACKED_STATUSES excludes `shipped` on purpose (shipnotify owns it).
     const delivered: Array<{ shipment_no: string; delivered_at: string | null }> = [];
@@ -410,7 +464,7 @@ Deno.serve(async (req) => {
     console.log(
       `shipstation-deliverby: stores=${JSON.stringify(byStore)} considered=${rows.length} updated=${updated.length} ` +
       `status-changes=${JSON.stringify(statusChanges)} ` +
-      `already=${alreadyCorrect} not-yet-imported=${notYetImported} ` +
+      `already=${alreadyCorrect} not-yet-imported=${notYetImported} import-alerted=${JSON.stringify(alerted)} ` +
       `by-id=${byId} scanned=${scanned.size} learned=${learned.length} ` +
       `delivery-polled=${polled} delivered=${JSON.stringify(delivered)} ` +
       `labels-learned=${labelsLearned.length} delivery-unresolved=${deliveryUnresolved} ` +
@@ -423,6 +477,7 @@ Deno.serve(async (req) => {
       updated_orders: updated,
       already_correct: alreadyCorrect,
       not_yet_imported: notYetImported,
+      import_alerted: alerted,
       status_changes: statusChanges,
       truncated_buckets: truncated,
       stores: byStore,

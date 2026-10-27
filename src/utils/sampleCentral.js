@@ -298,6 +298,27 @@ export const isCortinaFulfilled = (s) => s?.fulfilled_by === FULFILLER_CORTINA;
 // 100,000 that one stray keypress in a bare text input produces.
 export const MAX_LINE_QTY = 999;
 
+// A custom line's quantity is a bare text box. Same 1..MAX_LINE_QTY whole-number
+// range as the catalog stepper; anything unreadable is 1 (the box's default).
+export const clampLineQty = (q) => {
+  const n = Math.round(Number(q));
+  return Number.isFinite(n) ? Math.min(MAX_LINE_QTY, Math.max(1, n)) : 1;
+};
+
+// ── Never reached ShipStation ──────────────────────────────────────────────
+// ⚠️ Mirrors IMPORT_ALERT_AFTER_MIN / importAlertDue in
+// supabase/functions/_shared/shipstation.ts — the sweep emails systems@ on the
+// same rule. shipstation_order_id is recorded by the sweep the first time it
+// finds the order in ShipStation, so "open, Dirty-Cookie-fulfilled, an hour
+// old, still no id" means ShipStation has not taken it (SMP-1213, Oct 2026).
+export const IMPORT_ALERT_AFTER_MIN = 60;
+export const notInShipStation = (s, nowMs = Date.now()) =>
+  (s?.status === 'submitted' || s?.status === 'processing') &&
+  s?.fulfilled_by === FULFILLER_DEFAULT &&
+  !s?.shipstation_order_id &&
+  !!s?.created_at &&
+  nowMs - Date.parse(s.created_at) >= IMPORT_ALERT_AFTER_MIN * 60_000;
+
 // Above this many cookies in one shipment, the confirm step says so out loud.
 // It does NOT block: big samples are legitimate (a full-line presentation to a
 // national account), they are just worth a second look, because this is real

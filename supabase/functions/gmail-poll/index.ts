@@ -14,6 +14,7 @@ import { handleCors, json } from '../_shared/cors.ts';
 import {
   refreshAccessToken,
   listMessages,
+  SYSTEM_SUBJECT_PREFIX,
   getMessage,
   parseMessage,
 } from '../_shared/gmail.ts';
@@ -54,7 +55,9 @@ Deno.serve(async (req) => {
     // gmail_message_id makes the overlap harmless.
     const { data: stateRows } = await supabase.from('gmail_sync_state').select('*').limit(1);
     const state = stateRows?.[0];
-    const q = state?.last_polled_at ? 'in:inbox newer_than:2d' : 'in:inbox newer_than:30d';
+    // Minus Sample Central's own alerts, which are sent from and to this inbox.
+    const own = `-subject:"${SYSTEM_SUBJECT_PREFIX}"`;
+    const q = `${state?.last_polled_at ? 'in:inbox newer_than:2d' : 'in:inbox newer_than:30d'} ${own}`;
     const ids = await listMessages(accessToken, q, 40);
 
     let classified = 0;
