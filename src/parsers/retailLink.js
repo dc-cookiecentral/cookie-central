@@ -321,11 +321,23 @@ async function importRecords(records, { uploadId, client } = {}) {
   // moved 1322 → 2343 for PBG between the Aug 13 snapshot and the WK28 file).
   // The later file wins.
   if (pos.length) {
-    const { error } = await supabase
-      .from('retail_link_pos_weekly')
-      .upsert(pos.map((p) => ({ ...p, upload_id: uploadId ?? null, updated_at: now })),
-              { onConflict: 'walmart_week,item_number' });
-    if (error) throw error;
+    // Two upserts, split on whether the row carries an on-hand reading. The
+    // export only reports CURRENT on-hand (Sales Summary), so restated history
+    // rows arrive without those keys — but a single bulk upsert writes the
+    // UNION of payload columns, which was nulling the on-hand captured by
+    // earlier weekly files (observed 2026-10-27: after the WK38 import, every
+    // pre-WK38 week had lost store_on_hand). Rows without a reading are
+    // upserted without those columns, so prior snapshots survive restatements.
+    const stamp = (p) => ({ ...p, upload_id: uploadId ?? null, updated_at: now });
+    const hasOh = (p) => p.store_on_hand != null || p.whse_on_hand != null;
+    const bare = ({ store_on_hand, whse_on_hand, ...rest }) => rest;
+    for (const batch of [pos.filter(hasOh).map(stamp), pos.filter((p) => !hasOh(p)).map(bare).map(stamp)]) {
+      if (!batch.length) continue;
+      const { error } = await supabase
+        .from('retail_link_pos_weekly')
+        .upsert(batch, { onConflict: 'walmart_week,item_number' });
+      if (error) throw error;
+    }
   }
   if (forecast.length) {
     const { error } = await supabase
