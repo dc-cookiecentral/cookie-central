@@ -29,6 +29,10 @@ import {
   tagValue,
   validState,
   validZip,
+  xmlSafe,
+  importAlertDue,
+  importAlertEmail,
+  IMPORT_ALERT_AFTER_MIN,
   type Shipment,
 } from './shipstation.ts';
 
@@ -713,4 +717,82 @@ Deno.test('deliveredFromTrack: syncedStatus refuses to undo it — the two agree
   assertEquals(syncedStatus('pending', 'delivered'), null);
   assertEquals(syncedStatus('cancelled', 'delivered'), null);
   assertEquals(syncedStatus('label_purchased', 'delivered'), null);
+});
+
+// ── Control characters (stress test, Oct 27 2026) ───────────────────────────
+// XML 1.0 has no legal form for these, CDATA included, so one in any field
+// made the whole <Orders> document unparseable and ShipStation dropped the
+// entire batch. Word's manual line break (U+000B) is the realistic carrier.
+const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/;
+
+Deno.test('xmlSafe: VT/FF become newlines, other C0 controls are dropped, tab/LF/CR kept', () => {
+  assertEquals(xmlSafe('a\u000Bb\u000Cc'), 'a\nb\nc');
+  assertEquals(xmlSafe('a\u0001\u001B\u001Fb'), 'ab');
+  assertEquals(xmlSafe('t\tl\nc\r'), 't\tl\nc\r');
+  assertEquals(xmlSafe('Café 🍪'), 'Café 🍪');
+  assertEquals(xmlSafe(null), '');
+});
+
+Deno.test('buildOrderXml: control characters in any free-text field never reach the document', () => {
+  const dirty = 'x\u000By\u001Bz';
+  const xml = ordersDocument([buildOrderXml(shipment({
+    account: dirty,
+    notes: dirty,
+    address: { contact_name: dirty, company: dirty, street: dirty, city: dirty, state: 'NJ', zip: '07645' },
+    sample_shipment_items: [{ product_code: null, custom: true, custom_spec: dirty, project_no: dirty, qty: 1, description: dirty }],
+    collateral: [dirty],
+    sales_rep: { email: 'a@b.com', full_name: dirty },
+  }))], 1);
+  assertFalse(CONTROL.test(xml), 'a control character survived into the export');
+  assertStringIncludes(xml, 'x\nyz');
+});
+
+// ── Import alert ────────────────────────────────────────────────────────────
+const NOW = Date.parse('2026-10-27T16:00:00Z');
+const minsAgo = (m: number) => new Date(NOW - m * 60_000).toISOString();
+const alertRow = (o: Record<string, unknown> = {}) => ({
+  status: 'submitted', created_at: minsAgo(IMPORT_ALERT_AFTER_MIN + 1),
+  shipstation_order_id: null, not_imported_alerted_at: null, ...o,
+});
+
+Deno.test('importAlertDue: an open order never seen by ShipStation past the threshold', () => {
+  assert(importAlertDue(alertRow(), false, NOW));
+  assert(importAlertDue(alertRow({ status: 'processing' }), false, NOW));
+});
+
+Deno.test('importAlertDue: quiet before the threshold — one pull + one sweep is normal', () => {
+  assertFalse(importAlertDue(alertRow({ created_at: minsAgo(IMPORT_ALERT_AFTER_MIN - 1) }), false, NOW));
+});
+
+Deno.test('importAlertDue: once only, and never for an order that did reach ShipStation', () => {
+  assertFalse(importAlertDue(alertRow({ not_imported_alerted_at: minsAgo(5) }), false, NOW));
+  assertFalse(importAlertDue(alertRow(), true, NOW));
+  // Imported once, record later gone (ADR-039): not "never imported".
+  assertFalse(importAlertDue(alertRow({ shipstation_order_id: 'se-1' }), false, NOW));
+});
+
+Deno.test('importAlertDue: exception and finished orders are not chased', () => {
+  for (const status of ['cancelled', 'on_hold', 'shipped', 'delivered']) {
+    assertFalse(importAlertDue(alertRow({ status }), false, NOW), status);
+  }
+  assertFalse(importAlertDue(alertRow({ created_at: null }), false, NOW));
+});
+
+Deno.test('importAlertEmail: names the order and says when the ship-to is the cause', () => {
+  const one = importAlertEmail([{
+    shipment_no: 'SMP-1213', created_at: '2026-10-23T20:21:42Z', required_by: '2026-10-27', account: null, rush: true,
+    sales_rep: { full_name: 'Michael Simon', email: 'm@x.com' },
+    address: { company: 'National Cortina', street: '2 Van Riper Rd', city: 'Montvale', state: 'New Jersey', zip: '07645' },
+  }], '[Sample Central]');
+  assertEquals(one.subject, '[Sample Central] SMP-1213 has not reached ShipStation');
+  assertStringIncludes(one.text, 'SMP-1213  (RUSH)');
+  assertStringIncludes(one.text, 'Michael Simon');
+  assertStringIncludes(one.text, 'NO — this is why');
+
+  const two = importAlertEmail([
+    { shipment_no: 'SMP-1', created_at: null, required_by: null, account: null, rush: false },
+    { shipment_no: 'SMP-2', created_at: null, required_by: null, account: null, rush: false },
+  ], '[Sample Central]');
+  assertEquals(two.subject, '[Sample Central] 2 orders have not reached ShipStation');
+  assertStringIncludes(two.text, '— (no address)');
 });

@@ -28,11 +28,24 @@ export function checkBasicAuth(req: Request, user: string, pass: string): boolea
 // Free text (names, notes, item descriptions) is CDATA-wrapped; the nested
 // `]]>` split defends against a stray sequence inside the content. Codes and
 // numbers use entity escaping.
+//
+// Both pass through xmlSafe() first. XML 1.0 forbids C0 control characters
+// other than tab/LF/CR ANYWHERE — CDATA included, and no escape makes them
+// legal — so one stray character makes the whole <Orders> document
+// unparseable, ShipStation rejects the entire batch, and every order in that
+// window is lost without an error (stress test, Oct 27 2026). They arrive by
+// paste: Word's manual line break is U+000B. VT/FF become a newline, which is
+// what the person meant; the rest are dropped.
+export const xmlSafe = (s: unknown) =>
+  String(s ?? '')
+    .replace(/[\u000B\u000C]/g, '\n')
+    .replace(/[\u0000-\u0008\u000E-\u001F\uFFFE\uFFFF]/g, '');
+
 export const cdata = (s: unknown) =>
-  `<![CDATA[${String(s ?? '').replace(/]]>/g, ']]]]><![CDATA[>')}]]>`;
+  `<![CDATA[${xmlSafe(s).replace(/]]>/g, ']]]]><![CDATA[>')}]]>`;
 
 export const xmlEscape = (s: unknown) =>
-  String(s ?? '')
+  xmlSafe(s)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -189,6 +202,95 @@ export function syncedStatus(
     return current === 'cancelled' || current === 'on_hold' ? 'submitted' : null;
   }
   return null;   // absent from ShipStation entirely: not our business to guess
+}
+
+// ── Import alert (site → systems@) ──────────────────────────────────────────
+// The Custom Store is a pull, so an order ShipStation never takes produces no
+// error anywhere — SMP-1213 sat for four days (Oct 2026) with the sweep
+// reporting `not_yet_imported: 1` into a response nobody reads. The sweep now
+// emails systems@ once per order when this says so.
+//
+// The threshold has to clear one ShipStation pull plus one 15-minute sweep
+// (the sweep is what records the id). SMP-1213 took 12 minutes once re-queued;
+// 60 leaves room for a slow pull without crying wolf.
+//
+// ⚠️ Mirrored as IMPORT_ALERT_AFTER_MIN in src/utils/sampleCentral.js for the
+// site's "Not in ShipStation" flag — the frontend cannot import this file.
+export const IMPORT_ALERT_AFTER_MIN = 60;
+export const IMPORT_ALERT_TO = 'systems@dirtycookie.com';
+
+export interface AlertRow {
+  status: string | null;
+  // Set the first time the sweep ever finds the order. Its presence means it
+  // DID reach ShipStation — a record that later disappears (ADR-039) is a
+  // different problem, and calling it "never imported" would be false.
+  shipstation_order_id: string | null;
+  created_at: string | null;
+  not_imported_alerted_at: string | null;
+}
+
+/**
+ * True when an order should be reported as never having reached ShipStation.
+ * `found` = the sweep resolved it to a ShipStation shipment this run.
+ * Once only: `not_imported_alerted_at` latches it, so a stuck order sends one
+ * email, not one every 15 minutes.
+ */
+export function importAlertDue(row: AlertRow, found: boolean, nowMs: number): boolean {
+  if (found || row.shipstation_order_id || row.not_imported_alerted_at) return false;
+  if (row.status !== 'submitted' && row.status !== 'processing') return false;
+  const created = row.created_at ? Date.parse(row.created_at) : NaN;
+  if (isNaN(created)) return false;
+  return nowMs - created >= IMPORT_ALERT_AFTER_MIN * 60_000;
+}
+
+export interface AlertOrder {
+  shipment_no: string;
+  created_at: string | null;
+  required_by: string | null;
+  account: string | null;
+  rush: boolean | null;
+  sales_rep?: { full_name: string | null; email: string | null } | null;
+  address?: Address | null;
+}
+
+/** One email for every order that came due in a single sweep. */
+export function importAlertEmail(orders: AlertOrder[], subjectPrefix: string) {
+  const nos = orders.map((o) => o.shipment_no);
+  const subject = `${subjectPrefix} ${
+    nos.length === 1 ? `${nos[0]} has not reached ShipStation` : `${nos.length} orders have not reached ShipStation`
+  }`;
+  const blocks = orders.map((o) => {
+    const a = o.address ?? {};
+    const addr = [a.company || a.contact_name, a.street, [a.city, a.state, a.zip].filter(Boolean).join(' ')]
+      .filter(Boolean).join(', ');
+    return [
+      `${o.shipment_no}${o.rush ? '  (RUSH)' : ''}`,
+      `  Submitted:  ${fmtDate(o.created_at)} UTC`,
+      `  Deliver by: ${o.required_by ?? '—'}`,
+      `  Rep:        ${o.sales_rep?.full_name ?? o.sales_rep?.email ?? '—'}`,
+      `  Account:    ${o.account ?? '—'}`,
+      `  Ship to:    ${addr || '— (no address)'}`,
+      `  State/zip valid for export: ${validState(a.state) && validZip(a.zip) ? 'yes' : 'NO — this is why'}`,
+    ].join('\n');
+  });
+  const text = [
+    `${nos.length === 1 ? 'This order was' : 'These orders were'} submitted on Sample Central more than ` +
+      `${IMPORT_ALERT_AFTER_MIN} minutes ago and ShipStation has not imported ${nos.length === 1 ? 'it' : 'them'}. ` +
+      `The co-man cannot see ${nos.length === 1 ? 'it' : 'them'} until that is fixed.`,
+    '',
+    ...blocks.flatMap((b) => [b, '']),
+    'Where to look:',
+    '  1. A ship-to State that is not a 2-letter code, or a zip that is not 5 digits — the export skips',
+    '     those orders (shipstation-customstore logs "skipping SMP-…").',
+    '  2. ShipStation → Stores: did the last Cortina Samples import fail? A malformed batch is rejected whole.',
+    '  3. The Deliver By sweep could not find it (a truncated bucket scan). Rarely this is a false alarm.',
+    '',
+    'After fixing the cause, re-queue the order by touching its row (UPDATE sample_shipments SET',
+    'updated_at = now() …) — ShipStation only pulls orders changed inside its window.',
+    '',
+    'This is sent once per order. The site also shows a "Not in ShipStation" flag on it.',
+  ].join('\n');
+  return { subject, text };
 }
 
 // ── Delivery (ShipStation → app) ────────────────────────────────────────────
