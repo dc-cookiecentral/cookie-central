@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { nextShipmentNo } from '../utils/sampleCentral';
+import { nextShipmentNo, normalizeState, validZip } from '../utils/sampleCentral';
 
 // Sample Central data layer. Catalog = sample-eligible cookies from the Phase-1
 // product spine; plus addresses, shipments (+items), templates, and the
@@ -80,7 +80,12 @@ export function useSampleCentral() {
 // ── Mutations ───────────────────────────────────────────────────────────────
 
 export async function addAddress(fields) {
-  const { data, error } = await supabase.from('addresses').insert(fields).select().single();
+  // Refuse here what the export would skip silently later (see normalizeState).
+  const state = normalizeState(fields.state);
+  if (!state) return { data: null, error: { message: `State "${fields.state ?? ''}" isn't a US state — use the name (New Jersey) or code (NJ).` } };
+  if (!validZip(fields.zip)) return { data: null, error: { message: `Zip "${fields.zip ?? ''}" must be 5 digits (or ZIP+4).` } };
+  const { data, error } = await supabase.from('addresses')
+    .insert({ ...fields, state, zip: fields.zip.trim() }).select().single();
   return { data, error };
 }
 

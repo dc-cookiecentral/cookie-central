@@ -363,3 +363,35 @@ export function trackingUrl(carrier, trackingNumber) {
   return null;
 }
 
+
+// ShipStation needs a 2-letter state code, and the export skips (silently, to
+// keep the batch alive) any order whose ship-to fails that check. The address
+// form is free text, so "New Jersey" went in and SMP-1213 never reached the
+// co-man (Oct 2026). Accept either form here and store the code; anything still
+// unrecognised is refused at save, where someone can see it.
+const US_STATES = {
+  alabama: 'AL', alaska: 'AK', arizona: 'AZ', arkansas: 'AR', california: 'CA',
+  colorado: 'CO', connecticut: 'CT', delaware: 'DE', 'district of columbia': 'DC',
+  florida: 'FL', georgia: 'GA', hawaii: 'HI', idaho: 'ID', illinois: 'IL',
+  indiana: 'IN', iowa: 'IA', kansas: 'KS', kentucky: 'KY', louisiana: 'LA',
+  maine: 'ME', maryland: 'MD', massachusetts: 'MA', michigan: 'MI', minnesota: 'MN',
+  mississippi: 'MS', missouri: 'MO', montana: 'MT', nebraska: 'NE', nevada: 'NV',
+  'new hampshire': 'NH', 'new jersey': 'NJ', 'new mexico': 'NM', 'new york': 'NY',
+  'north carolina': 'NC', 'north dakota': 'ND', ohio: 'OH', oklahoma: 'OK',
+  oregon: 'OR', pennsylvania: 'PA', 'rhode island': 'RI', 'south carolina': 'SC',
+  'south dakota': 'SD', tennessee: 'TN', texas: 'TX', utah: 'UT', vermont: 'VT',
+  virginia: 'VA', washington: 'WA', 'west virginia': 'WV', wisconsin: 'WI',
+  wyoming: 'WY', 'puerto rico': 'PR',
+};
+const STATE_CODES = new Set(Object.values(US_STATES));
+
+// "new jersey", "New  Jersey", "N.J.", "nj" -> "NJ"; unrecognised -> null.
+export function normalizeState(input) {
+  const s = String(input ?? '').trim().replace(/\./g, '').replace(/\s+/g, ' ').toLowerCase();
+  if (US_STATES[s]) return US_STATES[s];
+  const code = s.toUpperCase();
+  return STATE_CODES.has(code) ? code : null;
+}
+
+// Same rule the export applies (validZip in _shared/shipstation.ts).
+export const validZip = (z) => /^\d{5}(-\d{4})?$/.test(String(z ?? '').trim());
