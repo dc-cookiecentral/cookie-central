@@ -59,6 +59,22 @@
   - [ ] Add the Item 360 finding and today's re-measure to `DEMAND_PLANNER_KNOWN_ISSUES.md` §9; re-measure ADR-063 now that BC is clean (ask before amending)
   - Note: Item Rate in the export is **not a case price**. It looks per-pound (inferred, unconfirmed): $4.1067 × 9 lb = $36.96 for the doughs, $7.7045 × 4.4 lb = $33.90 for BC. `walmart_unit_price` therefore isn't a case price; use `line_total / quantity_cases`.
 
+  **October 27–28 2026 — ingest data-quality fixes, and the DOT on-hand report exists after all.** Work ran in the claude.ai demand-planner session, not local Claude Code. Two root causes found while wiring that session's prototype to the live tables; both fixed in production.
+
+  *Done*
+  - [x] `po_line_items.cut_reason` / `.actual_delivery_date` were NULL on all 1,858 rows — fixed 2026-10-27/28. The nightly `gmail-extract` bundle predated migration 20260824150000, so delivery dates landed in `metadata` only and Cut Reason nowhere. Fixes: trigger + backfill migration `20261027160000_po_line_promoted_cols_guard.sql`, and `gmail-extract` redeployed (Caroline, 10-27 evening). **Deviation:** the migration was applied to prod via the dashboard SQL editor on 10-27, ahead of any `supabase db push` — it is idempotent, so a later `db push` is safe. Verified 2026-10-28 after the 7 AM run (`Walmart_Orders_2026-10-27.xlsx`, complete): **268 lines now carry cut_reason** (was 0), 1,557 a column-level delivery date.
+  - [x] Weekly Retail Link restatements were ERASING `store_on_hand` history — fixed 2026-10-27. The workbook restates every week but carries on-hand only for its own week; the single bulk upsert wrote the union of payload columns, nulling all earlier weeks' readings (after the WK38 upload, only wk 202638 had one left). Fixed in `src/parsers/retailLink.js`: rows without a reading now upsert without those columns. Branch `fix/ingest-promoted-cols-and-oh`, PR merged 10-27.
+  - [x] **The DOT on-hand report exists** — received 2026-10-27, overturning `DEMAND_PLANNER_KNOWN_ISSUES.md` §3. DOT's **Inventory Snapshot** (three tabs: Inventory Summary per lot with RG/EX status + Loaded/Picked; WH Summary per location — Mt. Sterling IL and Dyersburg; Aggregated Orders in-transit) carries real on-hand. First reading: good stock WC 1,531 / PBG 743 / CCF 1,544 / BC 1,257 cases; **1,086 expired cases sitting at DOT** (PBG 458) needing disposition; 1,005 cases committed to POs.
+  - [x] Standalone prototype moved onto disk + Vercel — 2026-10-28. `~/Projects/dirty-cookie/demand-planner` (Vite app, own Vercel project): the claude.ai iteration surface, deliberately separate from `/demand-planner` in this app.
+
+  *To do*
+  - [ ] Inventory Snapshot parser + upload card → a real DOT on-hand feed (retires §3's fixed 250-case anchor; §1 still also needs the production feed)
+  - [ ] Re-upload older WK## Retail Link files — now non-destructive — to restore the erased store on-hand history
+  - [ ] Ask Becky to add item 686669913 (BC) to the WK## Retail Link pull so it gets POS
+  - [ ] Harshita: disposition decision on the 1,086 expired cases at DOT
+  - [ ] Decide whether to fold the prototype's funnel / action-panel / week-ending-Sunday UX into `/demand-planner`
+
+
 - **Phase 2 — Operations:** upcoming (weeks following Phase 1 ship).
 - **Phase 3 — Financials + Rollout:** late summer 2026.
 

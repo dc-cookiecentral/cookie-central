@@ -1,7 +1,7 @@
 # Demand Planner — what to trust, and what not to
 
 **For everyone using `/demand-planner`, not just whoever is building it.**
-Last reviewed: **October 22, 2026**. First written Aug 24 2026, the day the live
+Last reviewed: **October 28, 2026**. §3 was overturned and §4 part-fixed on Oct 27–28 — see the dated notes in each. First written Aug 24 2026, the day the live
 feeds went in; §2 and §4 have changed status since, §8 is new, and §9 was
 added Oct 22.
 
@@ -106,6 +106,15 @@ to fix this.
 Note this is a *different* thing from the **DOT Report (Order History)** upload,
 which is real, live, and covers orders and cuts.
 
+⚠️ **Overturned Oct 27 2026 — the report exists.** DOT's **“Inventory Snapshot”**
+export (three tabs: Inventory Summary per lot with RG/EX product status and
+Loaded/Picked; WH Summary per location; Aggregated Orders in-transit) carries
+exactly the on-hand this section said would never arrive. First copy received
+2026-10-27: good stock WC 1,531 / PBG 743 / CCF 1,544 / BC 1,257 cases, plus
+**1,086 expired cases** sitting at DOT. There is no upload card for it yet —
+see BUILD_PLAN (Oct 27–28) for the parser task. Until that ships, the
+fixed-anchor caveat above still describes what this page computes.
+
 ---
 
 ## 🟠 4. The DOT data on screen is months behind — and that is a missed upload, not a limitation
@@ -134,6 +143,12 @@ either filtered to exception orders only, or that window (the supply crisis)
 really was that bad. Weekly delivery settles this quickly: a normal week with no
 clean orders in it means the export is filtered. Until that is answered, the file
 is used for cut recovery only and **not** as a record of total deliveries.
+
+✳️ **Oct 28 2026:** cut *reasons* now also land in `po_line_items.cut_reason`
+(268 lines as of this morning; zero before — the nightly importer ran a bundle
+predating the column, fixed via trigger + redeploy, see BUILD_PLAN Oct 27–28).
+The Order History upload remains the only source of cut *volume* history; this
+fixes the cut-reason trail going forward.
 
 ---
 
