@@ -39,7 +39,7 @@ if (!existsSync(DATA)) {
   console.error(`Missing ${DATA} — the local-only rev 6 vendor data. See the header of this script.`);
   process.exit(1);
 }
-const { VENDORS, REV6_ITEMS } = await import(pathToFileURL(DATA).href);
+const { VENDORS, REV6_ITEMS, PURCHASE_ORDERS = [], RETIRED_ITEMS = [] } = await import(pathToFileURL(DATA).href);
 
 // ── Assembler sheet → items ─────────────────────────────────────────────────
 const VENDOR_ALIASES = {
@@ -177,12 +177,16 @@ function mergeSheet(items, skuByKey, skipped) {
 // ── SQL emit ────────────────────────────────────────────────────────────────
 const q = (v) => (v == null || v === '' ? 'NULL' : typeof v === 'number' || typeof v === 'boolean' ? String(v) : `'${String(v).replace(/'/g, "''")}'`);
 const id = (kind, key) => `md5(${q(`${kind}:${key}`)})::uuid`;
-const upsert = (table, cols, rows, conflict = 'id') =>
+// keep: columns the app edits — a re-run fills them only where still empty.
+// insertOnly: rows the app owns after first load — a re-run never touches them.
+const upsert = (table, cols, rows, { keep = [], insertOnly = false } = {}) =>
   rows.length === 0 ? '' :
   `INSERT INTO ${table} (${cols.join(', ')}) VALUES\n` +
   rows.map((r) => `  (${r.join(', ')})`).join(',\n') +
-  `\nON CONFLICT (${conflict}) DO UPDATE SET\n  ` +
-  cols.filter((c) => c !== 'id').map((c) => `${c} = EXCLUDED.${c}`).join(', ') + ';\n';
+  (insertOnly ? '\nON CONFLICT (id) DO NOTHING;\n' :
+    '\nON CONFLICT (id) DO UPDATE SET\n  ' +
+    cols.filter((c) => c !== 'id')
+      .map((c) => (keep.includes(c) ? `${c} = COALESCE(${table}.${c}, EXCLUDED.${c})` : `${c} = EXCLUDED.${c}`)).join(', ') + ';\n');
 
 function build() {
   const items = structuredClone(REV6_ITEMS);
@@ -193,6 +197,11 @@ function build() {
 
   const vendorNames = new Set(VENDORS.map((v) => v.name));
   const vrows = []; const crows = []; const irows = []; const srows = []; const qrows = []; const brows = [];
+  const poNumbers = new Set(PURCHASE_ORDERS.map((p) => p.po_number));
+  const porows = PURCHASE_ORDERS.map((p) => {
+    if (!vendorNames.has(p.vendor)) throw new Error(`unknown PO vendor ${p.vendor}`);
+    return [id('po', p.po_number), q(p.po_number), id('vendor', p.vendor), q(p.po_date), q(p.fulfillment), q(p.packing_slip_ref), q(p.ship_date), q(p.freight_cost ?? null), q(p.notes)];
+  });
   for (const v of VENDORS) {
     vrows.push([id('vendor', v.name), q(v.name), q(v.category), q(v.status ?? 'active'), q(v.address), q(v.website), q(v.phone_main),
       q(v.account_number), q(v.fob), q(v.default_terms), q(v.freight_notes), q(v.billing_entity), q(v.notes)]);
@@ -214,8 +223,10 @@ function build() {
         q(s.order_unit), q(s.unit_weight_lbs ?? null), q(s.units_per_order_unit ?? null), q(!!s.units_per_thousand), q(s.spec_note)]);
       (s.quotes ?? []).forEach((qt, n) => {
         const qkey = `${skey}|${n}`;
+        if (qt.po && !poNumbers.has(qt.po)) throw new Error(`unknown PO ${qt.po} on ${skey}`);
         qrows.push([id('quote', qkey), id('sku', skey), id('vendor', s.vendor), q(qt.doc_type), q(qt.doc_ref), q(qt.doc_date), q(qt.valid_until),
-          q(qt.moq), q(qt.lead_time), q(qt.terms), q(qt.one_time_costs), q(qt.status ?? 'active'), q(qt.notes), q(qt.doc?.path)]);
+          q(qt.moq), q(qt.lead_time), q(qt.terms), q(qt.one_time_costs), q(qt.status ?? 'active'), q(qt.notes), q(qt.doc?.path),
+          qt.po ? id('po', qt.po) : 'NULL']);
         for (const [qty, price] of qt.breaks ?? []) {
           brows.push([id('break', `${qkey}|${qty}`), id('quote', qkey), q(qty), q(price)]);
         }
@@ -244,8 +255,11 @@ BEGIN;
     upsert('vendor_contacts', ['id', 'vendor_id', 'name', 'role', 'phone_office', 'phone_cell', 'email', 'is_primary'], crows) + '\n' +
     upsert('supply_items', ['id', 'name', 'kind', 'primary_vendor_id', 'notes'], irows) + '\n' +
     upsert('supply_skus', ['id', 'item_id', 'vendor_id', 'brand_name', 'item_code', 'vendor_item_code', 'order_unit', 'unit_weight_lbs', 'units_per_order_unit', 'units_per_thousand', 'spec_note'], srows) + '\n' +
-    upsert('quotes', ['id', 'sku_id', 'vendor_id', 'doc_type', 'doc_ref', 'doc_date', 'valid_until', 'moq', 'lead_time', 'terms', 'one_time_costs', 'status', 'notes', 'doc_path'], qrows) + '\n' +
+    upsert('supply_pos', ['id', 'po_number', 'vendor_id', 'po_date', 'fulfillment', 'packing_slip_ref', 'ship_date', 'freight_cost', 'notes'], porows, { insertOnly: true }) + '\n' +
+    upsert('quotes', ['id', 'sku_id', 'vendor_id', 'doc_type', 'doc_ref', 'doc_date', 'valid_until', 'moq', 'lead_time', 'terms', 'one_time_costs', 'status', 'notes', 'doc_path', 'po_id'], qrows, { keep: ['po_id'] }) + '\n' +
     upsert('quote_breaks', ['id', 'quote_id', 'qty', 'price_per_order_qty'], brows) +
+    // Items the seed used to create under another name (their SKUs and quotes cascade).
+    (RETIRED_ITEMS.length ? `\nDELETE FROM supply_items WHERE id IN (${RETIRED_ITEMS.map((n) => id('item', n)).join(', ')});\n` : '') +
     '\nCOMMIT;\n';
   writeFileSync(OUT, sql);
   console.log(header.split('\n').filter((l) => l.startsWith('-- Counts') || l.startsWith('-- Sheet')).join('\n'));

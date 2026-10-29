@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRocks, useRockQuarters, createIssue } from '../../hooks/useEos';
 import { quarterOf, currentScorecardWeek } from '../../utils/eosWeek';
 import { formatDate } from '../../utils/dates';
@@ -56,7 +56,18 @@ function AddRock({ quarter, rocks, onAdd }) {
 export default function Rocks({ canEdit }) {
   const quarters = useRockQuarters();
   const [quarter, setQuarter] = useState(() => quarterOf());
+  const [picked, setPicked] = useState(false);
   const { rocks, loading, error, insert, update, remove } = useRocks(quarter);
+
+  // Open on the current quarter if it has Rocks; otherwise on the latest
+  // quarter that does. Without this the tab goes blank the day a quarter
+  // turns over, before next quarter's Rocks have been set.
+  useEffect(() => {
+    if (picked || quarters.length === 0) return;
+    const now = quarterOf();
+    if (quarters.includes(now)) return;
+    setQuarter(quarters.find((q) => q < now) || quarters[0]);
+  }, [quarters, picked]);
   const [dropped, setDropped] = useState({});
 
   // The quarter picker offers every quarter that has Rocks, plus the current
@@ -88,7 +99,7 @@ export default function Rocks({ canEdit }) {
       right={
         <select
           value={quarter}
-          onChange={(e) => setQuarter(e.target.value)}
+          onChange={(e) => { setPicked(true); setQuarter(e.target.value); }}
           className="border border-lt rounded-md text-[10px] px-2 py-1 bg-cd"
         >
           {options.map((q) => <option key={q} value={q}>{q}</option>)}

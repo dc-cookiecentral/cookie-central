@@ -130,13 +130,15 @@ Each phase = one branch/PR (ERP deploys via GitHub integration — no CLI deploy
 - [x] Build plan written, grounded in repo conventions (SpecSheet edit lock, EditModal config pattern, saveSpecRow upserts, audit_log, routing/sidebar) (Oct 27 2026)
 - [x] Plan restructured to Caroline's phase order (Oct 27 2026) — see deviations
 - [x] Seed source extended: catalogue rev 5 (Batory/Novation Prima 340) and rev 6 (Exberry colorant, McCormick flavor, FormTight tray quote; Batory PO SP026 merged — duplicate caught; PO $211.20/bag vs confirmed $208.21 variance flagged) (Oct 27 2026)
-- [ ] Phase V1 — **built on branch `supplies-v1` (Oct 28 2026), PR open; not yet applied/seeded** — see "V1 build notes" below
-- [ ] Phase V2, V3a, V3b — not started
+- [x] Phase V1 — built Oct 28 2026 (PR #67), **live Oct 29 2026**: migration pushed with `--include-all`, seed pasted, 11 PDFs uploaded by hand — see "V1 build notes" below
+- [x] V1.1 (PR #68) and V1.2 (PR #69) review changes — live Oct 29 2026, notes below
+- [ ] Phase V2 — **started Oct 29 2026:** edit lock + assumed-cost and PO forms shipped in V1.2. Still to do: shared EditModal (V2.1), add/edit vendors, items, SKUs, quotes, PDF upload
+- [ ] Phase V3a, V3b — not started
 
 ### V1 build notes — Oct 28 2026
 **Shipped on the branch:** migration `20261028120000_supplies.sql` (6 tables, `v_sku_pricing`, private `supply-docs` bucket, RLS, audit) · seed generator `scripts/build-supplies-seed.mjs` (the rev 6 vendor data it reads and the seed it writes are local-only — see below) · `scripts/upload-supply-docs.mjs` (catalogue page scans → PDFs → bucket) · `/supplies` + `/vendors` pages, `useSupplies`, Sidebar entries · `SpecTable` gained optional `onRowDoubleClick` / `isRowSelected` (no change for Spec Sheet).
 
-**Apply order after merge** (nothing below has run against the live project):
+**Apply order after merge** (done Oct 29 2026 — the migration needed `--include-all` because `20261028150000` reached the live DB first, and the upload script didn't land the PDFs, so they were uploaded in the dashboard):
 1. `npx supabase db push --dry-run` → expect only `20261028120000_supplies.sql` → `db push --yes`
 2. Put `scripts/supplies-data.local.mjs` in place (gitignored), run `node scripts/build-supplies-seed.mjs`, then paste the generated `supabase/seeds/supplies_seed.sql` into the SQL editor (idempotent — safe to re-run)
 3. `SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… node scripts/upload-supply-docs.mjs` (reads `../dc-supplies/index.html`; `--out <dir>` builds the PDFs locally without uploading)
@@ -158,6 +160,19 @@ Each phase = one branch/PR (ERP deploys via GitHub integration — no CLI deploy
 - **Drill-downs open inline.** Double-clicking an item opens its price lines directly under the item row; double-clicking a price line opens its terms/notes directly under that line (`SpecTable` gained an optional `renderRowDetail`).
 - **Headline price in the items list.** New Price / lb (ingredients) and Price / 1,000 (packaging) column: the most recent PO/invoice in **black** and the best open quote in **grey** (lowest unit price at any break; excludes expired/closed quotes and closed vendors). `▸ history (N)` expands every price point, newest first. The drill-down uses the same black/grey rule.
 - **Assemblers LLC → closed** (exiting as co-man, Oct 2026). Changed in the local vendor data and applied to the live row; the record stays for history and its quotes drop out of "best quote".
+
+**V1.2 — PO pickup/delivery, freight, assumed vs actual cost — Oct 29 2026** (branch `supplies-v1.2`, migration `20261029120000_supplies_po_landed.sql`)
+- **`supply_pos`** — one row per PO: picked up or delivered, packing slip #, ship/pickup date, and the freight — what we pay to bring a pickup in, or what the vendor bills on a delivered invoice (both count, Oct 29). Freight needs pickup/delivered set first (DB check). PO/invoice lines link through `quotes.po_id`.
+- **Freight split by weight** (`v_po_line_cost`): a PO's freight is shared across its lines by lbs (qty × unit weight); evenly per line if no line has a weight. A vendor SO that confirms the same PO/SKU doesn't count the weight twice.
+- **Ingredient vs shipping broken out:** every PO line and the item's actual cost show product $/lb (or $/1,000) + freight $/lb = landed.
+- **Yellow ⚑ freight pending:** a PO with pickup/delivered not set, or freight not entered. Enter 0 when there is no freight. Seeded pending: SP026 Batory and SP029 AAI (freight to enter once the trucks are booked), SP028 McCormick (pickup/delivered and freight unknown).
+- **Assumed cost** — `supply_items.assumed_cost`, typed: $/lb for ingredients, $/1,000 for packaging. This is the one hand-entered cost figure, deliberately: it is a planning assumption, not a document price, so the "never typed" rail still holds for every price that comes off a document.
+- **Actual cost** (`v_item_cost`) = the latest PO/invoice line, landed (price + its freight share). Shown under the assumed cost in the items list; **red ⚑ flags at ±5% or more** ((assumed − actual) / actual).
+- **Editing** behind the Spec Sheet lock (admin/ops, 🔒/🔓): set an item's assumed cost; on a PO line, Edit PO / + Link to PO (fulfillment, packing slip, ship date, freight). All writes audit-logged. First slice of Phase V2.
+- **Seed now leaves app edits alone:** `supply_pos` rows are insert-only (a re-run never overwrites fulfillment/freight), `quotes.po_id` is only filled where empty, and `assumed_cost` isn't in the seed. `RETIRED_ITEMS` in the local data deletes items the seed used to create under another name.
+- **Packing slip 522657 filed:** the "AAI dry ingredient (item TBD)" placeholder is AAI's MoisturLOK (item 23666) on PO SP029-2026 — moved onto Moisturlok, AAI now primary, slip uploaded to `aai/2026-10-22_ps-522657.pdf`. Fresh Coast noted as the co-man replacing Assemblers.
+- Seeded POs: SP026 Batory (pickup), SP028 McCormick (not set), SP029 AAI (pickup, slip 522657, ships Nov 2), SP031 GNT (delivered, $71.66 UPS freight → Exberry landed $26.37/lb = $24.20 + $2.17). SH Bakery's Oct 22 PO has no number on file, so it isn't linked.
+- **Open:** Packaging lines have no weight, so a PO mixing packaging with ingredients would put all its freight on the weighted lines.
 
 **Data questions surfaced by the seed**
 - ERP 121002 (“Tray”, Great River on the sheet) was **assumed** to be the 3.0 dough-puck tray — confirm.
