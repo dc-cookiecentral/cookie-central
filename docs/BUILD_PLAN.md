@@ -121,7 +121,9 @@
   *To do*
   - [x] `main` merged into the branch; ADR-064 folded into the Oct 27 entry and removed from `DECISIONS.md` — 2026-10-29
   - [ ] Caroline review → merge to `main`
-  - [ ] Apply migration `20261028150000` with `supabase db push`, then upload `Inventory Snapshot.xlsx` on card 7 and check 4 rows land in W39
+  - [x] Migration `20261028150000` applied with `supabase db push` (run from the feature worktree, so the uncommitted Supplies migration was not pushed); ledger in sync, `dot_on_hand` answers via the API — 2026-10-29. **Deviation:** the push also re-ran `20261027160000`, which had been pasted into the SQL editor on Oct 27 and so was missing from the ledger. It is idempotent; cut_reason lines still 268 afterwards
+  - [x] Deployed to production by fast-forwarding `main` to this branch (Caroline, Oct 29: local login unavailable, so the upload is tested live) — 2026-10-29
+  - [ ] Upload `Inventory Snapshot.xlsx` on card 7 (live site) and check 4 rows land in W39
   - [ ] Weekly routine: add the DOT Inventory Snapshot to the uploads (RUNBOOK check added)
   - [ ] Decide: retire `dot_inventory` + `src/parsers/dot.js`
   - [ ] B: fold the prototype UX in (funnel, action panel, Sunday dates, per-SKU packs); plan per piece first
