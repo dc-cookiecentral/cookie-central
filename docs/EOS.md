@@ -38,7 +38,7 @@ Six tabs, landing on Scorecard.
 |-----|---------------|--------|
 | **Scorecard** | Measurables × weeks grid, 13 / 26 / 52-week windows | `eos_scorecard_metrics`, `eos_scorecard_entries` |
 | **Issues** | Open list, Parking Lot, solved + dropped | `eos_issues` |
-| **Rocks** | 90-day priorities, by quarter | `eos_rocks` |
+| **Rocks** | 90-day priorities, by quarter. Opens on the current quarter, or the latest earlier quarter with Rocks if the current one has none yet | `eos_rocks` |
 | **To-Dos** | Seven-day commitments, with completion rate | `eos_todos` |
 | **Accountability Chart** | Seats by function, GWC dots | `eos_seats` |
 | **V/TO** | Vision/Traction Organizer, read-only | `src/data/eosVto.js` — **code, not database** |
