@@ -123,7 +123,9 @@
   - [ ] Caroline review → merge to `main`
   - [x] Migration `20261028150000` applied with `supabase db push` (run from the feature worktree, so the uncommitted Supplies migration was not pushed); ledger in sync, `dot_on_hand` answers via the API — 2026-10-29. **Deviation:** the push also re-ran `20261027160000`, which had been pasted into the SQL editor on Oct 27 and so was missing from the ledger. It is idempotent; cut_reason lines still 268 afterwards
   - [x] Deployed to production by fast-forwarding `main` to this branch (Caroline, Oct 29: local login unavailable, so the upload is tested live) — 2026-10-29
-  - [ ] Upload `Inventory Snapshot.xlsx` on card 7 (live site) and check 4 rows land in W39
+  - [x] `Inventory Snapshot.xlsx` uploaded on card 7 (live site): 4 rows in W39 dated Oct 27, good 1,531 / 743 / 1,544 / 1,257, expired 1,086, committed 1,005, upload_log `complete` with no warnings — 2026-10-29
+  - [x] Header fixed — 2026-10-29. It was hardcoded to the Aug 13 snapshot since the page was built ("Today · WM Week 28", "data thru wk 202627", "NetSuite batch 8/13"). It now shows today's week, the newest POS week and the newest DOT reading, as week-ending Sunday with W##. Also fixed: a missing space in the banner (from A) and a literal `\u2014` in the OTIF label (older). `smoke-render.mjs` now resolves the page's other relative imports, which the new `walmartWeekOf` import exposed
+  - New from the first file: 851 good cases expire by Dec 26 (WC 229, PBG 182, CCF 440, over a quarter of CCF's good stock), on top of the 1,086 already expired. Input for B's action panel
   - [ ] Weekly routine: add the DOT Inventory Snapshot to the uploads (RUNBOOK check added)
   - [ ] Decide: retire `dot_inventory` + `src/parsers/dot.js`
   - [ ] B: fold the prototype UX in (funnel, action panel, Sunday dates, per-SKU packs); plan per piece first

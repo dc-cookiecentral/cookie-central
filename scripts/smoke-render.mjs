@@ -80,7 +80,10 @@ try {
       const stubbed = page
         .replace('import { useDemandFeeds } from "../hooks/useDemandFeeds";',
                  `const __F=${JSON.stringify(shape)};function useDemandFeeds(){return __F;}`)
-        .replace('useState("summary")', `useState("${tab}")`);
+        .replace('useState("summary")', `useState("${tab}")`)
+        // The copy lives in a temp dir, so any other `../x` import must point
+        // back at src/ — otherwise adding an import to the page breaks the test.
+        .replace(/from "\.\.\//g, `from "${join(process.cwd(), 'src')}/`);
       writeFileSync(join(dir, 'page.jsx'), stubbed);
       execFileSync('npx', ['esbuild', join(dir, 'main.jsx'), '--bundle', '--format=cjs',
         '--platform=node', '--loader:.jsx=jsx', '--jsx=automatic',

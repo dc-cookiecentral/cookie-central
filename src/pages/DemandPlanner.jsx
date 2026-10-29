@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect, Fragment } from "react";
 import { useDemandFeeds } from "../hooks/useDemandFeeds";
+import { walmartWeekOf } from "../parsers/retailLinkSupplyPlan";
 import { ComposedChart, Line, XAxis, YAxis, Tooltip, ReferenceLine, ReferenceArea, ResponsiveContainer } from "recharts";
 
 /* Cookie Central — Walmart Demand Planner
@@ -63,6 +64,24 @@ const SKU_PACK = { BC: { unitsPerCase: 10, casesPerPallet: 96 } };
 const packOf = sku => ({
   unitsPerCase: DEFAULT_PARAMS.unitsPerCase, casesPerPallet: DEFAULT_PARAMS.casesPerPallet, ...(SKU_PACK[sku] || {}),
 });
+// Walmart weeks run Sat–Fri; the page labels a week by the Sunday after it
+// ends (the prototype's convention), with W## beside it in lighter type.
+// Week 202605 starts Sat 2026-02-28 — the same anchor as walmartWeekOf.
+function weekEndingSunday(wk) {
+  if (!wk) return null;
+  const n = (Math.floor(wk / 100) - 2026) * 52 + (wk % 100) - 5;
+  const d = new Date(Date.UTC(2026, 1, 28 + n * 7 + 8));
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+function WeekLabel({ wk }) {
+  if (!wk) return <>—</>;
+  return <>Sun {weekEndingSunday(wk)} <span style={{ opacity: 0.55 }}>W{String(wk).slice(4)}</span></>;
+}
+const todayIso = () => {
+  const t = new Date();
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+};
+
 const ceilTo = (v, moq) => (v <= 0 ? 0 : Math.ceil(v / moq) * moq);
 
 function buildSkuSeries(input, sku) {
@@ -630,7 +649,7 @@ function ServiceHealth({ series, otif }) {
         {/* ── OTIF ── */}
         <div>
           <div className="flex items-baseline gap-3 mb-1">
-            <Stat label="OTIF \u2014 In Time and In Full" value={F.pct(otifNow?.v)} tone={tone(otifNow?.v, 0.9, 0.98)}
+            <Stat label="OTIF — In Time and In Full" value={F.pct(otifNow?.v)} tone={tone(otifNow?.v, 0.9, 0.98)}
               src={otifNow ? "cases in time / cases ordered \u00b7 wk " + otifNow.wk : "awaiting an OTIF upload"} />
             {otifAll != null && (
               <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ background: "#F7F1F4", color: "#2D2235" }}>
@@ -1343,12 +1362,16 @@ export default function DemandPlanner() {
         </div>
         <div className="text-xs opacity-60">
           <span className="px-2 py-0.5 rounded-full mr-2 font-semibold" style={{ background: "#D9EFE4", color: "#2D2235" }}>
-            Today · WM Week 28
+            Today · wk ending <WeekLabel wk={walmartWeekOf(todayIso())} />
           </span>
           <span className="px-2 py-0.5 rounded-full mr-2 cc-mono" style={{ background: "#EFE4E9", color: "#2D2235" }}>
             1 cs = 12 units · 21 cs/layer · 189 cs/pallet · BC: 10 units, 96 cs/pallet
           </span>
-          data thru wk 202627 (8/1–8/7) · NetSuite batch 8/13
+          {/* Was hardcoded to the Aug 13 snapshot ("WM Week 28", "data thru wk
+              202627", "NetSuite batch 8/13") until Oct 29 2026. Now read off
+              the loaded data: newest week with POS, and the newest DOT reading. */}
+          Retail Link thru wk ending <WeekLabel wk={feeds.asOf ?? (latestDataWk || null)} />
+          {dotReading && <> · DOT on-hand {dotReading.label} <span style={{ opacity: 0.55 }}>W{String(dotReading.wk).slice(4)}</span></>}
         </div>
         <nav className="ml-auto flex gap-1 cc-sans" aria-label="Views">
           {["summary", "tracker", "sources"].map(t => (
@@ -1385,7 +1408,7 @@ export default function DemandPlanner() {
               {dotReading
                 ? <>{' '}DOT on-hand measured as of {dotReading.label}{' '}<span style={{ opacity: 0.6 }}>W{String(dotReading.wk).slice(4)} closing</span>; later weeks are modelled from it.</>
                 : ' No DOT Inventory Snapshot uploaded yet — the DOT cascade runs on its opening anchor.'}
-              Tracker edits live in the page for this session and are lost on reload.
+              {' '}Tracker edits live in the page for this session and are lost on reload.
             </span>
           </>
         ) : (
