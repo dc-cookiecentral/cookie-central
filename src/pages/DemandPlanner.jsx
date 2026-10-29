@@ -73,6 +73,9 @@ function weekEndingSunday(wk) {
   const d = new Date(Date.UTC(2026, 1, 28 + n * 7 + 8));
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 }
+// Store counts on the bar labels (Caroline, Oct 29): 2,609 → "2.6K". The hover
+// keeps the full ###,### figure.
+const abbrK = v => (v == null ? "" : v >= 1000 ? (v / 1000).toFixed(1) + "K" : String(Math.round(v)));
 function WeekLabel({ wk }) {
   if (!wk) return <>—</>;
   return <>Sun {weekEndingSunday(wk)} <span style={{ opacity: 0.55 }}>W{String(wk).slice(4)}</span></>;
@@ -377,7 +380,7 @@ function FlowLegend({ latestWk }) {
         {item(FLOW_COLORS.fcst, "Walmart sales forecast · source: Retail Link fcst pull", true)}
         <span className="flex items-center gap-1.5">
           <span className="inline-block rounded-sm" style={{ width: 8, height: 12, background: FLOW_COLORS.stores }} />
-          Traited stores (bars, under the chart) · label: stores · units/store/week · source: Retail Link
+          Traited stores (bars, under the chart) · label: units/store/week over store count (2.6K) · source: Retail Link
         </span>
         <span className="flex items-center gap-1.5">
           {/* Was hardcoded "today W28" (Aug 13 snapshot) until Oct 29 2026. */}
@@ -465,9 +468,11 @@ function FlowCard({ s, m, f }) {
           <Stat label="DOT days on hand" value={F.d1(m.dotDoh)} placeholder
             src="NOT REAL — modelled forward from the last DOT snapshot on frozen production" />
       </div>
-      <div className="grid gap-5 md:grid-cols-[1fr_250px] items-start">
-        <div className="min-w-0">
-          <div style={{ height: 170 }}>
+      <div className="grid gap-5 md:grid-cols-[1fr_250px] items-stretch">
+        {/* Stretches to the funnel's height (Caroline, Oct 29): the line chart
+            takes two thirds of it, the store panel one third. */}
+        <div className="min-w-0 flex flex-col">
+          <div style={{ flex: "2 1 0", minHeight: 170 }}>
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={data} syncId={"flow-" + s.sku} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}>
                 {todayWl && (
@@ -491,22 +496,21 @@ function FlowCard({ s, m, f }) {
               stores and ~400 cases on one chart would need two scales. Each bar
               is labelled vertically "stores · units/store/week". */}
           <div className="text-[9px] uppercase tracking-widest opacity-55 mt-1 pl-[42px]">
-            Traited stores · units/store/week
+            Traited stores <span className="normal-case tracking-normal">(label: units/store/wk over store count)</span>
           </div>
-          <div style={{ height: 140 }}>
+          <div style={{ flex: "1 1 0", minHeight: 110 }}>
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={data} syncId={"flow-" + s.sku} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+              <ComposedChart data={data} syncId={"flow-" + s.sku} margin={{ top: 26, right: 8, bottom: 0, left: 0 }}>
                 {todayWl && (
                   <ReferenceArea x1={todayWl} x2={data[data.length - 1].wl} fill="#FDF6FA" fillOpacity={0.7} />
                 )}
                 <XAxis dataKey="wl" ticks={ticks} tickLine={false} axisLine={{ stroke: "#E5D9DE" }}
                   tick={{ fontSize: 10, fontFamily: "IBM Plex Mono, monospace", fill: "#2D2235", opacity: 0.7 }}
                   tickFormatter={(wl) => { const d = data.find(x => x.wl === wl); return d ? d.month : wl; }} />
-                {/* Hidden, same width as the chart above so the two plot areas
-                    line up. Headroom (×3) leaves room for a ~61px vertical label above
-                    the tallest bar (8.5px mono, "2,609 · 1.92"). */}
+                {/* Same width as the chart above so the plot areas line up. The
+                    26px top margin holds the two-line labels over the tallest bar. */}
                 <YAxis width={42} hide={false} tick={false} axisLine={false} tickLine={false}
-                  domain={[0, (max) => Math.max(1, max) * 3]} />
+                  domain={[0, (max) => Math.max(1, max) * 1.1]} />
                 <Tooltip
                   formatter={(v, name, item) => name === "Traited stores"
                     ? [F.int(v) + " stores · " + (item.payload.velocity != null ? item.payload.velocity.toFixed(2) : "—") + " units/store/wk", "Traited stores"]
@@ -518,12 +522,15 @@ function FlowCard({ s, m, f }) {
                   <LabelList dataKey="stores" content={({ x, y, width, index }) => {
                     const d = data[index];
                     if (!d || d.stores == null) return null;
-                    const cx = x + width / 2, cy = y - 3;
+                    // Too narrow for a 4-character label (small screens): every other bar.
+                    if (width < 17 && index % 2) return null;
+                    const cx = x + width / 2;
+                    const st = { fontSize: 8, fontFamily: "IBM Plex Mono, monospace", fill: "#2D2235" };
                     return (
-                      <text x={cx} y={cy} transform={`rotate(-90 ${cx} ${cy})`} textAnchor="start" dominantBaseline="central"
-                        style={{ fontSize: 8.5, fontFamily: "IBM Plex Mono, monospace", fill: "#2D2235", opacity: 0.75 }}>
-                        {F.int(d.stores)} · {d.velocity.toFixed(2)}
-                      </text>
+                      <g>
+                        <text x={cx} y={y - 13} textAnchor="middle" style={{ ...st, opacity: 0.55 }}>{d.velocity.toFixed(2)}</text>
+                        <text x={cx} y={y - 3} textAnchor="middle" style={{ ...st, opacity: 0.85 }}>{abbrK(d.stores)}</text>
+                      </g>
                     );
                   }} />
                 </Bar>
@@ -559,7 +566,7 @@ function FlowCard({ s, m, f }) {
 // rests on colour): DOT green, Walmart-network amber, shopper plum — validated
 // with the dataviz palette script (all checks pass; amber's sub-3:1 contrast is
 // relieved by the label + value on every row). Expired is a STATE, not a
-// colour: DOT green with a 45° hatch, ⚠ and the word.
+// colour: a ⚠ note in critical ink under the DOT group.
 const FUNNEL_GROUPS = {
   dot:  { label: "With DOT (3PL)",  color: "#3E8E5A" },
   wm:   { label: "Walmart network", color: "#E8A33D" },
@@ -577,13 +584,12 @@ function funnelRows(s, f, mode) {
     : mode === "week" ? (last?.pos != null ? last.pos / pack : null)
     : s.cells.reduce((a, c) => a + (c.pos || 0), 0) / pack;
   return [
-    { grp: "dot", k: "Expired at DOT", v: d ? d.expired : null, warn: true,
-      src: "DOT snapshot · EX lots" },
     { grp: "dot", k: "Sellable at DOT", v: d ? d.cases - d.committed : null,
-      src: "DOT snapshot · RG lots − committed" },
+      src: "DOT Inventory Snapshot · RG lots − Loaded − Picked" },
     { grp: "wm", k: "In transit to Walmart", v: d ? d.committed : null,
-      src: "DOT snapshot · Loaded + Picked" },
+      src: "DOT Inventory Snapshot · Loaded + Picked" },
     { grp: "wm", k: "At Walmart DCs", v: f.wh ? f.wh.units / pack : null,
+      formula: `= Whse On Hand ÷ ${pack} · Walmart's warehouses, not DOT`,
       src: `Retail Link Curr Whse On Hand ÷ ${pack} units/cs · Walmart's own warehouses, not DOT` },
     { grp: "wm", k: "On store shelves", v: store ? store.cs : null,
       src: `Retail Link Curr Str On Hand ÷ ${pack} units/cs` },
@@ -592,15 +598,20 @@ function funnelRows(s, f, mode) {
   ];
 }
 
+// A ranked bar list (Caroline, Oct 29 2026: the prototype's centred trapezoids
+// read as confusing). Label and value on one line, a left-aligned bar under it,
+// all bars on one scale. Sources live in the hover; only the DC row keeps its
+// formula on the face. Expired is a note under the DOT group, not a bar —
+// it is not sellable stock.
 function Funnel({ s, f }) {
   const [mode, setMode] = useState("week");
   const rows = funnelRows(s, f, mode);
   const maxV = Math.max(1, ...rows.map(r => r.v ?? 0));
-  const stock = rows.filter(r => !r.warn && r.grp !== "shop" && r.v != null).reduce((a, r) => a + r.v, 0);
-  const expired = rows[0].v;
-  let lastGrp = null;
+  const stock = rows.filter(r => r.grp !== "shop" && r.v != null).reduce((a, r) => a + r.v, 0);
+  const expired = f.dot ? f.dot.expired : null;
+  const pack = packOf(s.sku).unitsPerCase;
   return (
-    <div className="flex flex-col gap-1 rounded-xl border p-3" style={{ borderColor: "#EFE4E9", background: "#FBF8F6" }}>
+    <div className="flex flex-col rounded-xl border p-3 h-full" style={{ borderColor: "#EFE4E9", background: "#FBF8F6" }}>
       <div className="flex items-center gap-2">
         <div className="text-[10px] uppercase tracking-widest opacity-60 flex-1">Where every case sits</div>
         <div className="flex gap-0.5 rounded-full border p-0.5" style={{ borderColor: "#E5D9DE", background: "#fff" }}
@@ -612,55 +623,52 @@ function Funnel({ s, f }) {
           ))}
         </div>
       </div>
-      <div className="cc-serif text-lg leading-none">{F.int(stock)} cs
-        <span className="text-[10px] cc-sans opacity-60"> in the chain{expired ? <> · + {F.int(expired)} expired</> : null}</span>
+      <div className="cc-serif text-lg leading-none mt-1">{F.int(stock)} cs
+        <span className="text-[10px] cc-sans opacity-60"> in the chain</span>
       </div>
-      <div className="text-[9.5px] opacity-60 mb-1">
+      <div className="text-[9.5px] opacity-60 mt-0.5">
         {f.dot
-          ? <>DOT as of {f.dot.label} <span style={{ opacity: 0.6 }}>W{String(f.dot.wk).slice(4)}</span></>
-          : "No DOT Inventory Snapshot yet"}
+          ? <>DOT {f.dot.label} <span style={{ opacity: 0.6 }}>W{String(f.dot.wk).slice(4)}</span></>
+          : "No DOT snapshot yet"}
         {" · "}
-        {f.rlWk ? <>Walmart thru wk ending <WeekLabel wk={f.rlWk} /></> : "no Retail Link feed"}
+        {f.rlWk ? <>Walmart wk ending <WeekLabel wk={f.rlWk} /></> : "no Retail Link feed"}
       </div>
-      {rows.map((r) => {
-        const g = FUNNEL_GROUPS[r.grp];
-        const caption = r.grp !== lastGrp;
-        lastGrp = r.grp;
-        const has = r.v != null;
-        const w = has ? Math.max(r.v > 0 ? 4 : 2, (r.v / maxV) * 90) : 2;
-        const fill = !has || r.v === 0 ? "#E5D9DE"
-          : r.warn ? `repeating-linear-gradient(45deg, ${g.color} 0 3px, #FBF8F6 3px 5px)` : g.color;
+      {["dot", "wm", "shop"].map(grp => {
+        const g = FUNNEL_GROUPS[grp];
         return (
-          <Fragment key={r.k}>
-            {caption && (
-              <div className="flex items-center gap-1.5 text-[9px] uppercase tracking-widest font-semibold mt-1 opacity-75">
-                <span className="inline-block rounded-sm" style={{ width: 8, height: 8, background: g.color }} />{g.label}
+          <div key={grp} className="mt-2.5">
+            <div className="flex items-center gap-1.5 text-[9px] uppercase tracking-widest font-semibold opacity-70 mb-1">
+              <span className="inline-block rounded-sm" style={{ width: 8, height: 8, background: g.color }} />{g.label}
+            </div>
+            {rows.filter(r => r.grp === grp).map(r => {
+              const has = r.v != null;
+              return (
+                <div key={r.k} className="mb-1.5"
+                  title={has ? `${r.k}: ${F.int(r.v)} cs · ${F.int(r.v * pack)} units — ${r.src}` : `${r.k}: no feed — ${r.src}`}>
+                  <div className="flex items-baseline gap-2 text-[11px]">
+                    <span className="flex-1">{r.k}</span>
+                    <span className="cc-mono font-semibold">
+                      {has ? F.int(r.v) : <span className="font-normal opacity-60">no feed</span>}
+                    </span>
+                  </div>
+                  <div className="rounded-sm mt-0.5" style={{ height: 6, background: "#EFE4E9" }}>
+                    {has && r.v > 0 && (
+                      <div className="rounded-sm" style={{ height: 6, width: `${Math.max(1.5, (r.v / maxV) * 100)}%`, background: g.color }} />
+                    )}
+                  </div>
+                  {r.formula && <div className="text-[9px] opacity-55 mt-0.5">{r.formula}</div>}
+                </div>
+              );
+            })}
+            {grp === "dot" && expired > 0 && (
+              <div className="text-[10.5px] font-medium" style={{ color: "#8E1039" }}
+                title="DOT Inventory Snapshot · EX (expired) lots — not sellable, not in the chain total">
+                ⚠ {F.int(expired)} expired at DOT (not sellable)
               </div>
             )}
-            <div className="flex items-start gap-2"
-              title={has ? `${r.k}: ${F.int(r.v)} cs · ${F.int(r.v * packOf(s.sku).unitsPerCase)} units — ${r.src}` : `${r.k}: no feed — ${r.src}`}>
-              <div className="flex-none flex justify-center pt-0.5" style={{ width: 90 }}>
-                <div style={{ width: w, height: 14, background: fill,
-                  clipPath: "polygon(0 0, 100% 0, calc(100% - 3px) 100%, 3px 100%)" }} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-[10.5px] flex-1">{r.warn && r.v > 0 ? "⚠ " : ""}{r.k}</span>
-                  <span className="cc-mono text-[10.5px] font-semibold"
-                    style={r.warn && r.v > 0 ? { color: "#8E1039" } : undefined}>
-                    {has ? F.int(r.v) : <span className="font-normal opacity-60">no feed</span>}
-                  </span>
-                </div>
-                <div className="text-[9px] opacity-55 leading-tight">{r.src}</div>
-              </div>
-            </div>
-          </Fragment>
+          </div>
         );
       })}
-      <div className="text-[9.5px] opacity-55 mt-1">
-        Width ∝ cases, ordered down the chain: a bulge is pooling stock, a pinch is a bottleneck.
-        The toggle changes only the Sold row.
-      </div>
     </div>
   );
 }

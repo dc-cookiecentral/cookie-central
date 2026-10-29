@@ -147,6 +147,8 @@
 
   - [x] Chart reworked (Caroline's review, Oct 29): the DC → DOT and DOT → depot supply lines are removed from it and from the legend; it shows only POS and the Walmart forecast. A traited-stores bar panel sits directly under it on the same week axis, each bar labelled vertically "stores · units/store/week" (WC W38: 2,609 · 1.92) — 2026-10-29
 
+  - [x] Second review pass (Caroline's screenshot, Oct 29): store labels are horizontal, two lines (velocity over the store count abbreviated "2.6K"; full figure in the hover, every other bar when bars are under 17px wide); the chart column stretches to the funnel's height (line chart 2/3, store panel 1/3); the funnel is redrawn as a ranked bar list (label + value, left-aligned bar on one scale, sources in the hover, only the DC row keeps its formula, expired as a ⚠ note under DOT instead of a hatched bar). The prototype's centred trapezoids read as confusing — 2026-10-29
+
   *Decisions* (chart, Caroline, Oct 29)
   - **Bars = Retail Link Traited Stores**, labelled as such. Retail Link has no stores-selling count.
   - **Velocity = POS units ÷ traited stores**, printed with the store count on each bar, not drawn as its own series. It's identical to Walmart's "Units per Store per Week (w/zeros)" (checked WC W32–W38). It is *not* the engine's `velocity`, which uses OOS-adjusted true demand.
