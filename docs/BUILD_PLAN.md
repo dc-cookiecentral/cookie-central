@@ -160,6 +160,35 @@
   - [ ] Ask Becky whether Retail Link can add a stores-with-sales count to the WK## pull (the bars would switch to it)
   - [ ] B2 plan: "This week's actions" panel (inputs now exist: 1,086 expired, 851 expiring by Dec 26)
 
+  **October 28–29 2026 — Supplies & Vendors (`docs/SUPPLIES_SPEC.md`).** PRs #67 (V1), #68 (V1.1), #69 (V1.2), all merged and live. Full build notes in the spec's status log.
+
+  *Done*
+  - [x] V1 (PR #67): migration `20261028120000_supplies.sql` (6 tables, `v_sku_pricing`, private `supply-docs` bucket, RLS, audit), seed generator, PDF upload script, read-only `/supplies` + `/vendors` — built 2026-10-28; live 2026-10-29 (migration pushed, seed pasted: 32 vendors · 49 items · 95 SKUs · 88 price points; 11 PDFs uploaded)
+  - [x] V1.1 (PR #68): Supplies | Vendors tabs on one page (`/vendors` redirects), drill-downs open under the clicked row, items list shows latest PO (black) + best open quote (grey) with ▸ history — 2026-10-29
+  - [x] Assemblers LLC closed (exiting as co-man); Fresh Coast noted as the co-man — live 2026-10-29
+  - [x] Packing slip 522657 filed: the "AAI dry ingredient (TBD)" placeholder is AAI's MoisturLOK (item 23666) on PO SP029-2026; slip in `supply-docs`, AAI primary for Moisturlok — 2026-10-29
+  - [x] V1.2 (PR #69): migration `20261029120000_supplies_po_landed.sql` — `supply_pos` (picked up / delivered, packing slip, ship date, freight), freight split by weight, actual = latest PO landed with ingredient vs freight broken out, `assumed_cost` per item, red ⚑ at ±5%, yellow ⚑ freight pending; editing behind the Spec Sheet lock — 2026-10-29
+
+  *Decisions* (Caroline, Oct 28–29)
+  - **Vendor data stays out of git — the repo is public.** Rev 6 contacts, account numbers and pricing live in the gitignored `scripts/supplies-data.local.mjs`; the generated `supplies_seed.sql` is gitignored too. Exception to ADR-019 (seeds committed).
+  - **Seed = catalogue rev 6 + the Assembler ingredient sheet**, because rev 6 has no Brown Sugar and none of the ERP codes the spec names. 32 vendors, not 11.
+  - **V1 migration applied with `--include-all`:** `20261028150000_dot_on_hand` reached the live DB first, so the earlier-dated supplies migration had to go in out of order. Additive and independent, so safe.
+  - **PDFs uploaded by hand** in the dashboard: `upload-supply-docs.mjs` didn't land anything on Caroline's run (cause not found); the packing slip went up with `supabase storage cp`.
+  - **Freight counts for pickup and delivered POs**, split across a PO's lines by weight, always shown separately from the ingredient price. Actual cost = the latest PO, landed.
+  - **Assumed cost is typed** ($/lb ingredients, $/1,000 packaging) — the one hand-entered cost figure, since it's an assumption, not a document price. Red ⚑ when ≥5% off actual; yellow ⚑ when a PO lacks pickup/delivered or freight (enter 0 for none).
+  - **Part of V2 pulled forward:** the edit lock plus assumed-cost and PO forms shipped in V1.2. Supplies got its own small modal; extracting the shared `EditModal` (V2.1) is still to do.
+  - **Seed re-runs leave app edits alone:** POs insert-only, `po_id` fill-only, `assumed_cost` not seeded; `RETIRED_ITEMS` deletes renamed placeholders.
+
+  *To do*
+  - [ ] Back up `scripts/supplies-data.local.mjs` outside the repo (it exists only on this Mac)
+  - [ ] Enter freight on Batory SP026 and AAI SP029 once the trucks are booked; McCormick SP028 pickup / delivered + freight (all three yellow-flagged)
+  - [ ] Set assumed costs per item
+  - [ ] AAI Moisturlok unit price off PO SP029 (slip has none); who books the EXW Stockton cold-storage pickup
+  - [ ] Confirm ERP 121002 = Great River dough-puck tray; decide whether the undated Assembler-sheet prices stay "active" quotes
+  - [ ] Click through `/supplies` in the real app (verified only by server renders); compare against the v13 prototype
+  - [ ] Find why `upload-supply-docs.mjs` didn't upload on Caroline's run
+  - [ ] Rest of V2 (shared EditModal; add/edit vendors, items, quotes, PDF upload), then V3a / V3b
+
   **October 29 2026 — EOS: the Rocks tab went blank at the quarter turn.** No migration, no data change.
 
   *Done*

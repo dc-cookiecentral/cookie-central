@@ -130,13 +130,15 @@ Each phase = one branch/PR (ERP deploys via GitHub integration — no CLI deploy
 - [x] Build plan written, grounded in repo conventions (SpecSheet edit lock, EditModal config pattern, saveSpecRow upserts, audit_log, routing/sidebar) (Oct 27 2026)
 - [x] Plan restructured to Caroline's phase order (Oct 27 2026) — see deviations
 - [x] Seed source extended: catalogue rev 5 (Batory/Novation Prima 340) and rev 6 (Exberry colorant, McCormick flavor, FormTight tray quote; Batory PO SP026 merged — duplicate caught; PO $211.20/bag vs confirmed $208.21 variance flagged) (Oct 27 2026)
-- [ ] Phase V1 — **built on branch `supplies-v1` (Oct 28 2026), PR open; not yet applied/seeded** — see "V1 build notes" below
-- [ ] Phase V2, V3a, V3b — not started
+- [x] Phase V1 — built Oct 28 2026 (PR #67), **live Oct 29 2026**: migration pushed with `--include-all`, seed pasted, 11 PDFs uploaded by hand — see "V1 build notes" below
+- [x] V1.1 (PR #68) and V1.2 (PR #69) review changes — live Oct 29 2026, notes below
+- [ ] Phase V2 — **started Oct 29 2026:** edit lock + assumed-cost and PO forms shipped in V1.2. Still to do: shared EditModal (V2.1), add/edit vendors, items, SKUs, quotes, PDF upload
+- [ ] Phase V3a, V3b — not started
 
 ### V1 build notes — Oct 28 2026
 **Shipped on the branch:** migration `20261028120000_supplies.sql` (6 tables, `v_sku_pricing`, private `supply-docs` bucket, RLS, audit) · seed generator `scripts/build-supplies-seed.mjs` (the rev 6 vendor data it reads and the seed it writes are local-only — see below) · `scripts/upload-supply-docs.mjs` (catalogue page scans → PDFs → bucket) · `/supplies` + `/vendors` pages, `useSupplies`, Sidebar entries · `SpecTable` gained optional `onRowDoubleClick` / `isRowSelected` (no change for Spec Sheet).
 
-**Apply order after merge** (nothing below has run against the live project):
+**Apply order after merge** (done Oct 29 2026 — the migration needed `--include-all` because `20261028150000` reached the live DB first, and the upload script didn't land the PDFs, so they were uploaded in the dashboard):
 1. `npx supabase db push --dry-run` → expect only `20261028120000_supplies.sql` → `db push --yes`
 2. Put `scripts/supplies-data.local.mjs` in place (gitignored), run `node scripts/build-supplies-seed.mjs`, then paste the generated `supabase/seeds/supplies_seed.sql` into the SQL editor (idempotent — safe to re-run)
 3. `SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… node scripts/upload-supply-docs.mjs` (reads `../dc-supplies/index.html`; `--out <dir>` builds the PDFs locally without uploading)
