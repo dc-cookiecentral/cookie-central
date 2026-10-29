@@ -160,6 +160,20 @@
   - [ ] Ask Becky whether Retail Link can add a stores-with-sales count to the WK## pull (the bars would switch to it)
   - [ ] B2 plan: "This week's actions" panel (inputs now exist: 1,086 expired, 851 expiring by Dec 26)
 
+  **October 29 2026 — EOS: the Rocks tab went blank at the quarter turn.** No migration, no data change.
+
+  *Done*
+  - [x] Diagnosed: the Rocks tab always opened on the current quarter, which became `2026-Q4` on Oct 1, while all six Rocks are `2026-Q3`. Nothing was deleted (no migration or code path removes Rocks), and Q3 stayed reachable from the picker — 2026-10-29
+  - [x] `Rocks.jsx` now opens on the current quarter if it has Rocks, otherwise the latest earlier quarter that does; a manual pick wins — 2026-10-29
+
+  *Decisions*
+  - **Fixed the default in code, not by copying Q3 into Q4.** Rocks are set fresh each quarter in EOS, so carrying Q3's into Q4 would invent commitments nobody made.
+  - **Not verified against the live DB:** EOS tables are RLS-gated to signed-in internal roles, so the anon key returns nothing. Only the build was verified.
+
+  *To do*
+  - [ ] Confirm the six Q3 Rocks show in the app (sign in → `/eos` → Rocks)
+  - [ ] Close out Q3 (mark each Rock done / dropped) and set the Q4 Rocks; the tab then opens on Q4
+
 - **Phase 2 — Operations:** upcoming (weeks following Phase 1 ship).
 - **Phase 3 — Financials + Rollout:** late summer 2026.
 
