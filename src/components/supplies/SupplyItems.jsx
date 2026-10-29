@@ -43,6 +43,7 @@ export default function SupplyItems({ data, maps, editing, setModal }) {
       points: maps.pricePointsByItem.get(i.id) || [],
       ...headlinePrices(maps.pricePointsByItem.get(i.id)),
       cost: maps.itemCostById.get(i.id) || null,
+      freightPending: maps.freightPendingItems.has(i.id),
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -104,7 +105,8 @@ export default function SupplyItems({ data, maps, editing, setModal }) {
       <div className="text-[11px] text-gr mb-3 bg-cd border border-lt rounded-lg p-2.5">
         <b>Double-click an item</b> for its vendors and price points. <b>Double-click a price line</b> for terms, notes and the original document.
         Prices in <b className="text-dk">black</b> come from a PO or invoice; prices in <b>grey</b> are quotes. The list shows the latest PO and the best open quote — <b>▸</b> expands the history.
-        <b> Actual</b> cost is the latest PO landed (price + its share of pickup freight, split by weight); <b className="text-red-600">⚑</b> marks an assumed cost 5% or more off actual.
+        <b> Actual</b> cost is the latest PO landed — ingredient/product price + its share of the PO’s freight (split by weight), shown broken out.
+        <b className="text-red-600"> ⚑</b> marks an assumed cost 5% or more off actual; <b className="text-amber-600">⚑</b> marks a PO whose freight (or pickup / delivered) isn’t entered yet.
         $/lb and $/1,000 are <b>derived</b> from the document price — never typed. Date badges age against today: green &lt; 60 days, amber 60–90, red &gt; 90 or past validity.
       </div>
       {section('ingredient', 'Ingredients', '#2E7D6B')}
@@ -181,10 +183,18 @@ function CostCell({ row, editing, onEdit }) {
         {c?.actual_cost != null ? (
           <>
             actual {fmtCost(row.kind, c.actual_cost)}
-            <span className="text-[9px] text-gr"> · {c.actual_includes_freight ? 'landed, incl. freight' : 'PO price'}</span>
+            <div className="text-[9px] text-gr">
+              {fmtCost(row.kind, c.actual_product_cost)} product
+              {' + '}{c.actual_includes_freight ? `${fmtCost(row.kind, c.actual_freight_cost)} freight` : 'freight —'}
+            </div>
           </>
         ) : <span className="text-[9px] text-gr">no priced PO yet</span>}
       </div>
+      {row.freightPending && (
+        <div className="pl-2" title="A PO for this item has no freight (or pickup / delivered) entered yet">
+          <PendingFlag>freight pending</PendingFlag>
+        </div>
+      )}
       {c?.variance_flag && (
         <div className="pl-2">
           <span
@@ -199,12 +209,19 @@ function CostCell({ row, editing, onEdit }) {
   );
 }
 
+// Yellow flag: the PO's logistics aren't complete — pickup/delivered not set,
+// or freight not entered (0 = none, and clears it).
+const PendingFlag = ({ children }) => (
+  <span className="inline-block px-1.5 py-px rounded text-[9px] font-bold bg-amber-100 text-amber-700">⚑ {children}</span>
+);
+
 function Fulfillment({ po }) {
-  if (!po?.fulfillment) return <div className="text-[9px] text-gr mt-0.5">{po ? 'pickup / delivered not set' : 'not linked to a PO'}</div>;
+  if (!po) return <div className="text-[9px] text-gr mt-0.5">not linked to a PO</div>;
+  if (!po.fulfillment) return <div className="mt-0.5"><PendingFlag>pickup / delivered not set</PendingFlag></div>;
   return (
     <div className="text-[9px] font-semibold mt-0.5 text-dk">
       {po.fulfillment === 'pickup' ? '🚚 Picked up' : '📦 Delivered'}
-      {po.fulfillment === 'pickup' && po.freight_cost == null && <span className="text-amber-600 font-normal"> · freight not entered</span>}
+      {po.freight_cost == null && <> <PendingFlag>freight pending</PendingFlag></>}
     </div>
   );
 }
@@ -214,21 +231,23 @@ function PoBlock({ quote, item, maps, editing, onEdit }) {
   const po = maps.posById.get(quote.po_id) || null;
   const c = maps.lineCostByQuote.get(quote.id) || null;
   const pickup = po?.fulfillment === 'pickup';
+  const ing = item.kind === 'ingredient';
+  const per = (v) => fmtCost(item.kind, v);
   const facts = [
     ['PO', po?.po_number],
-    ['Picked up / delivered', po?.fulfillment && (pickup ? 'Picked up — we pay freight' : 'Delivered')],
+    ['Picked up / delivered', po?.fulfillment ? (pickup ? 'Picked up — we pay freight' : 'Delivered') : <PendingFlag>not set</PendingFlag>],
     ['Packing slip', po?.packing_slip_ref],
     ['Ship / pickup date', po?.ship_date && fmtDate(po.ship_date)],
-    ...(pickup ? [
-      ['Freight paid (whole PO)', po.freight_cost != null ? fmtMoney(po.freight_cost) : <span className="text-amber-600">not entered</span>],
-      ['This line’s share', c?.freight_share != null && (
-        <>
-          {fmtMoney(c.freight_share)}
-          {c.po_lbs > 0 && <span className="text-gr"> · {fmtQty(Number(c.line_lbs ?? 0))} of {fmtQty(Number(c.po_lbs))} lb</span>}
-        </>
-      )],
-    ] : []),
-    ['Landed', c && (item.kind === 'ingredient' ? fmtCost('ingredient', c.landed_per_lb) : fmtCost('packaging', c.landed_per_thousand))],
+    [pickup ? 'Freight paid (whole PO)' : 'Freight billed (whole PO)', po?.freight_cost != null ? fmtMoney(po.freight_cost) : <PendingFlag>freight pending</PendingFlag>],
+    ['This line’s freight', c?.freight_share != null && (
+      <>
+        {fmtMoney(c.freight_share)}
+        {c.po_lbs > 0 && <span className="text-gr"> · {fmtQty(Number(c.line_lbs ?? 0))} of {fmtQty(Number(c.po_lbs))} lb</span>}
+      </>
+    )],
+    [ing ? 'Ingredient $/lb' : 'Product $/1,000', c && per(ing ? c.price_per_lb : c.price_per_thousand)],
+    [ing ? 'Freight $/lb' : 'Freight $/1,000', c?.freight_share != null && per(ing ? c.freight_per_lb : c.freight_per_thousand)],
+    [ing ? 'Landed $/lb' : 'Landed $/1,000', c && per(ing ? c.landed_per_lb : c.landed_per_thousand)],
   ];
   return (
     <div className="mt-2 pt-2 border-t border-lt">

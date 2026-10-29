@@ -3,19 +3,25 @@
 -- (docs/SUPPLIES_SPEC.md, "V1.2 — landed cost")
 --
 --   supply_pos               — one row per purchase order: picked up or
---                              delivered; for a pickup, the packing slip and
---                              the freight we pay to bring it in
+--                              delivered, the packing slip, and the freight:
+--                              what we pay to bring a pickup in, or what the
+--                              vendor bills on a delivered invoice
 --   quotes.po_id             — which PO a PO/invoice line belongs to
 --   supply_items.assumed_cost — the planning assumption, TYPED: $/lb for
 --                              ingredients, $/1,000 for packaging. It is an
 --                              assumption, not a document price, so it is the
 --                              one cost figure that is entered by hand.
---   v_po_line_cost           — per PO/invoice line: pickup freight split by
---                              weight, landed $/lb and $/1,000 (computed)
+--   v_po_line_cost           — per PO/invoice line: freight split by weight;
+--                              product, freight and landed $/lb and $/1,000
+--                              broken out (computed)
 --   v_item_cost              — per item: assumed vs actual (latest PO line,
---                              landed) and the ±5% variance flag (computed)
+--                              landed, with product/freight split), the ±5%
+--                              variance flag and the freight-pending flag
 --
--- Freight split: a pickup PO's freight is shared across its lines by weight
+-- Freight pending (yellow flag): the PO isn't marked picked up / delivered
+-- yet, or its freight hasn't been entered. Enter 0 when there is none.
+--
+-- Freight split: a PO's freight is shared across its lines by weight
 -- (qty × unit_weight_lbs). If no line on the PO has a weight, it is split
 -- evenly per line. A vendor SO that confirms the same PO for the same SKU
 -- doesn't add weight twice: only the latest line per (PO, SKU) counts toward
@@ -34,8 +40,8 @@ CREATE TABLE IF NOT EXISTS supply_pos (
   notes text,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now(),
-  -- freight we pay in transit only exists for a pickup
-  CONSTRAINT supply_pos_freight_only_on_pickup CHECK (freight_cost IS NULL OR fulfillment = 'pickup')
+  -- freight is entered against a known pickup or delivery
+  CONSTRAINT supply_pos_freight_needs_fulfillment CHECK (freight_cost IS NULL OR fulfillment IS NOT NULL)
 );
 
 ALTER TABLE quotes ADD COLUMN IF NOT EXISTS po_id uuid REFERENCES supply_pos(id) ON DELETE SET NULL;
@@ -120,10 +126,11 @@ shared AS (
     p.freight_cost,
     pb.po_lbs,
     CASE
-      WHEN p.fulfillment = 'pickup' AND p.freight_cost IS NOT NULL THEN
+      WHEN p.freight_cost IS NOT NULL THEN
         CASE WHEN pb.po_lbs > 0 THEN round(p.freight_cost * coalesce(l.line_lbs, 0) / pb.po_lbs, 2)
              ELSE round(p.freight_cost / pb.po_lines, 2) END
-    END AS freight_share
+    END AS freight_share,
+    l.po_id IS NOT NULL AND (p.fulfillment IS NULL OR p.freight_cost IS NULL) AS freight_pending
   FROM lines l
   LEFT JOIN supply_pos p ON p.id = l.po_id
   LEFT JOIN po_basis pb  ON pb.po_id = l.po_id
@@ -134,7 +141,13 @@ SELECT
   CASE WHEN kind = 'ingredient' AND line_lbs > 0
        THEN round(line_price / line_lbs, 4) END                                AS price_per_lb,
   CASE WHEN kind = 'ingredient' AND line_lbs > 0
+       THEN round(freight_share / line_lbs, 4) END                             AS freight_per_lb,
+  CASE WHEN kind = 'ingredient' AND line_lbs > 0
        THEN round((line_price + coalesce(freight_share, 0)) / line_lbs, 4) END AS landed_per_lb,
+  CASE WHEN kind = 'packaging' AND line_units > 0
+       THEN round(1000 * line_price / line_units, 2) END                       AS price_per_thousand,
+  CASE WHEN kind = 'packaging' AND line_units > 0
+       THEN round(1000 * freight_share / line_units, 2) END                    AS freight_per_thousand,
   CASE WHEN kind = 'packaging' AND line_units > 0
        THEN round(1000 * (line_price + coalesce(freight_share, 0)) / line_units, 2) END AS landed_per_thousand
 FROM shared;
@@ -151,15 +164,20 @@ SELECT
   a.doc_ref                  AS actual_doc_ref,
   a.doc_date                 AS actual_doc_date,
   a.actual_cost,
+  a.actual_product_cost,
+  a.actual_freight_cost,
   a.freight_share IS NOT NULL AS actual_includes_freight,
+  coalesce(a.freight_pending, false) AS actual_freight_pending,
   CASE WHEN i.assumed_cost IS NOT NULL AND a.actual_cost > 0
        THEN round((i.assumed_cost - a.actual_cost) / a.actual_cost, 4) END AS variance_pct,
   coalesce(i.assumed_cost IS NOT NULL AND a.actual_cost > 0
            AND abs(i.assumed_cost - a.actual_cost) >= 0.05 * a.actual_cost, false) AS variance_flag
 FROM supply_items i
 LEFT JOIN LATERAL (
-  SELECT c.quote_id, c.doc_ref, c.doc_date, c.freight_share,
-         CASE WHEN i.kind = 'ingredient' THEN c.landed_per_lb ELSE c.landed_per_thousand END AS actual_cost
+  SELECT c.quote_id, c.doc_ref, c.doc_date, c.freight_share, c.freight_pending,
+         CASE WHEN i.kind = 'ingredient' THEN c.landed_per_lb ELSE c.landed_per_thousand END AS actual_cost,
+         CASE WHEN i.kind = 'ingredient' THEN c.price_per_lb ELSE c.price_per_thousand END AS actual_product_cost,
+         CASE WHEN i.kind = 'ingredient' THEN c.freight_per_lb ELSE c.freight_per_thousand END AS actual_freight_cost
   FROM v_po_line_cost c
   WHERE c.item_id = i.id
     AND (CASE WHEN i.kind = 'ingredient' THEN c.landed_per_lb ELSE c.landed_per_thousand END) IS NOT NULL

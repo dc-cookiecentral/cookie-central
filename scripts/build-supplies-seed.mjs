@@ -200,7 +200,7 @@ function build() {
   const poNumbers = new Set(PURCHASE_ORDERS.map((p) => p.po_number));
   const porows = PURCHASE_ORDERS.map((p) => {
     if (!vendorNames.has(p.vendor)) throw new Error(`unknown PO vendor ${p.vendor}`);
-    return [id('po', p.po_number), q(p.po_number), id('vendor', p.vendor), q(p.po_date), q(p.fulfillment), q(p.packing_slip_ref), q(p.ship_date), q(p.notes)];
+    return [id('po', p.po_number), q(p.po_number), id('vendor', p.vendor), q(p.po_date), q(p.fulfillment), q(p.packing_slip_ref), q(p.ship_date), q(p.freight_cost ?? null), q(p.notes)];
   });
   for (const v of VENDORS) {
     vrows.push([id('vendor', v.name), q(v.name), q(v.category), q(v.status ?? 'active'), q(v.address), q(v.website), q(v.phone_main),
@@ -255,7 +255,7 @@ BEGIN;
     upsert('vendor_contacts', ['id', 'vendor_id', 'name', 'role', 'phone_office', 'phone_cell', 'email', 'is_primary'], crows) + '\n' +
     upsert('supply_items', ['id', 'name', 'kind', 'primary_vendor_id', 'notes'], irows) + '\n' +
     upsert('supply_skus', ['id', 'item_id', 'vendor_id', 'brand_name', 'item_code', 'vendor_item_code', 'order_unit', 'unit_weight_lbs', 'units_per_order_unit', 'units_per_thousand', 'spec_note'], srows) + '\n' +
-    upsert('supply_pos', ['id', 'po_number', 'vendor_id', 'po_date', 'fulfillment', 'packing_slip_ref', 'ship_date', 'notes'], porows, { insertOnly: true }) + '\n' +
+    upsert('supply_pos', ['id', 'po_number', 'vendor_id', 'po_date', 'fulfillment', 'packing_slip_ref', 'ship_date', 'freight_cost', 'notes'], porows, { insertOnly: true }) + '\n' +
     upsert('quotes', ['id', 'sku_id', 'vendor_id', 'doc_type', 'doc_ref', 'doc_date', 'valid_until', 'moq', 'lead_time', 'terms', 'one_time_costs', 'status', 'notes', 'doc_path', 'po_id'], qrows, { keep: ['po_id'] }) + '\n' +
     upsert('quote_breaks', ['id', 'quote_id', 'qty', 'price_per_order_qty'], brows) +
     // Items the seed used to create under another name (their SKUs and quotes cascade).

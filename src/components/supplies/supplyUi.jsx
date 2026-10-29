@@ -64,10 +64,12 @@ export function buildSupplyMaps(data) {
   const posById = new Map((data.pos || []).map((p) => [p.id, p]));
   const lineCostByQuote = new Map((data.lineCost || []).map((c) => [c.quote_id, c]));
   const itemCostById = new Map((data.itemCost || []).map((c) => [c.item_id, c]));
+  // Items with a PO line whose freight (or pickup / delivered) isn't entered yet.
+  const freightPendingItems = new Set((data.lineCost || []).filter((c) => c.freight_pending).map((c) => c.item_id));
 
   return {
     vendorsById, skusById, itemsById, skusByItem, quotesBySku, contactsByVendor, breaksByQuote, lastOrderByItem, itemsByVendor,
-    pricePointsByItem, posById, lineCostByQuote, itemCostById,
+    pricePointsByItem, posById, lineCostByQuote, itemCostById, freightPendingItems,
   };
 }
 

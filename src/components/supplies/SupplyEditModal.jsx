@@ -4,9 +4,9 @@ import { saveAssumedCost, savePo } from '../../hooks/useSupplies';
 // Edit forms for the Supplies tab (same look as the Spec Sheet's EditModal).
 //   kind 'assumed' — an item's assumed cost ($/lb ingredient, $/1,000 packaging)
 //   kind 'po'      — the PO behind a PO/invoice line: picked up or delivered,
-//                    packing slip, and (pickup only) the freight we pay in
-//                    transit, which v_po_line_cost splits across the PO's lines
-//                    by weight.
+//                    packing slip, and the freight (what we pay to bring a
+//                    pickup in, or what a delivered invoice bills), which
+//                    v_po_line_cost splits across the PO's lines by weight.
 
 const INPUT = 'w-full px-2 py-1 rounded border border-lt text-[11px]';
 
@@ -49,7 +49,7 @@ export default function SupplyEditModal({ modal, onClose, onSaved }) {
       result = await saveAssumedCost(modal.item.id, v);
     } else {
       if (!form.po_number.trim()) return setErr('PO number is required.');
-      const freight = form.fulfillment === 'pickup' ? toNum(form.freight_cost) : null;
+      const freight = form.fulfillment ? toNum(form.freight_cost) : null;
       if (freight != null && !(freight >= 0)) return setErr('Freight must be a number ≥ 0.');
       setSaving(true);
       result = await savePo({
@@ -104,13 +104,15 @@ export default function SupplyEditModal({ modal, onClose, onSaved }) {
               <input type="date" value={form.ship_date} onChange={(e) => set('ship_date', e.target.value)} className={INPUT} />
             </Field>
             <Field
-              label="Freight we pay in transit ($, whole PO)"
-              hint={form.fulfillment === 'pickup' ? 'Split across this PO’s products by weight.' : 'Only for a pickup.'}
+              label={form.fulfillment === 'delivered' ? 'Freight billed on the invoice ($, whole PO)' : 'Freight we pay in transit ($, whole PO)'}
+              hint={form.fulfillment
+                ? 'Split across this PO’s products by weight. Enter 0 if there is none — blank keeps the yellow “freight pending” flag.'
+                : 'Set picked up / delivered first.'}
             >
               <input
-                type="number" step="0.01" min="0" value={form.fulfillment === 'pickup' ? form.freight_cost : ''}
-                onChange={(e) => set('freight_cost', e.target.value)} disabled={form.fulfillment !== 'pickup'}
-                className={`${INPUT} ${form.fulfillment !== 'pickup' ? 'bg-bg text-gr' : ''}`}
+                type="number" step="0.01" min="0" value={form.fulfillment ? form.freight_cost : ''}
+                onChange={(e) => set('freight_cost', e.target.value)} disabled={!form.fulfillment}
+                className={`${INPUT} ${!form.fulfillment ? 'bg-bg text-gr' : ''}`}
               />
             </Field>
             <Field label="Notes" wide>

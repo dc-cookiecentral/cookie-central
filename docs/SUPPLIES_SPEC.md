@@ -160,15 +160,17 @@ Each phase = one branch/PR (ERP deploys via GitHub integration — no CLI deploy
 - **Assemblers LLC → closed** (exiting as co-man, Oct 2026). Changed in the local vendor data and applied to the live row; the record stays for history and its quotes drop out of "best quote".
 
 **V1.2 — PO pickup/delivery, freight, assumed vs actual cost — Oct 29 2026** (branch `supplies-v1.2`, migration `20261029120000_supplies_po_landed.sql`)
-- **`supply_pos`** — one row per PO: picked up or delivered, packing slip #, ship/pickup date and, for a pickup only (DB check), the freight we pay in transit. PO/invoice lines link through `quotes.po_id`.
-- **Freight split by weight** (`v_po_line_cost`): a pickup PO's freight is shared across its lines by lbs (qty × unit weight); evenly per line if no line has a weight. A vendor SO that confirms the same PO/SKU doesn't count the weight twice.
+- **`supply_pos`** — one row per PO: picked up or delivered, packing slip #, ship/pickup date, and the freight — what we pay to bring a pickup in, or what the vendor bills on a delivered invoice (both count, Oct 29). Freight needs pickup/delivered set first (DB check). PO/invoice lines link through `quotes.po_id`.
+- **Freight split by weight** (`v_po_line_cost`): a PO's freight is shared across its lines by lbs (qty × unit weight); evenly per line if no line has a weight. A vendor SO that confirms the same PO/SKU doesn't count the weight twice.
+- **Ingredient vs shipping broken out:** every PO line and the item's actual cost show product $/lb (or $/1,000) + freight $/lb = landed.
+- **Yellow ⚑ freight pending:** a PO with pickup/delivered not set, or freight not entered. Enter 0 when there is no freight. Seeded pending: SP026 Batory and SP029 AAI (freight to enter once the trucks are booked), SP028 McCormick (pickup/delivered and freight unknown).
 - **Assumed cost** — `supply_items.assumed_cost`, typed: $/lb for ingredients, $/1,000 for packaging. This is the one hand-entered cost figure, deliberately: it is a planning assumption, not a document price, so the "never typed" rail still holds for every price that comes off a document.
-- **Actual cost** (`v_item_cost`) = the latest PO/invoice line, landed (price + its freight share). Shown under the assumed cost in the items list; **⚑ flags at ±5% or more** ((assumed − actual) / actual).
+- **Actual cost** (`v_item_cost`) = the latest PO/invoice line, landed (price + its freight share). Shown under the assumed cost in the items list; **red ⚑ flags at ±5% or more** ((assumed − actual) / actual).
 - **Editing** behind the Spec Sheet lock (admin/ops, 🔒/🔓): set an item's assumed cost; on a PO line, Edit PO / + Link to PO (fulfillment, packing slip, ship date, freight). All writes audit-logged. First slice of Phase V2.
 - **Seed now leaves app edits alone:** `supply_pos` rows are insert-only (a re-run never overwrites fulfillment/freight), `quotes.po_id` is only filled where empty, and `assumed_cost` isn't in the seed. `RETIRED_ITEMS` in the local data deletes items the seed used to create under another name.
 - **Packing slip 522657 filed:** the "AAI dry ingredient (item TBD)" placeholder is AAI's MoisturLOK (item 23666) on PO SP029-2026 — moved onto Moisturlok, AAI now primary, slip uploaded to `aai/2026-10-22_ps-522657.pdf`. Fresh Coast noted as the co-man replacing Assemblers.
-- Seeded POs: SP026 Batory (pickup), SP028 McCormick (not set), SP029 AAI (pickup, slip 522657, ships Nov 2), SP031 GNT (delivered). SH Bakery's Oct 22 PO has no number on file, so it isn't linked.
-- **Open:** GNT is delivered but prepaid freight ($71.66) is added to the invoice — under the pickup-only rule it isn't in actual cost. Freight amounts for the Batory and AAI pickups aren't known yet. Packaging lines have no weight, so a mixed packaging pickup would put all freight on the weighted lines.
+- Seeded POs: SP026 Batory (pickup), SP028 McCormick (not set), SP029 AAI (pickup, slip 522657, ships Nov 2), SP031 GNT (delivered, $71.66 UPS freight → Exberry landed $26.37/lb = $24.20 + $2.17). SH Bakery's Oct 22 PO has no number on file, so it isn't linked.
+- **Open:** Packaging lines have no weight, so a PO mixing packaging with ingredients would put all its freight on the weighted lines.
 
 **Data questions surfaced by the seed**
 - ERP 121002 (“Tray”, Great River on the sheet) was **assumed** to be the 3.0 dough-puck tray — confirm.
