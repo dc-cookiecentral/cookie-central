@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, Fragment } from "react";
 import { useDemandFeeds } from "../hooks/useDemandFeeds";
 import { walmartWeekOf } from "../parsers/retailLinkSupplyPlan";
-import { ComposedChart, Line, XAxis, YAxis, Tooltip, ReferenceLine, ReferenceArea, ResponsiveContainer } from "recharts";
+import { ComposedChart, Line, Bar, LabelList, XAxis, YAxis, Tooltip, ReferenceLine, ReferenceArea, ResponsiveContainer } from "recharts";
 
 /* Cookie Central — Walmart Demand Planner
    Ported in from the standalone preview artifact, ENGINE AND DATA UNCHANGED.
@@ -336,17 +336,27 @@ function Stat({ label, value, tone, src, placeholder }) {
   );
 }
 
-const FLOW_COLORS = { pos: "#2D2235", fcst: "#C2185B", depot: "#E8A33D", dot: "#3E8E5A" };
+// The chart shows SHOPPER demand only — POS and Walmart's forecast — with the
+// store base beneath it (Caroline, Oct 29 2026). The DC → DOT and DOT → depot
+// supply lines were removed from it; the funnel beside the chart now carries
+// where stock sits.
+const FLOW_COLORS = { pos: "#2D2235", fcst: "#C2185B", stores: "#B7A6C4" };
 function buildFlow(s) {
   const UNITS_PER_CASE = packOf(s.sku).unitsPerCase;
-  return s.cells.map((c, i) => ({
+  return s.cells.map((c) => ({
     wl: String(c.wk).slice(4),
     wk: c.wk,
     month: fiscalOf(c.wk).month,
-    dot: c.actual != null ? c.actual : (i > s.lastActualIdx ? c.plan : null),
-    depot: c.dlv != null ? c.dlv : (c.req != null && i > s.lastActualIdx ? c.req : null),
     pos: c.pos != null ? Math.round(c.pos / UNITS_PER_CASE) : null,
     fcst: c.wmtStoreFcst != null ? Math.round(c.wmtStoreFcst / UNITS_PER_CASE) : null,
+    // Store base for the bar panel: Retail Link TRAITED stores (set up to
+    // carry the item). Retail Link has no "stores selling" count. Only weeks
+    // with POS — forward weeks carry no store count.
+    stores: c.pos != null && c.traited ? c.traited : null,
+    // Velocity = POS units ÷ traited stores = units/store/week. Identical to
+    // Walmart's own "Units per Store per Week (w/zeros)" (checked W32–W38).
+    // Not the engine's c.velocity, which uses OOS-adjusted true demand.
+    velocity: c.pos != null && c.traited ? c.pos / c.traited : null,
   }));
 }
 
@@ -363,10 +373,12 @@ function FlowLegend({ latestWk }) {
       style={{ borderColor: "#E5D9DE" }}>
       <div className="font-semibold mb-1">Chain flow, upstream → shopper · all series in cases/week</div>
       <div className="flex flex-col gap-0.5">
-        {item(FLOW_COLORS.dot, "DC → DOT · source: production log / NetSuite sales")}
-        {item(FLOW_COLORS.depot, "DOT → Walmart depots · source: NetSuite (Cortina) deliveries")}
         {item(FLOW_COLORS.pos, "POS shopper takeaway · source: Retail Link")}
         {item(FLOW_COLORS.fcst, "Walmart sales forecast · source: Retail Link fcst pull", true)}
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block rounded-sm" style={{ width: 8, height: 12, background: FLOW_COLORS.stores }} />
+          Traited stores (bars, under the chart) · label: stores · units/store/week · source: Retail Link
+        </span>
         <span className="flex items-center gap-1.5">
           {/* Was hardcoded "today W28" (Aug 13 snapshot) until Oct 29 2026. */}
           <span className="inline-block" style={{ width: 2, height: 12, background: "#C2185B" }} />
@@ -379,9 +391,10 @@ function FlowLegend({ latestWk }) {
       </div>
       <div className="mt-1 opacity-80">
         <b>1 case = 12 retail units (Black Currant: 10).</b> POS, store on-hand, and the Walmart forecast arrive in units
-        (shopper-facing systems) and are charted ÷12 (÷10 for Black Currant); NetSuite, DOT, and production are already in cases.
-        A healthy chain reads left-to-right in time: DC → DOT leads, depletions follow, POS confirms, and
-        Walmart's forecast should trend off POS history — a line breaking away from its neighbors is the early warning.
+        (shopper-facing systems) and are charted ÷12 (÷10 for Black Currant).
+        Walmart's forecast should trend off POS history; a forecast breaking away from POS is the early warning.
+        Traited stores are stores set up to carry the item, not stores that sold it (Retail Link has no
+        stores-selling count). Velocity = POS units ÷ traited stores, the same as Walmart's own "Units per Store per Week".
       </div>
     </div>
   );
@@ -454,25 +467,66 @@ function FlowCard({ s, m, f }) {
       </div>
       <div className="grid gap-5 md:grid-cols-[1fr_250px] items-start">
         <div className="min-w-0">
-          <div style={{ height: 190 }}>
+          <div style={{ height: 170 }}>
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={data} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}>
+              <ComposedChart data={data} syncId={"flow-" + s.sku} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}>
                 {todayWl && (
                   <ReferenceArea x1={todayWl} x2={data[data.length - 1].wl} fill="#FDF6FA" fillOpacity={0.7} />
                 )}
-                <XAxis dataKey="wl" ticks={ticks} tickLine={false} axisLine={{ stroke: "#E5D9DE" }}
-                  tick={{ fontSize: 10, fontFamily: "IBM Plex Mono, monospace", fill: "#2D2235", opacity: 0.7 }}
-                  tickFormatter={(wl) => { const d = data.find(x => x.wl === wl); return d ? d.month : wl; }} />
+                {/* Month ticks live on the store panel below, which shares this axis. */}
+                <XAxis dataKey="wl" hide />
                 <YAxis width={42} tickLine={false} axisLine={false} tickFormatter={(v) => Number(v).toLocaleString("en-US")}
                   tick={{ fontSize: 10, fontFamily: "IBM Plex Mono, monospace", fill: "#2D2235", opacity: 0.7 }} />
                 <Tooltip formatter={fmtTip}
                   labelFormatter={(wl) => { const d = data.find(x => x.wl === wl); return d ? "W" + wl + " \u00b7 " + d.month + " (wk " + d.wk + ")" : wl; }}
                   contentStyle={{ fontSize: 11, fontFamily: "Inter, sans-serif", borderRadius: 10, borderColor: "#E5D9DE" }} />
                 {todayWl && <ReferenceLine x={todayWl} stroke="#C2185B" strokeWidth={2} />}
-                <Line dataKey="dot" name="DC \u2192 DOT" stroke={FLOW_COLORS.dot} strokeWidth={1.8} dot={false} connectNulls />
-                <Line dataKey="depot" name="DOT \u2192 depots" stroke={FLOW_COLORS.depot} strokeWidth={1.8} dot={false} connectNulls />
                 <Line dataKey="pos" name="POS" stroke={FLOW_COLORS.pos} strokeWidth={2.6} dot={false} />
                 <Line dataKey="fcst" name="Walmart fcst" stroke={FLOW_COLORS.fcst} strokeWidth={2} strokeDasharray="6 4" dot={false} connectNulls />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+          {/* Store base under the demand chart, on the SAME week axis (syncId
+              links the hover). A separate panel, not a second y-axis: ~2,600
+              stores and ~400 cases on one chart would need two scales. Each bar
+              is labelled vertically "stores · units/store/week". */}
+          <div className="text-[9px] uppercase tracking-widest opacity-55 mt-1 pl-[42px]">
+            Traited stores · units/store/week
+          </div>
+          <div style={{ height: 140 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={data} syncId={"flow-" + s.sku} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+                {todayWl && (
+                  <ReferenceArea x1={todayWl} x2={data[data.length - 1].wl} fill="#FDF6FA" fillOpacity={0.7} />
+                )}
+                <XAxis dataKey="wl" ticks={ticks} tickLine={false} axisLine={{ stroke: "#E5D9DE" }}
+                  tick={{ fontSize: 10, fontFamily: "IBM Plex Mono, monospace", fill: "#2D2235", opacity: 0.7 }}
+                  tickFormatter={(wl) => { const d = data.find(x => x.wl === wl); return d ? d.month : wl; }} />
+                {/* Hidden, same width as the chart above so the two plot areas
+                    line up. Headroom (×3) leaves room for a ~61px vertical label above
+                    the tallest bar (8.5px mono, "2,609 · 1.92"). */}
+                <YAxis width={42} hide={false} tick={false} axisLine={false} tickLine={false}
+                  domain={[0, (max) => Math.max(1, max) * 3]} />
+                <Tooltip
+                  formatter={(v, name, item) => name === "Traited stores"
+                    ? [F.int(v) + " stores · " + (item.payload.velocity != null ? item.payload.velocity.toFixed(2) : "—") + " units/store/wk", "Traited stores"]
+                    : [v, name]}
+                  labelFormatter={(wl) => { const d = data.find(x => x.wl === wl); return d ? "W" + wl + " \u00b7 wk ending Sun " + weekEndingSunday(d.wk) : wl; }}
+                  contentStyle={{ fontSize: 11, fontFamily: "Inter, sans-serif", borderRadius: 10, borderColor: "#E5D9DE" }} />
+                {todayWl && <ReferenceLine x={todayWl} stroke="#C2185B" strokeWidth={2} />}
+                <Bar dataKey="stores" name="Traited stores" fill={FLOW_COLORS.stores} radius={[2, 2, 0, 0]} isAnimationActive={false}>
+                  <LabelList dataKey="stores" content={({ x, y, width, index }) => {
+                    const d = data[index];
+                    if (!d || d.stores == null) return null;
+                    const cx = x + width / 2, cy = y - 3;
+                    return (
+                      <text x={cx} y={cy} transform={`rotate(-90 ${cx} ${cy})`} textAnchor="start" dominantBaseline="central"
+                        style={{ fontSize: 8.5, fontFamily: "IBM Plex Mono, monospace", fill: "#2D2235", opacity: 0.75 }}>
+                        {F.int(d.stores)} · {d.velocity.toFixed(2)}
+                      </text>
+                    );
+                  }} />
+                </Bar>
               </ComposedChart>
             </ResponsiveContainer>
           </div>

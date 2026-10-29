@@ -145,9 +145,17 @@
   - **Header is stock in the chain** (sellable + transit + DCs + shelves) with expired beside it. No "cases accounted for" total: stock and a sales flow don't add up.
   - **Colour by stage group, not by row** (rows are named in text). DOT `#3E8E5A`, Walmart network `#E8A33D`, shopper `#6B3F8C`, all passing the dataviz palette validator (amber's sub-3:1 contrast relieved by the label + value on every row). The prototype's six colours failed it (the two greens are indistinguishable). Expired is a state: DOT green with a 45° hatch, ⚠ and the word.
 
+  - [x] Chart reworked (Caroline's review, Oct 29): the DC → DOT and DOT → depot supply lines are removed from it and from the legend; it shows only POS and the Walmart forecast. A traited-stores bar panel sits directly under it on the same week axis, each bar labelled vertically "stores · units/store/week" (WC W38: 2,609 · 1.92) — 2026-10-29
+
+  *Decisions* (chart, Caroline, Oct 29)
+  - **Bars = Retail Link Traited Stores**, labelled as such. Retail Link has no stores-selling count.
+  - **Velocity = POS units ÷ traited stores**, printed with the store count on each bar, not drawn as its own series. It's identical to Walmart's "Units per Store per Week (w/zeros)" (checked WC W32–W38). It is *not* the engine's `velocity`, which uses OOS-adjusted true demand.
+  - **Stacked panel on a shared week axis, not a second y-axis** (~2,600 stores vs ~400 cases). Hover is linked across the two.
+
   *To do*
   - [ ] Caroline review in the browser (Claude in Chrome once connected), then push to `main`
   - [ ] Confirm with Becky that *Curr Whse On Hand* is units, not cases
+  - [ ] Ask Becky whether Retail Link can add a stores-with-sales count to the WK## pull (the bars would switch to it)
   - [ ] B2 plan: "This week's actions" panel (inputs now exist: 1,086 expired, 851 expiring by Dec 26)
 
 - **Phase 2 — Operations:** upcoming (weeks following Phase 1 ship).
