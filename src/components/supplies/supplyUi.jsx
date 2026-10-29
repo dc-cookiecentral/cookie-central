@@ -61,7 +61,14 @@ export function buildSupplyMaps(data) {
   });
   pricePointsByItem.forEach((pts) => pts.sort((a, b) => String(b.quote.doc_date || '').localeCompare(String(a.quote.doc_date || ''))));
 
-  return { vendorsById, skusById, itemsById, skusByItem, quotesBySku, contactsByVendor, breaksByQuote, lastOrderByItem, itemsByVendor, pricePointsByItem };
+  const posById = new Map((data.pos || []).map((p) => [p.id, p]));
+  const lineCostByQuote = new Map((data.lineCost || []).map((c) => [c.quote_id, c]));
+  const itemCostById = new Map((data.itemCost || []).map((c) => [c.item_id, c]));
+
+  return {
+    vendorsById, skusById, itemsById, skusByItem, quotesBySku, contactsByVendor, breaksByQuote, lastOrderByItem, itemsByVendor,
+    pricePointsByItem, posById, lineCostByQuote, itemCostById,
+  };
 }
 
 export const isActual = (q) => ['po', 'invoice'].includes(q.doc_type);
@@ -94,6 +101,9 @@ export const fmtUnit = (kind, b) =>
   kind === 'ingredient' ? fmtPerLb(b.price_per_lb)
     : b.price_per_thousand != null ? fmtPerM(b.price_per_thousand)
       : b.price_per_unit != null ? `${usd(b.price_per_unit, 4)} ea` : null;
+// Assumed / actual cost are per item in the item's comparison unit.
+export const fmtCost = (kind, v) => (v == null ? null : kind === 'ingredient' ? fmtPerLb(v) : fmtPerM(v));
+export const fmtPct = (v) => (v == null ? null : `${v > 0 ? '+' : ''}${(Number(v) * 100).toFixed(1)}%`);
 // PO/invoice prices read black, quoted prices grey.
 export const priceTone = (q) => (q && isActual(q) ? 'text-dk' : 'text-gr');
 

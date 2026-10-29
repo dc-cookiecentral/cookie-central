@@ -4,20 +4,22 @@ import { openSupplyDoc } from '../../hooks/useSupplies';
 import SpecTable from '../specsheet/SpecTable';
 import { Empty, Code } from '../specsheet/pills';
 import {
-  fmtMoney, fmtQty, fmtDate, fmtUnit, priceTone, headlinePrices, DocDate, QuoteStatus, docLabel,
+  fmtMoney, fmtQty, fmtDate, fmtUnit, fmtCost, fmtPct, priceTone, headlinePrices, isActual, DocDate, QuoteStatus, docLabel,
   VendorLink, ContactName,
 } from './supplyUi';
 
-// Supplies tab (docs/SUPPLIES_SPEC.md, Phase V1 — READ-ONLY).
-//   items list (Ingredients / Packaging) — headline price: last PO + best quote
+// Supplies tab (docs/SUPPLIES_SPEC.md).
+//   items list (Ingredients / Packaging) — headline price: last PO + best quote;
+//   assumed cost with the actual landed cost under it, flagged at ±5%
 //     → dblclick an item: its price lines open directly under the item row
-//       → dblclick a line: terms & notes, 📄 original document, under that line
+//       → dblclick a line: terms & notes, PO pickup/freight, 📄 original document
 // The selected item lives in ?item= so the Vendors tab can link straight to it.
+// Edit controls render only while the page's edit lock is open (`editing`).
 
 // Current price points first: on PO / active, then preliminary, expired, closed.
 const STATUS_RANK = { on_po: 0, active: 1, preliminary: 2, expired: 3, closed: 4 };
 
-export default function SupplyItems({ data, maps }) {
+export default function SupplyItems({ data, maps, editing, setModal }) {
   const [params, setParams] = useSearchParams();
   const itemId = params.get('item');
   const [lineId, setLineId] = useState(null);
@@ -40,6 +42,7 @@ export default function SupplyItems({ data, maps }) {
       lastOrder: maps.lastOrderByItem.get(i.id) || null,
       points: maps.pricePointsByItem.get(i.id) || [],
       ...headlinePrices(maps.pricePointsByItem.get(i.id)),
+      cost: maps.itemCostById.get(i.id) || null,
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -53,8 +56,14 @@ export default function SupplyItems({ data, maps }) {
             : <Empty label="— vendor pending" />,
     },
     {
-      key: 'price', label: 'Price', // relabelled per section value: (r) => (r.lastPo || r.bestQuote)?.unit ?? '',
+      key: 'price', label: 'Price', // relabelled per section
+      value: (r) => (r.lastPo || r.bestQuote)?.unit ?? '',
       render: (r) => <HeadlinePrice row={r} />,
+    },
+    {
+      key: 'cost', label: 'Assumed · actual', // relabelled per section
+      value: (r) => (r.cost?.variance_pct == null ? '' : Math.abs(r.cost.variance_pct)),
+      render: (r) => <CostCell row={r} editing={editing} onEdit={() => setModal({ kind: 'assumed', item: r })} />,
     },
     {
       key: 'lastOrder', label: 'Last Order', value: (r) => r.lastOrder?.doc_date || '',
@@ -73,14 +82,18 @@ export default function SupplyItems({ data, maps }) {
       <div className="mb-5">
         <div className="text-[11px] font-bold uppercase tracking-wide mt-1 mb-1" style={{ color }}>{label}</div>
         <SpecTable
-          columns={cols.map((c) => (c.key === 'price' ? { ...c, label: kind === 'ingredient' ? 'Price / lb' : 'Price / 1,000' } : c))}
+          columns={cols.map((c) =>
+            c.key === 'price' ? { ...c, label: kind === 'ingredient' ? 'Price / lb' : 'Price / 1,000' }
+              : c.key === 'cost' ? { ...c, label: kind === 'ingredient' ? 'Assumed · actual $/lb' : 'Assumed · actual $/1,000' } : c)}
           rows={kindRows}
           bandLabel={`${label} — ${kindRows.length} items · double-click an item for its vendors`}
           bandColor={color}
           onRowDoubleClick={(r) => selectItem(r.id)}
           isRowSelected={(r) => r.id === itemId}
           renderRowDetail={(r) =>
-            r.id === itemId && <ItemDrill item={r} maps={maps} lineId={lineId} setLineId={setLineId} onClose={() => selectItem(null)} />}
+            r.id === itemId && (
+              <ItemDrill item={r} maps={maps} lineId={lineId} setLineId={setLineId} onClose={() => selectItem(null)} editing={editing} setModal={setModal} />
+            )}
         />
       </div>
     );
@@ -91,6 +104,7 @@ export default function SupplyItems({ data, maps }) {
       <div className="text-[11px] text-gr mb-3 bg-cd border border-lt rounded-lg p-2.5">
         <b>Double-click an item</b> for its vendors and price points. <b>Double-click a price line</b> for terms, notes and the original document.
         Prices in <b className="text-dk">black</b> come from a PO or invoice; prices in <b>grey</b> are quotes. The list shows the latest PO and the best open quote — <b>▸</b> expands the history.
+        <b> Actual</b> cost is the latest PO landed (price + its share of pickup freight, split by weight); <b className="text-red-600">⚑</b> marks an assumed cost 5% or more off actual.
         $/lb and $/1,000 are <b>derived</b> from the document price — never typed. Date badges age against today: green &lt; 60 days, amber 60–90, red &gt; 90 or past validity.
       </div>
       {section('ingredient', 'Ingredients', '#2E7D6B')}
@@ -143,8 +157,110 @@ function HeadlinePrice({ row }) {
   );
 }
 
+// ── assumed cost, with the actual landed cost under it ──────────────────────
+function CostCell({ row, editing, onEdit }) {
+  const c = row.cost;
+  const editBtn = editing && (
+    <button
+      onClick={(e) => { e.stopPropagation(); onEdit(); }}
+      onDoubleClick={(e) => e.stopPropagation()}
+      className="ml-1.5 px-1.5 py-px rounded text-[9px] border border-lt text-pk hover:bg-pc"
+    >
+      {row.assumed_cost == null ? '+ Set' : 'Edit'}
+    </button>
+  );
+  return (
+    <div className="whitespace-nowrap">
+      <div>
+        {row.assumed_cost != null
+          ? <span className="font-semibold text-dk">{fmtCost(row.kind, row.assumed_cost)}</span>
+          : <span className="text-[10px] text-gr italic">— assumed not set</span>}
+        {editBtn}
+      </div>
+      <div className="pl-2 text-[10px] text-md">
+        {c?.actual_cost != null ? (
+          <>
+            actual {fmtCost(row.kind, c.actual_cost)}
+            <span className="text-[9px] text-gr"> · {c.actual_includes_freight ? 'landed, incl. freight' : 'PO price'}</span>
+          </>
+        ) : <span className="text-[9px] text-gr">no priced PO yet</span>}
+      </div>
+      {c?.variance_flag && (
+        <div className="pl-2">
+          <span
+            title={`Assumed is ${fmtPct(c.variance_pct)} vs actual (${docLabel({ doc_type: 'po', doc_ref: c.actual_doc_ref })})`}
+            className="inline-block px-1.5 py-px rounded text-[9px] font-bold bg-red-100 text-red-700"
+          >
+            ⚑ assumed {fmtPct(c.variance_pct)} vs actual
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Fulfillment({ po }) {
+  if (!po?.fulfillment) return <div className="text-[9px] text-gr mt-0.5">{po ? 'pickup / delivered not set' : 'not linked to a PO'}</div>;
+  return (
+    <div className="text-[9px] font-semibold mt-0.5 text-dk">
+      {po.fulfillment === 'pickup' ? '🚚 Picked up' : '📦 Delivered'}
+      {po.fulfillment === 'pickup' && po.freight_cost == null && <span className="text-amber-600 font-normal"> · freight not entered</span>}
+    </div>
+  );
+}
+
+// ── PO, pickup and freight for a PO/invoice line ────────────────────────────
+function PoBlock({ quote, item, maps, editing, onEdit }) {
+  const po = maps.posById.get(quote.po_id) || null;
+  const c = maps.lineCostByQuote.get(quote.id) || null;
+  const pickup = po?.fulfillment === 'pickup';
+  const facts = [
+    ['PO', po?.po_number],
+    ['Picked up / delivered', po?.fulfillment && (pickup ? 'Picked up — we pay freight' : 'Delivered')],
+    ['Packing slip', po?.packing_slip_ref],
+    ['Ship / pickup date', po?.ship_date && fmtDate(po.ship_date)],
+    ...(pickup ? [
+      ['Freight paid (whole PO)', po.freight_cost != null ? fmtMoney(po.freight_cost) : <span className="text-amber-600">not entered</span>],
+      ['This line’s share', c?.freight_share != null && (
+        <>
+          {fmtMoney(c.freight_share)}
+          {c.po_lbs > 0 && <span className="text-gr"> · {fmtQty(Number(c.line_lbs ?? 0))} of {fmtQty(Number(c.po_lbs))} lb</span>}
+        </>
+      )],
+    ] : []),
+    ['Landed', c && (item.kind === 'ingredient' ? fmtCost('ingredient', c.landed_per_lb) : fmtCost('packaging', c.landed_per_thousand))],
+  ];
+  return (
+    <div className="mt-2 pt-2 border-t border-lt">
+      <div className="flex items-center gap-2 mb-1">
+        <div className="text-[9px] font-bold uppercase tracking-wider text-dk">PO · pickup &amp; freight</div>
+        {editing && (
+          <button onClick={() => onEdit(po)} className="px-2 py-0.5 rounded text-[10px] border border-lt text-pk hover:bg-pc">
+            {po ? 'Edit PO' : '+ Link to PO'}
+          </button>
+        )}
+      </div>
+      {!po ? (
+        <div className="text-[11px] text-gr italic">Not linked to a PO yet{editing ? '' : ' — unlock editing to link it'}.</div>
+      ) : (
+        <>
+          <div className="grid gap-x-6 gap-y-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' }}>
+            {facts.map(([k, v]) => (
+              <div key={k}>
+                <div className="text-[8px] font-bold uppercase tracking-wider text-gr">{k}</div>
+                <div className="text-[11px] text-dk">{v || <Empty />}</div>
+              </div>
+            ))}
+          </div>
+          {po.notes && <div className="text-[11px] text-md mt-1.5">{po.notes}</div>}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── item drill-down: one line per price point (SKUs with none get one line) ──
-function ItemDrill({ item, maps, lineId, setLineId, onClose }) {
+function ItemDrill({ item, maps, lineId, setLineId, onClose, editing, setModal }) {
   const ref = useRef(null);
   useEffect(() => {
     ref.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -206,6 +322,7 @@ function ItemDrill({ item, maps, lineId, setLineId, onClose }) {
           <div>
             <QuoteStatus v={l.quote.status} />
             <div className="text-[10px] text-md mt-0.5">{docLabel(l.quote)}</div>
+            {isActual(l.quote) && <Fulfillment po={maps.posById.get(l.quote.po_id)} />}
           </div>
         ) : <Empty label="— no price on file" />,
     },
@@ -247,14 +364,15 @@ function ItemDrill({ item, maps, lineId, setLineId, onClose }) {
         emptyNote="No vendor SKUs on file for this item."
         onRowDoubleClick={(l) => setLineId(l.id === lineId ? null : l.id)}
         isRowSelected={(l) => l.id === lineId}
-        renderRowDetail={(l) => l.id === lineId && <LineDetail line={l} maps={maps} onClose={() => setLineId(null)} />}
+        renderRowDetail={(l) =>
+          l.id === lineId && <LineDetail line={l} item={item} maps={maps} onClose={() => setLineId(null)} editing={editing} setModal={setModal} />}
       />
     </div>
   );
 }
 
 // ── line detail: terms, notes, the original document ────────────────────────
-function LineDetail({ line, maps, onClose }) {
+function LineDetail({ line, item, maps, onClose, editing, setModal }) {
   const { quote, sku, vendor } = line;
   const contacts = maps.contactsByVendor.get(vendor?.id) || [];
   const fields = [
@@ -297,6 +415,9 @@ function LineDetail({ line, maps, onClose }) {
           </div>
         ))}
       </div>
+      {quote && isActual(quote) && (
+        <PoBlock quote={quote} item={item} maps={maps} editing={editing} onEdit={(po) => setModal({ kind: 'po', quote, po, item })} />
+      )}
       {(quote?.notes || sku.spec_note) && (
         <div className="mt-2 pt-2 border-t border-lt text-[11px] text-md space-y-1">
           {quote?.notes && <div><b className="text-dk">Notes:</b> {quote.notes}</div>}
