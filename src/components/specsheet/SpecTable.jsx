@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 
 // Reusable Cookulator table: sortable headers, per-column multi-select filters,
 // and a level-grouped column chooser. Column def:
@@ -6,7 +6,9 @@ import { useMemo, useState } from 'react';
 //     sortable=true, filterable=false, optional=false, defaultOn=true,
 //     group?:string (chooser grouping), locked?:boolean (always-on note) }
 // Optional row props: onRowDoubleClick(row) for drill-downs, and
-// isRowSelected(row) to highlight the row a drill-down is showing.
+// isRowSelected(row) to highlight the row a drill-down is showing, and
+// renderRowDetail(row) → JSX|null to open that drill-down inline, directly
+// under its row (full table width).
 
 const TH = 'px-3 py-2 text-left text-[9px] font-bold text-gr uppercase tracking-wider whitespace-nowrap';
 
@@ -15,7 +17,7 @@ const val = (col, row) => {
   return v == null ? '' : v;
 };
 
-export default function SpecTable({ columns, rows, bandLabel, bandColor = '#C2185B', emptyNote, onRowDoubleClick, isRowSelected }) {
+export default function SpecTable({ columns, rows, bandLabel, bandColor = '#C2185B', emptyNote, onRowDoubleClick, isRowSelected, renderRowDetail }) {
   const [sortCol, setSortCol] = useState(null);
   const [sortDir, setSortDir] = useState(1);
   const [filters, setFilters] = useState({}); // key -> Set of selected string values
@@ -170,24 +172,33 @@ export default function SpecTable({ columns, rows, bandLabel, bandColor = '#C218
             </tr>
           </thead>
           <tbody>
-            {view.map((r, i) => (
-              <tr
-                key={r.id || i}
-                onDoubleClick={onRowDoubleClick ? () => {
-                  window.getSelection()?.removeAllRanges(); // dblclick also selects a word
-                  onRowDoubleClick(r);
-                } : undefined}
-                className={[
-                  'border-b border-bg hover:bg-pc',
-                  onRowDoubleClick ? 'cursor-pointer' : '',
-                  isRowSelected?.(r) ? 'bg-pink-50' : '',
-                ].join(' ')}
-              >
-                {visibleCols.map((c) => (
-                  <td key={c.key} className="px-3 py-2 align-top">{c.render ? c.render(r) : (val(c, r) || <span className="text-lt">—</span>)}</td>
-                ))}
-              </tr>
-            ))}
+            {view.map((r, i) => {
+              const detail = renderRowDetail?.(r);
+              return (
+                <Fragment key={r.id || i}>
+                  <tr
+                    onDoubleClick={onRowDoubleClick ? () => {
+                      window.getSelection()?.removeAllRanges(); // dblclick also selects a word
+                      onRowDoubleClick(r);
+                    } : undefined}
+                    className={[
+                      'border-b border-bg hover:bg-pc',
+                      onRowDoubleClick ? 'cursor-pointer' : '',
+                      isRowSelected?.(r) ? 'bg-pink-50' : '',
+                    ].join(' ')}
+                  >
+                    {visibleCols.map((c) => (
+                      <td key={c.key} className="px-3 py-2 align-top">{c.render ? c.render(r) : (val(c, r) || <span className="text-lt">—</span>)}</td>
+                    ))}
+                  </tr>
+                  {detail && (
+                    <tr className="border-b border-bg">
+                      <td colSpan={visibleCols.length} className="px-3 py-2 bg-bg">{detail}</td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
         {view.length === 0 && (

@@ -153,6 +153,12 @@ Each phase = one branch/PR (ERP deploys via GitHub integration — no CLI deploy
 - **Originals are JPEG page scans in the catalogue, not PDFs**; the upload script wraps each document's pages into one PDF. PT206 (STS) and the Great River tray have no source document in rev 6, so those quotes have no 📄 and no doc_date.
 - **v13 prototype file isn't in the repo or on this machine**; the pages follow the Spec Sheet's look (SpecTable bands, pink tokens). Compare against v13 at review.
 
+**V1.1 review changes — Oct 29 2026** (branch `supplies-v1.1`)
+- **One window, two tabs.** `/supplies` has Supplies | Vendors tabs (`?tab=vendors`); `/vendors` redirects there, keeping `?vendor=`. Sidebar shows one entry, "Supplies & Vendors".
+- **Drill-downs open inline.** Double-clicking an item opens its price lines directly under the item row; double-clicking a price line opens its terms/notes directly under that line (`SpecTable` gained an optional `renderRowDetail`).
+- **Headline price in the items list.** New Price / lb (ingredients) and Price / 1,000 (packaging) column: the most recent PO/invoice in **black** and the best open quote in **grey** (lowest unit price at any break; excludes expired/closed quotes and closed vendors). `▸ history (N)` expands every price point, newest first. The drill-down uses the same black/grey rule.
+- **Assemblers LLC → closed** (exiting as co-man, Oct 2026). Changed in the local vendor data and applied to the live row; the record stays for history and its quotes drop out of "best quote".
+
 **Data questions surfaced by the seed**
 - ERP 121002 (“Tray”, Great River on the sheet) was **assumed** to be the 3.0 dough-puck tray — confirm.
 - Sheet prices are undated and are seeded as `doc_type='quote'`, status `active`, ref "Assembler ingredient sheet (undated)". They read as current, but nobody has confirmed them since Jun 2026.

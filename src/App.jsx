@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { UOMProvider } from './contexts/UOMContext';
 import { RetailerFilterProvider } from './contexts/RetailerFilterContext';
@@ -13,7 +13,6 @@ import WeeklyReport from './pages/WeeklyReport';
 import Reference from './pages/Reference';
 import SpecSheet from './pages/SpecSheet';
 import Supplies from './pages/Supplies';
-import Vendors from './pages/Vendors';
 import SampleCentral from './pages/SampleCentral';
 import Eos from './pages/Eos';
 
@@ -31,6 +30,13 @@ function InternalOnly() {
 function HomeRedirect() {
   const { profile } = useAuth();
   return <Navigate to={profile?.role === 'cortina' ? '/sample-central' : '/inventory'} replace />;
+}
+
+// Vendors became a tab on /supplies; keep old /vendors?vendor=<id> links working.
+function VendorsRedirect() {
+  const params = new URLSearchParams(useLocation().search);
+  params.set('tab', 'vendors');
+  return <Navigate to={`/supplies?${params}`} replace />;
 }
 import Payments from './pages/Payments';
 import PaymentDetail from './pages/PaymentDetail';
@@ -82,7 +88,7 @@ export default function App() {
                   <Route path="reference" element={<Reference />} />
                   <Route path="spec-sheet" element={<SpecSheet />} />
                   <Route path="supplies" element={<Supplies />} />
-                  <Route path="vendors" element={<Vendors />} />
+                  <Route path="vendors" element={<VendorsRedirect />} />
                   <Route path="trace" element={<LotTrace />} />
                   <Route path="audit" element={<AuditLog />} />
                   <Route path="uploads" element={<Uploads />} />
