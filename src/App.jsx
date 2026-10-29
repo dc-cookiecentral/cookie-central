@@ -12,6 +12,8 @@ import Uploads from './pages/Uploads';
 import WeeklyReport from './pages/WeeklyReport';
 import Reference from './pages/Reference';
 import SpecSheet from './pages/SpecSheet';
+import Supplies from './pages/Supplies';
+import Vendors from './pages/Vendors';
 import SampleCentral from './pages/SampleCentral';
 import Eos from './pages/Eos';
 
@@ -79,6 +81,8 @@ export default function App() {
                   <Route path="snapshot" element={<EomSnapshot />} />
                   <Route path="reference" element={<Reference />} />
                   <Route path="spec-sheet" element={<SpecSheet />} />
+                  <Route path="supplies" element={<Supplies />} />
+                  <Route path="vendors" element={<Vendors />} />
                   <Route path="trace" element={<LotTrace />} />
                   <Route path="audit" element={<AuditLog />} />
                   <Route path="uploads" element={<Uploads />} />
