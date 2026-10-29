@@ -81,7 +81,7 @@ Then `/demand-planner` picks them up on next load; its banner's "as of" is the n
 
 ⚠️ **Store on-hand only accrues from the week you start uploading.** No weekly on-hand history exists in any Walmart export, so backfilled weeks show blank for Store OH DOH — blank, not zero.
 
-🔴 **There is no DOT on-hand report at all** (Caroline, Aug 24 2026) — not pending, non-existent. Its upload card has been removed. The planner's forward DOT cascade runs permanently on `params.dotOpeningAnchor`, so the Tracker's DOT rows are a **model, not actuals**. Do not go looking for a file to fix this.
+✅ **DOT on-hand: card 7, DOT Inventory Snapshot** (live Oct 28 2026; BUILD_PLAN Oct 28–29). The Aug 24 note that no such report exists was overturned when DOT's `Inventory Snapshot.xlsx` arrived on Oct 27. Upload it weekly: each upload is one reading per SKU, dated by the workbook's created date and taken as the closing stock of that Walmart week. A week without one is modelled, and weeks before the first reading still run on `params.dotOpeningAnchor`. ⚠️ Don't confuse it with the Assemblers "Inventory Snapshot Report" (different company, own card).
 
 If an export looks different from the above, run `node scripts/inspect-retail-link.mjs "<file>.xlsx"` — it runs every parser over every sheet and prints what matched.
 
@@ -97,7 +97,7 @@ If an export looks different from the above, run `node scripts/inspect-retail-li
 | Walmart store forecast | DOT opening / closing |
 | PO requested / delivered / cuts, DOT cut recovery | |
 
-**Why the right-hand column is wrong:** the page computes demand from live Walmart data but its supply side is still placeholder — production is a frozen 2026-08-13 snapshot (`production_runs` holds 5 rows) and **no DOT on-hand report exists at all**. PB&J currently reads 363.8 days on hand and every SKU recommends 0 cases. Size co-bakery runs the way you did before this page existed, until `production` has a real feed.
+**Why the right-hand column is wrong:** the page computes demand from live Walmart data but its supply side is still placeholder — production is a frozen 2026-08-13 snapshot (`production_runs` holds 5 rows), and DOT on-hand is measured only in weeks with an Inventory Snapshot upload — everything after the latest reading is modelled on that frozen production. PB&J currently reads 363.8 days on hand and every SKU recommends 0 cases. Size co-bakery runs the way you did before this page existed, until `production` has a real feed.
 
 **The Sources tab** (`/demand-planner` → Sources) states, for every figure, which file, sheet and column it came from — or the formula, where the page derives it — and lists the places two sources disagree. Start there when a number looks wrong.
 
@@ -336,7 +336,7 @@ Anything jumping → click through to the page that owns it.
 
 
 - ~~Confirm the Bentonville weekly arrived: `SELECT week_number, report_date FROM weekly_reports ORDER BY report_date DESC LIMIT 3;`~~ — ⚠️ **retired.** The Bentonville Retail Link email is discontinued (see the note at the top of this file); `weekly_reports` stopped at **2026-07-06** and that is correct, not a missed upload. The Retail Link data now arrives as the six `/uploads` exports instead.
-- ~~Confirm DOT snapshot is fresh: `SELECT max(snapshot_date) FROM dot_inventory;`~~ — ⚠️ **retired.** There is no DOT on-hand report and there never will be (ADR-059); `dot_inventory` is empty and will stay empty. The DOT file that *does* arrive weekly is the Order History (`dot_order_history`), checked by the Demand Planner freshness item above.
+- Confirm the DOT on-hand reading is this week's: `SELECT wm_week, max(snapshot_date), count(*) FROM dot_on_hand GROUP BY 1 ORDER BY 1 DESC LIMIT 2;` — expect 4 rows (WC, PBG, CCF, BC) for the current Walmart week. *(Replaces the retired `dot_inventory` check: that table stays empty; the real feed is `dot_on_hand`.)*
 
 ### 6.3 · Monitoring surfaces
 

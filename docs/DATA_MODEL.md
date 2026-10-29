@@ -746,7 +746,28 @@ Source: the DOT `Order History (N).xlsx` export, sheet "Outbound Orders". Added 
 
 ✅ **Validated by exact reproduction:** bucketed by delivery week this file reproduces `SEED.dotService` exactly on ordered, cut and order count for all six weeks. Unlike POS — which Walmart restates, so exact agreement would be suspicious — this export is a fixed slice, so exact agreement is the correct test.
 
-### RLS
-All five: `"All can read"` for any authenticated user, `"Internal write"` for `admin` / `finance` / `ops` — the EOS convention. The `cortina` role is gated out of `/demand-planner` at the router anyway (`InternalOnly` in `App.jsx`).
+### `dot_on_hand` — DOT on-hand, one reading per SKU per Walmart week
+Source: DOT's **Inventory Snapshot** export (three tabs: Inventory Summary, WH Summary, Aggregated Orders), upload card 7. Added by `20261028150000`. Parsed by `src/parsers/dotInventorySnapshot.js`; feeds the planner's `dot` series (Tracker "DOT actual OH (feed)"). This is the report KNOWN_ISSUES §3 said did not exist — first copy received 2026-10-27.
 
-`upload_log.upload_type` gained `'retail_link'` and `'retail_link_otif'` in `20260824120000`, `'retail_link_supply_plan'` in `20260824130000`, and `'dot_order_history'` in `20260824140000`.
+⚠️ **Not `dot_inventory`** (still empty; built for a DOT file nobody had seen, and read by `useAlerts` / `useEomSnapshot`). **Not the Assemblers "Inventory Snapshot Report"** either — near-identical name, different company.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `sku` | text NOT NULL | `WC` / `PBG` / `CCF` / `BC`, from the case GTIN (= `master_cases.gtin14`). An unknown GTIN is reported on upload, never stored |
+| `wm_week` | int NOT NULL | Walmart week containing `snapshot_date`. **The reading is that week's CLOSING stock** (Caroline, Oct 28 2026) |
+| `snapshot_date` | date NOT NULL | The sheets carry no date: the workbook's created date, read in US Central time (fallback: the file's modified time, with a warning) |
+| `gtin`, `dot_item_number`, `cases_per_pallet` | text / text / numeric | BC is 96 per pallet; the doughs 189 |
+| `good_cases` | numeric | Total Inventory on **RG** lots. **Includes committed** |
+| `committed_cases` | numeric | Loaded + Picked on RG lots. Available = good − committed |
+| `expired_cases` | numeric | Total Inventory on **EX** lots. Not in good |
+| `expiring_60d_cases`, `earliest_good_expiry` | numeric / date | RG stock expiring within 60 days of `snapshot_date`; the earliest RG expiry |
+| `lot_count`, `upload_id`, `updated_at` | | |
+
+`PRIMARY KEY (sku, wm_week)` — a re-upload in the same week replaces the row, **unless the stored reading is newer**: the importer skips those (and refuses the file if every row would go backwards).
+
+✅ **Validated:** the first file reproduces the BUILD_PLAN reading exactly — good WC 1,531 / PBG 743 / CCF 1,544 / BC 1,257; expired 1,086; committed 1,005 (`node scripts/test-dot-inventory-snapshot.mjs <file>`). On every lot, `Total = Warehouse + Loaded + Picked + Other`; the parser warns if that, or either cross-tab total, stops holding.
+
+### RLS
+All six: `"All can read"` for any authenticated user, `"Internal write"` for `admin` / `finance` / `ops` — the EOS convention. The `cortina` role is gated out of `/demand-planner` at the router anyway (`InternalOnly` in `App.jsx`).
+
+`upload_log.upload_type` gained `'retail_link'` and `'retail_link_otif'` in `20260824120000`, `'retail_link_supply_plan'` in `20260824130000`, `'dot_order_history'` in `20260824140000`, and `'dot_inventory_snapshot'` in `20261028150000`.

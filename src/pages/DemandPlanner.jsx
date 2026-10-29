@@ -21,9 +21,13 @@ import { ComposedChart, Line, XAxis, YAxis, Tooltip, ReferenceLine, ReferenceAre
    banner reports which source actually won — do not replace it with a flat
    "live" or "static" claim, because it is genuinely both.
 
-   ⚠️ `production` is still SEED (production_runs holds 5 rows). There is no DOT
-   ON-HAND report and never will be (Caroline, Aug 24 2026), so dotUsed's opening
-   balance runs off params.dotOpeningAnchor.
+   ⚠️ `production` is still SEED (production_runs holds 5 rows).
+
+   DOT ON-HAND is live from Oct 28 2026: DOT's Inventory Snapshot upload writes
+   `dot_on_hand`, one reading per SKU per Walmart week, taken as that week's
+   CLOSING stock (`c.dotActual`, so `dotUsed` = the reading). The cascade opens
+   each later week from it. Weeks before the first reading, and SKUs with no
+   reading, still open from params.dotOpeningAnchor — those stay a model.
 
    ⚠️ The DOT Order History export we receive is EXCEPTION-FILTERED — every row
    in the sample carried a cut — so it cannot stand in for total depot
@@ -418,7 +422,7 @@ function FlowCard({ s, m }) {
           <Stat label="Fill rate, last 4 wks" value={F.pct(m.l4wFill)}
             src="NetSuite (Cortina) deliveries" />
           <Stat label="DOT days on hand" value={F.d1(m.dotDoh)} placeholder
-            src="NOT REAL — no DOT on-hand feed exists; modelled off an opening assumption" />
+            src="NOT REAL — modelled forward from the last DOT snapshot on frozen production" />
         </div>
         <div>
           <div style={{ height: 190 }}>
@@ -689,8 +693,8 @@ const PROVENANCE = [
     detail: 'by Delivery Date week. Per PO — the export carries no item column' },
   { series: 'production', field: 'Cases produced', derived: false, file: '— none —',
     detail: 'Still the frozen seed. production_runs holds 5 rows' },
-  { series: 'dot', field: 'DOT on-hand', derived: false, file: '— none —',
-    detail: 'No DOT on-hand report exists. The forward cascade runs on params.dotOpeningAnchor, so DOT rows in the Tracker are MODELLED, never measured' },
+  { series: 'dot', field: 'DOT on-hand', derived: false, file: 'DOT Inventory Snapshot', sheet: 'Inventory Summary',
+    detail: 'good cases = Total Inventory on RG lots (committed Loaded + Picked included; expired EX lots excluded), by GTIN. One reading per SKU per Walmart week, taken as that week\'s CLOSING stock. Weeks without a reading are modelled from the last one — or from params.dotOpeningAnchor before the first' },
 ];
 
 function SourceRow({ r, live }) {
@@ -715,9 +719,11 @@ function SourceRow({ r, live }) {
 
 function Sources({ feeds, series }) {
   const src = feeds.sources ?? {};
-  const statusOf = (k) => (k === 'dot' || k === 'production'
-    ? (k === 'dot' ? 'none' : 'seed')
-    : (src[k] === 'live' ? 'live' : 'seed'));
+  const statusOf = (k) => (k === 'production'
+    ? 'seed'
+    : k === 'dot'
+      ? (src.dot === 'live' ? 'live' : 'none')
+      : (src[k] === 'live' ? 'live' : 'seed'));
 
   // ── Forecast comparison: the four forward numbers, side by side ──
   // They are computed differently and SHOULD differ; the spread is the signal.
@@ -919,8 +925,9 @@ function PlaceholderNotice() {
       <div>
         Everything on the <b>demand</b> side is live and reconciles to Walmart's own totals — POS,
         in-store fill rate, OTIF, the Walmart forecast, orders and cut recovery.
-        The <b>supply</b> side does not: production volumes are a frozen 2026-08-13 snapshot and
-        there is <b>no DOT on-hand feed at all</b>. Anything marked{" "}
+        The <b>supply</b> side does not: production volumes are a frozen 2026-08-13 snapshot, and
+        DOT on-hand is <b>measured only in weeks with a DOT Inventory Snapshot upload</b> — every
+        other DOT figure is modelled from that reading. Anything marked{" "}
         <span className="text-[8px] uppercase tracking-widest px-1 py-0.5 rounded align-middle"
           style={{ background: "#EFE4E9", color: "#8E1039" }}>placeholder</span>{" "}
         — days on hand, recommended production, DOT opening and closing — is real demand divided by
@@ -1086,7 +1093,9 @@ const ROWS = [
   { k: "dcdoh", l: "DC DOH (fwd)", placeholder: true, g: c => c.dcDoh, f: "d1", flag: c => (c.dcDoh > 0 && c.dcDoh < 7 ? "bad" : null) },
   { k: "dotused", l: "DOT closing — used (cs)", placeholder: true, g: c => c.dotUsed, f: "int", sec: "DOT" },
   { k: "dotdlv", l: "DOT delivered — cut orders only (cs)", g: c => c.dotDelivered, f: "int" },
-  { k: "dotact", l: "DOT actual OH (feed)", placeholder: true, g: c => c.dotActual, f: "int" },
+  // A measured reading (DOT Inventory Snapshot, good cases), not a model — so
+  // no placeholder flag. Blank in weeks without an upload.
+  { k: "dotact", l: "DOT actual OH (feed)", g: c => c.dotActual, f: "int" },
   { k: "dotdoh", l: "DOT DOH (fwd)", placeholder: true, g: c => c.dotDoh, f: "d1",
     flag: c => (c.dotDoh > 0 && c.dotDoh < 7 ? "bad" : c.dotDoh > 28 ? "warn" : null) },
   { k: "rec", l: "Rec production (cs)", placeholder: true, g: c => c.rec, f: "int", sec: "Co-bakery" },
@@ -1144,7 +1153,7 @@ function Tracker({ series, onEdit }) {
                       <tr>
                         <td className="sticky left-0 bg-white z-10 cc-sans px-3 py-1 border-b"
                           style={{ borderColor: "#F2EAEE", color: row.placeholder ? "#B0A3AC" : undefined }}
-                          title={row.placeholder ? "Placeholder — computed from frozen production data and a DOT on-hand feed that does not exist. Do not plan from this row." : undefined}>
+                          title={row.placeholder ? "Placeholder — computed from frozen production data; DOT on-hand is measured only in weeks with an Inventory Snapshot upload. Do not plan from this row." : undefined}>
                           {row.l}
                           {row.placeholder && (
                             <span className="ml-1.5 text-[8px] uppercase tracking-widest px-1 py-0.5 rounded"
@@ -1237,11 +1246,11 @@ export default function DemandPlanner() {
       forecasts: baseFcst,
       production: [...SEED.production.filter(p => !prodEdits.some(e => e.wk === p.wk && e.sku === p.sku)),
         ...prodEdits.filter(e => e.cases != null)],
-      // DOT ON-HAND, which is a different feed from the DOT Order History that
-      // now drives cut recovery. `dot_inventory` is still empty and its parser
-      // (src/parsers/dot.js) is still FORMAT UNCONFIRMED with no sample, so the
-      // engine falls back to params.dotOpeningAnchor for the forward cascade.
-      dot: [],
+      // DOT ON-HAND (dot_on_hand, from the DOT Inventory Snapshot upload) — a
+      // different feed from the DOT Order History that drives cut recovery. No
+      // SEED fallback: before the first upload this is empty and the engine
+      // opens the cascade from params.dotOpeningAnchor, as it always has.
+      dot: feeds.dotOnHand ?? [],
       // Shown in the Tracker, but NOT used by the cascade — the export is
       // exception-filtered, so it is not the total outbound leg. See the note
       // at c.dotOut below.
@@ -1249,7 +1258,7 @@ export default function DemandPlanner() {
       overrides,
       params: SEED.params,
     };
-  }, [overrides, prodEdits, feeds.pos, feeds.forecasts, feeds.orders, feeds.dotDeliveries]);
+  }, [overrides, prodEdits, feeds.pos, feeds.forecasts, feeds.orders, feeds.dotDeliveries, feeds.dotOnHand]);
 
   // Which series actually came from the database this load — drives the banner.
   const LABELS = { pos: 'POS', forecasts: 'Walmart forecast', otif: 'OTIF',
@@ -1258,6 +1267,15 @@ export default function DemandPlanner() {
   const liveSeries = Object.keys(LABELS).filter(k => feeds.sources[k] === 'live').map(k => LABELS[k]);
   const seedSeries = Object.keys(LABELS).filter(k => feeds.sources[k] !== 'live').map(k => LABELS[k]);
   const anyLive = liveSeries.length > 0;
+  // The newest DOT on-hand reading, for the banner. snapshotDate is a bare date:
+  // build it at UTC noon so no timezone moves it a day.
+  const dotReading = useMemo(() => {
+    const rows = feeds.dotOnHand ?? [];
+    if (!rows.length) return null;
+    const last = rows.reduce((a, r) => (r.wk > a.wk || (r.wk === a.wk && r.snapshotDate > a.snapshotDate) ? r : a));
+    const d = new Date(`${last.snapshotDate}T12:00:00Z`);
+    return { wk: last.wk, label: d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }) };
+  }, [feeds.dotOnHand]);
   const series = useMemo(() => ["WC", "PBG", "CCF", "BC"].map(s => buildSkuSeries(input, s)), [input]);
   const metrics = useMemo(() => series.map(s => sopSummary(s, packOf(s.sku).casesPerPallet)), [series]);
 
@@ -1363,8 +1381,10 @@ export default function DemandPlanner() {
             <span>
               Demand side ({liveSeries.join(', ')}) from uploaded Retail Link files.
               {seedSeries.length > 0 && ` Still on the ${SEED.asOf} seed: ${seedSeries.join(', ')}.`}
-              {' '}Production is still seed data, and there is no DOT on-hand feed at all — the forward
-              DOT cascade runs on its opening anchor.
+              {' '}Production is still seed data.
+              {dotReading
+                ? <>{' '}DOT on-hand measured as of {dotReading.label}{' '}<span style={{ opacity: 0.6 }}>W{String(dotReading.wk).slice(4)} closing</span>; later weeks are modelled from it.</>
+                : ' No DOT Inventory Snapshot uploaded yet — the DOT cascade runs on its opening anchor.'}
               Tracker edits live in the page for this session and are lost on reload.
             </span>
           </>

@@ -68,11 +68,37 @@
   - [x] Standalone prototype moved onto disk + Vercel — 2026-10-28. `~/Projects/dirty-cookie/demand-planner` (Vite app, own Vercel project): the claude.ai iteration surface, deliberately separate from `/demand-planner` in this app.
 
   *To do*
-  - [ ] Inventory Snapshot parser + upload card → a real DOT on-hand feed (retires §3's fixed 250-case anchor; §1 still also needs the production feed)
+  - [x] Inventory Snapshot parser + upload card → a real DOT on-hand feed — built 2026-10-28/29 on `feat/dot-on-hand` (see below). §1 still needs the production feed
   - [ ] Re-upload older WK## Retail Link files — now non-destructive — to restore the erased store on-hand history
   - [ ] Ask Becky to add item 686669913 (BC) to the WK## Retail Link pull so it gets POS
   - [ ] Harshita: disposition decision on the 1,086 expired cases at DOT
   - [ ] Decide whether to fold the prototype's funnel / action-panel / week-ending-Sunday UX into `/demand-planner`
+
+  **October 28–29 2026 — DOT on-hand is a live upload.** Branch `feat/dot-on-hand` (cut from `docs/session-2026-10-28-demand-ingest`); migration `20261028150000`.
+
+  *Done*
+  - [x] Parser `src/parsers/dotInventorySnapshot.js`: Inventory Summary per lot → per SKU by case GTIN; good (RG, committed included) / committed (Loaded + Picked) / expired (EX) / expiring ≤60 days; WH Summary and Aggregated Orders as cross-checks; unknown GTINs, missing SKUs and broken row identities reported, not swallowed. Refuses the Assemblers "Inventory Snapshot Report" with a pointer to its card — 2026-10-29
+  - [x] Table `dot_on_hand`, PK `(sku, wm_week)`, RLS as `dot_order_history`; `upload_log` accepts `dot_inventory_snapshot`. The importer never overwrites a newer reading with an older file — 2026-10-29
+  - [x] Upload card 7 at `/uploads` — 2026-10-29
+  - [x] `useDemandFeeds` reads it (via `fetchAll`) as the engine's `dot` series; the Tracker's *DOT actual OH (feed)* row is real and unflagged; banner, Sources tab and placeholder notice say what is measured and what is modelled. No engine formula changed — 2026-10-29
+  - [x] `scripts/test-dot-inventory-snapshot.mjs`: 13 tests pass, and the real Oct 27 file reproduces good 1,531 / 743 / 1,544 / 1,257, expired 1,086, committed 1,005 → W39. `smoke-render.mjs` 9/9 (new "live + DOT reading" shape); `vite build` clean — 2026-10-29
+  - [x] Docs: KNOWN_ISSUES §1 and §3, DATA_MODEL, FORMULAS (§4 and As built), RUNBOOK (card note and weekly check), README, ADR-059 marked superseded — 2026-10-29
+
+  *Decisions* (supersede ADR-059's "there is no DOT on-hand report")
+  - **New table `dot_on_hand`, not `dot_inventory`.** `dot_inventory` was built in May for a DOT file nobody had seen (incoming / in-transit / allocated buckets, insert-only, no key), and `useAlerts`, `useEomSnapshot` and the Inventory page read it, so filling it would have changed those pages without anyone deciding to. `dot.js` / `dot_inventory` left for a separate retirement decision.
+  - **Good / committed / expired, keyed by case GTIN.** Good = Total Inventory on RG lots, *including* committed; committed = Loaded + Picked on RG lots; expired = EX lots, kept out of good. The engine reads good cases. GTIN → SKU map lives in the parser (same values as `master_cases.gtin14`); an unknown GTIN is reported on upload, never dropped (the ADR-063 lesson).
+  - **As-of = the workbook's CreatedDate, read in US Central time; a reading is the CLOSING stock of the Walmart week containing it** (Caroline, Oct 28). The sheets carry no date. Fallback: the file's modified time, with a warning; with neither, the file is refused rather than given a guessed week. A Tuesday reading taken as the week's close is ~3 days off; preferred over the prior week's close (~4 days).
+  - **One row per (sku, wm_week), never backwards.** A same-week re-upload replaces the row unless the stored reading is newer; those rows are skipped, and a file older on every row is refused. Closes, from the start, the out-of-order bug the walmart_orders importer still has (Oct 23–26).
+  - **What stays a model:** weeks after the latest reading (modelled on SEED production, so DOT closing / DOT DOH / recommended production keep the placeholder flag, KNOWN_ISSUES §1), and weeks before the first reading or a SKU missing from a file (still open from the 250-case `dotOpeningAnchor`). Only *DOT actual OH (feed)* lost its placeholder flag; no engine formula changed.
+  - **Decisions are recorded here, not as ADRs** (Caroline, Oct 29). `DECISIONS.md` stays as the history to ADR-063; ADR-064 folds into the Oct 27 entry. No new ADRs.
+
+  *To do*
+  - [ ] Caroline review → merge. `main` must be merged into the branch first (the docs branch predates the Oct 27 entry); expect small conflicts in BUILD_PLAN and DECISIONS
+  - [ ] When `main` is merged in: fold ADR-064 (import alert) into the Oct 27 entry's *Decisions* and remove it from `DECISIONS.md`
+  - [ ] Apply migration `20261028150000` with `supabase db push`, then upload `Inventory Snapshot.xlsx` on card 7 and check 4 rows land in W39
+  - [ ] Weekly routine: add the DOT Inventory Snapshot to the uploads (RUNBOOK check added)
+  - [ ] Decide: retire `dot_inventory` + `src/parsers/dot.js`
+  - [ ] B: fold the prototype UX in (funnel, action panel, Sunday dates, per-SKU packs); plan per piece first
 
 
 - **Phase 2 — Operations:** upcoming (weeks following Phase 1 ship).
@@ -80,13 +106,13 @@
 
 ## Standing decisions (Spec Sheet, Sample Central, ShipStation)
 
-Rules set in the July 2026 senior review and build plan. They still hold. Full reasoning is in `DECISIONS.md`, ADR-024 to ADR-046.
+Rules set in the July 2026 senior review and build plan. They still hold. Full reasoning is in `DECISIONS.md`, ADR-024 to ADR-046. *(From Oct 29 2026, new decisions go in the timeline entry's* Decisions *list below, not in `DECISIONS.md`. That file is the record to ADR-063.)*
 - **Compute derived values, never store them:** storage (from prep), case net weight, shipment temperature and the price list are views or render-time calculations.
 - **Reference by code or id, never by display text:** line items, templates and case compositions point at `products.code` and friends.
 - **ShipStation automation rules use tags, never item SKUs.** SKU rules silently skip multi-item orders, and sample orders are usually multi-item.
 - **ShipStation owns fulfilment and status:** box, service, label and email routing. The site sends intent and reads status back; it never sets status itself (ADR-032).
 - **One product spine:** Sample Central reads Spec Sheet products (`sample_eligible`) and keeps no product list of its own.
-- **Branch per change; Caroline reviews before merge.** Any deviation from a plan gets an ADR.
+- **Branch per change; Caroline reviews before merge.** Any deviation from a plan gets a dated note in that entry's *Decisions* list (Oct 29 2026: no longer an ADR).
 
 *Folded in Oct 22 2026 (all in git history):* `EXTENSION_BUILD_PLAN.md`, `CLAUDE_CODE_TASKS.md` and `SENIOR_REVIEW.md` (the July plan, task list and review; that work is done, see Timeline) and `DATA_MODEL_ADDITIONS.md` (now the as-built section of `DATA_MODEL.md`). `PRELAUNCH.md`'s open items moved to the Launch checklist below.
 

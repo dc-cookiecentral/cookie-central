@@ -8,8 +8,9 @@ import { getParser } from '../parsers';
 // "awaiting format" placeholders are gone, along with the two speculative
 // parsers that never saw a real file (Cortina PO PDF, NetSuite POs).
 //
-// The six exports that are actually uploaded, in the order Caroline listed them
-// (Aug 24 2026), followed by everything else demoted to a collapsed group.
+// The exports that are actually uploaded, in the order Caroline listed them
+// (Aug 24 2026; card 7, DOT on-hand, added Oct 28 2026), followed by everything
+// else demoted to a collapsed group.
 //
 // `type` → a parser in src/parsers. Two cards may share a `type`: the 1-week and
 // 3-week OTIF exports are the same format and go through the same parser, but
@@ -32,12 +33,13 @@ const SECTIONS = [
     items: [
       { type: 'dot_order_history', title: '5 · DOT Report (Order History)', note: 'The DOT `Order History (N).xlsx` outbound export — one row per DOT order to a Walmart GDC, with ordered vs cut cases. Drives the cut-recovery panel: this is the volume DOT failed to ship, which NetSuite never sees. Validated against a real export — bucketed by delivery date it reproduces the planner\'s existing DOT figures exactly. Upserts on DOT order number.' },
       { type: 'walmart_orders', title: '6 · Walmart Report (NetSuite)', note: 'The Cortina/NetSuite Walmart Orders export — the primary source for Product Orders and Payments. Also auto-ingested nightly from systems@, so a manual upload here is a top-up or a backfill. Upserts on SO number, so re-uploading the full history is safe.' },
+      { type: 'dot_inventory_snapshot', title: '7 · DOT Inventory Snapshot', note: 'DOT\'s on-hand export (`Inventory Snapshot.xlsx`, three tabs). Reads Inventory Summary: good cases (RG lots, committed included), committed (Loaded + Picked) and expired (EX lots) per Walmart SKU, keyed by case GTIN; the other two tabs are cross-checks. The file carries no date, so the reading is dated by the workbook\'s created date and stored as the CLOSING stock of that Walmart week — the Tracker\'s DOT line opens from it. One row per SKU per week: a re-upload in the same week replaces it, but an older file never overwrites a newer one. ⚠️ Not the Assemblers "Inventory Snapshot Report" — that one goes on the Assemblers card.' },
     ],
   },
   {
     origin: 'Legacy & occasional',
     collapsed: true,
-    note: 'Not part of the weekly routine. Kept because they still feed live pages — Assemblers underpins Inventory and Lot Trace, Ingredient Master underpins Reference — and because the Assemblers workbook also arrives by email. (There is no DOT on-hand card: no such report exists — Caroline, Aug 24 2026. `src/parsers/dot.js` is retained but unreachable.)',
+    note: 'Not part of the weekly routine. Kept because they still feed live pages — Assemblers underpins Inventory and Lot Trace, Ingredient Master underpins Reference — and because the Assemblers workbook also arrives by email. (DOT on-hand is card 7 above. `src/parsers/dot.js` predates any real DOT file; it is retained but unreachable.)',
     items: [
       { type: 'production', title: 'Assemblers Report', note: 'Production runs + raw-lot consumption + inventory + outbound shipments — one multi-sheet upload. Normally auto-ingested when emailed to systems@; this card is the manual fallback.' },
       { type: 'qbo', title: 'QuickBooks Payments', note: 'Invoices + payments, matched by invoice #. Feeds the Payments page, currently hidden pending rework.' },

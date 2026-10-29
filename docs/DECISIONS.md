@@ -1083,6 +1083,8 @@ Mapping to WC / PBG / CCF / BC. `useDemandFeeds` carries both maps; a wrong one 
 
 **🔴 There is no DOT on-hand report (Caroline, Aug 24 2026).** Not "not yet" — it does not exist. Consequences, all deliberate:
 
+> ⚠️ **Superseded Oct 28 2026 — see BUILD_PLAN, Oct 28–29 entry.** The report exists — DOT's Inventory Snapshot, received Oct 27 — and is now a live upload. The rest of this ADR stands.
+
 - The upload card for it is **removed**, not demoted. `src/parsers/dot.js` and the `dot_inventory` table are retained (the Inventory page reads the table) but the parser is now unreachable and should stop being described as "awaiting a sample".
 - The engine's `dot` series is permanently empty, so the forward DOT cascade runs on `params.dotOpeningAnchor`. The Tracker's DOT rows are a **model**, never actuals, and should be read that way.
 - This does **not** affect `dot_order_history` (ADR-058), which is a different file entirely — orders and cuts, not on-hand. Both are called "the DOT report"; only one exists.

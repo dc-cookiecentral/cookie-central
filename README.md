@@ -12,7 +12,7 @@ Operational dashboard for Dirty Cookie's white-label retail business (Walmart + 
 >
 > 1. **Do not plan production off it yet.** DC/DOT days-on-hand and the
 >    recommended-production figures divide real demand by placeholder supply
->    (`production_runs` holds 5 rows; there is no DOT on-hand feed). PB&J reads
+>    (`production_runs` holds 5 rows; DOT on-hand is measured only in weeks with an upload). PB&J reads
 >    363.8 days on hand and every SKU recommends 0 cases. Trust POS, in-store
 >    fill, OTIF, forecast, orders and cut recovery — not the supply side.
 > 2. ⚠️ **Supabase's 1,000-row query cap is now CROSSED — three pages are
@@ -34,7 +34,7 @@ Operational dashboard for Dirty Cookie's white-label retail business (Walmart + 
 
 **And a new module in the main project.** The **Walmart Demand Planner** at `/demand-planner` — **Service health** (in-store fill rate + OTIF), S&OP summary, chain-flow charts, DOT cut-recovery and tracker, for WC / PBG / CCF. Live since August 21; wired to live data August 24 (ADR-053→056).
 
-**Five of its six series are live** *(as of Aug 24 2026 — migrations applied, all six exports uploaded)* — POS, Walmart forecast, OTIF, DOT cut recovery and NetSuite orders, fed by the six weekly uploads at `/uploads`. Only `production` is still `SEED`, and there is **no DOT on-hand feed at all** (it does not exist), so the forward DOT cascade runs on its opening anchor — which is why days-on-hand and recommended production are **not trustworthy** (see the warning above). Each series falls back to SEED independently, so the banner reports which source won rather than claiming the page is simply "live" or "static". Start from **`docs/DEMAND_PLANNER_KNOWN_ISSUES.md`**, then `docs/DEMAND_PLANNER_FORMULAS.md` ("As built") and `docs/DATA_MODEL.md`.
+**Five of its six series are live** *(as of Aug 24 2026 — migrations applied, all six exports uploaded)* — POS, Walmart forecast, OTIF, DOT cut recovery and NetSuite orders, fed by the six weekly uploads at `/uploads`. Only `production` is still `SEED`. DOT on-hand became a live upload on Oct 28 2026 (card 7, DOT Inventory Snapshot → `dot_on_hand`), but weeks after the latest reading are modelled on that frozen production — which is why days-on-hand and recommended production are **not trustworthy** (see the warning above). Each series falls back to SEED independently, so the banner reports which source won rather than claiming the page is simply "live" or "static". Start from **`docs/DEMAND_PLANNER_KNOWN_ISSUES.md`**, then `docs/DEMAND_PLANNER_FORMULAS.md` ("As built") and `docs/DATA_MODEL.md`.
 
 ⚠️ **Walmart restates POS**, so all three feeds upsert and re-uploading overlapping weeks is how the numbers stay correct — not a mistake. Consequently **"the live feed reproduces SEED" is not the acceptance test**; SEED is a stale snapshot (week 202622 moved 1,322 → 2,343 units for PB&J). See ADR-054.
 
@@ -150,7 +150,7 @@ cookie-central/
 | `/reference` | Products + Raw Materials + Transitions | Walmart item master + `raw_materials` + `transitions` |
 | `/audit` | Audit log viewer (admin/finance only) | `audit_log` |
 | `/uploads` | Drag-drop pipeline (**six weekly exports** first, legacy feeds collapsed — ADR-057) + upload history + **systems@ Inbox** | `upload_log`, `gmail_sync_state` |
-| `/demand-planner` | Walmart Demand Planner — Service health (in-store fill + OTIF), S&OP summary, flow charts, cut recovery, tracker | `retail_link_pos_weekly` + `retail_link_forecast` + `retail_link_otif` + `dot_order_history` + `po_line_items`/`purchase_orders` (+ `retail_link_supply_plan`, ingested not wired); `production` from `SEED`; no DOT on-hand feed exists |
+| `/demand-planner` | Walmart Demand Planner — Service health (in-store fill + OTIF), S&OP summary, flow charts, cut recovery, tracker | `retail_link_pos_weekly` + `retail_link_forecast` + `retail_link_otif` + `dot_order_history` + `po_line_items`/`purchase_orders` (+ `retail_link_supply_plan`, ingested not wired); + `dot_on_hand`; `production` from `SEED` |
 
 ## Phase 2
 

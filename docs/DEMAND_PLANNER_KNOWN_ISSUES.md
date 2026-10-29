@@ -1,7 +1,7 @@
 # Demand Planner — what to trust, and what not to
 
 **For everyone using `/demand-planner`, not just whoever is building it.**
-Last reviewed: **October 28, 2026**. §3 was overturned and §4 part-fixed on Oct 27–28 — see the dated notes in each. First written Aug 24 2026, the day the live
+Last reviewed: **October 29, 2026**. §3 is resolved — the DOT on-hand report exists and is now a live upload (Oct 28) — and §4 was part-fixed on Oct 27–28; see the dated notes in each. First written Aug 24 2026, the day the live
 feeds went in; §2 and §4 have changed status since, §8 is new, and §9 was
 added Oct 22.
 
@@ -19,9 +19,12 @@ production is **0 cases for all three SKUs**.
 
 **Why they are wrong:** the page computes demand from live Walmart data but the
 supply side of the same calculation is still placeholder — production volumes are
-a frozen snapshot from 2026-08-13, and there is no DOT on-hand feed at all
-(see §3). The days-on-hand and production-recommendation figures are what you get
-when you divide a real number by a made-up one.
+a frozen snapshot from 2026-08-13. DOT on-hand is now **measured** in weeks that
+have a DOT Inventory Snapshot upload (§3), but every week after the latest reading
+is modelled forward from it using that frozen production, and every week before the
+first reading still runs off a fixed 250-case assumption. The days-on-hand and
+production-recommendation figures are what you get when you divide a real number
+by a made-up one.
 
 **Do not trust, on any tab:**
 
@@ -41,8 +44,11 @@ struck through with a `placeholder` badge, their red/amber warning colours are
 suppressed (a flag on a made-up number reads as a real alarm), and the tab
 carries a notice saying so. If a number is not marked, it is real.
 
-**When this gets fixed:** when `production_runs` has a real feed. It currently
-holds **5 rows**. Until then, size co-bakery runs the way you did before this
+**Now real (Oct 28 2026):** the Tracker's **DOT actual OH (feed)** row, in weeks
+with an Inventory Snapshot upload. It is no longer marked placeholder.
+
+**When the rest gets fixed:** when `production_runs` has a real feed — the only
+supply input still on the seed. It currently holds **5 rows**. Until then, size co-bakery runs the way you did before this
 page existed.
 
 ---
@@ -94,26 +100,35 @@ missing ~16% of its lines and nothing indicated it.
 
 ---
 
-## 🟠 3. There is no DOT on-hand report, and there never will be
+## ✅ 3. DOT on-hand — the report exists, and is now a live upload
 
-Confirmed by Caroline, Aug 24 2026. Not "not yet" — it does not exist.
+**Resolved Oct 28 2026.** This section used to say there was no DOT on-hand
+report and never would be (Aug 24 2026). That was overturned on Oct 27, when DOT's
+**“Inventory Snapshot”** export arrived (three tabs: Inventory Summary per lot with
+RG / EX product status and Loaded / Picked; WH Summary per location; Aggregated
+Orders in transit). It is now **card 7 at `/uploads`** and writes `dot_on_hand`.
 
-The forward DOT model therefore runs off a fixed opening assumption
-(`params.dotOpeningAnchor`, 250 cases) rather than a measurement. **The DOT rows
-in the Tracker are a model, not a reading.** Nobody should go looking for a file
-to fix this.
+**What the page does with it:**
+- One reading per SKU per Walmart week. The file carries no date, so it is dated
+  by the workbook's created date and taken as the **closing** stock of that week.
+- **Good cases** (RG lots, committed stock included) drive the Tracker's
+  *DOT actual OH (feed)* row, and the forward DOT cascade opens from that reading.
+  Expired (EX) and committed (Loaded + Picked) cases are stored alongside.
+- First reading, as of Oct 27 (W39): good WC 1,531 / PBG 743 / CCF 1,544 /
+  BC 1,257 cases; **1,086 expired cases** sitting at DOT (PBG 458) that still need a
+  disposition decision; 1,005 cases committed to POs.
 
-Note this is a *different* thing from the **DOT Report (Order History)** upload,
-which is real, live, and covers orders and cuts.
+**What is still a model, not a reading:**
+- **Weeks after the latest reading**: modelled forward using frozen production
+  (§1), so DOT closing, DOT days on hand and recommended production stay marked
+  placeholder.
+- **Weeks before the first reading**, and any SKU missing from a file: these still
+  open from the fixed 250-case assumption (`params.dotOpeningAnchor`).
+- Upload it weekly. A week without an upload is modelled.
 
-⚠️ **Overturned Oct 27 2026 — the report exists.** DOT's **“Inventory Snapshot”**
-export (three tabs: Inventory Summary per lot with RG/EX product status and
-Loaded/Picked; WH Summary per location; Aggregated Orders in-transit) carries
-exactly the on-hand this section said would never arrive. First copy received
-2026-10-27: good stock WC 1,531 / PBG 743 / CCF 1,544 / BC 1,257 cases, plus
-**1,086 expired cases** sitting at DOT. There is no upload card for it yet —
-see BUILD_PLAN (Oct 27–28) for the parser task. Until that ships, the
-fixed-anchor caveat above still describes what this page computes.
+Note this is a *different* report from the **DOT Report (Order History)**
+upload (card 5), which covers orders and cuts. And it is not the Assemblers
+"Inventory Snapshot Report" — near-identical name, different company.
 
 ---
 

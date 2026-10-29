@@ -59,7 +59,7 @@ Key tables:
 - Reference `docs/ARCHITECTURE.md` for data flow decisions
 - Reference `docs/DATA_MODEL.md` for table schemas
 - Reference `prototype/CookieCentral_Complete.jsx` for UI spec — it is the build spec for every module
-- Log decisions in `docs/DECISIONS.md` as ADRs
+- Log decisions in `docs/BUILD_PLAN.md`, in the current timeline entry's *Decisions* list (with the date and why). Do NOT add ADRs to `docs/DECISIONS.md`. It is the historical record up to ADR-063 (Caroline, Oct 29 2026).
 
 ## Org chart
 - Shahira Marei — CEO/Founder — admin

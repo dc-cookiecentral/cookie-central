@@ -72,7 +72,7 @@ async function parseFileImpl(file) {
   if (hIdx === -1) {
     return {
       records: [], summary: 'nothing parsed',
-      errors: [{ row: 0, message: `No "Dot Order Number" column on sheet "${key}" — is this the DOT Order History export? (The pallet-level on-hand export goes to the DOT Inventory card instead.)` }],
+      errors: [{ row: 0, message: `No "Dot Order Number" column on sheet "${key}" — is this the DOT Order History export? (DOT\'s on-hand export, the Inventory Snapshot, goes on card 7 instead.)` }],
     };
   }
   const h = rows[hIdx];

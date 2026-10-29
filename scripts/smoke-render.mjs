@@ -22,7 +22,7 @@
 // It stubs `useDemandFeeds` rather than hitting Supabase, and covers every
 // tab plus the empty-feed path the page takes before the first upload — the
 // TDZ bug was in code common to all of them, but a data-shape bug would not
-// be, so all six combinations are checked.
+// be, so all nine combinations are checked (live, live + a DOT on-hand reading, empty — × three tabs).
 // ─────────────────────────────────────────────────────────────────────────
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -40,6 +40,18 @@ const LIVE_SHAPE = {
   orders: [{ wk: 202628, sku: 'WC', req: 168, dlv: 126, rev: 4656.96, cuts: 0 }],
   sources: { pos: 'live', forecasts: 'live', dotService: 'live', otif: 'live', orders: 'live', dotDeliveries: 'live' },
   asOf: 202628,
+};
+// Live demand plus a DOT Inventory Snapshot reading — the banner and the
+// Tracker's DOT rows take a different branch once `dotOnHand` is present.
+const LIVE_DOT_SHAPE = {
+  ...LIVE_SHAPE,
+  dotOnHand: [
+    { wk: 202639, sku: 'WC', cases: 1531, committed: 336, expired: 246, expiring60: 0,
+      earliestExpiry: '2026-12-23', casesPerPallet: 189, snapshotDate: '2026-10-27' },
+    { wk: 202639, sku: 'BC', cases: 1257, committed: 228, expired: 0, expiring60: 0,
+      earliestExpiry: '2027-03-01', casesPerPallet: 96, snapshotDate: '2026-10-27' },
+  ],
+  sources: { ...LIVE_SHAPE.sources, dot: 'live' },
 };
 // Everything null — what the page sees before the first upload, when every
 // series falls back to SEED.
@@ -63,7 +75,7 @@ try {
     catch (e) { console.log('THREW ' + e.message); process.exitCode = 1; }
   `);
 
-  for (const [shapeName, shape] of [['live', LIVE_SHAPE], ['empty', EMPTY_SHAPE]]) {
+  for (const [shapeName, shape] of [['live', LIVE_SHAPE], ['dot', LIVE_DOT_SHAPE], ['empty', EMPTY_SHAPE]]) {
     for (const tab of ['summary', 'tracker', 'sources']) {
       const stubbed = page
         .replace('import { useDemandFeeds } from "../hooks/useDemandFeeds";',

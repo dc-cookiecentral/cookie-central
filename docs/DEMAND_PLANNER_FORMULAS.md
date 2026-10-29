@@ -147,6 +147,9 @@ dotOut(wk)   = delivered(wk)                      if actuals exist
 dotCloseModeled(wk) = dotOpen + dotIn − dotOut
 dotUsed(wk)  = DOT actual on-hand(wk) if the feed has it, else dotCloseModeled
                (the feed re-anchors the whole forward cascade)
+               feed = dot_on_hand.good_cases (DOT Inventory Snapshot, live Oct 28 2026):
+               one reading per SKU per Walmart week, taken as that week's closing.
+               Weeks before the first reading still open from the 250 anchor.
 dotTarget(wk) = (14 ÷ 7) × demandCases(wk+1)          (14-day forward cover)
 dotDaysOnHand(wk) = dotUsed(wk) ÷ (demandCases(wk+1) ÷ 7)     flags: < 7 red, > 28 amber
 ```
@@ -259,7 +262,7 @@ marked as such in the UI.
 | `otif` | `retail_link_otif` ← OTIF `Receiver` sheet | **live** |
 | `orders` | `po_line_items` + `purchase_orders` ← Cortina/NetSuite export | **live** |
 | `production` | — `production_runs` holds 5 rows | SEED |
-| `dot` | 🔴 **no such feed exists** — there is no DOT on-hand report | permanently empty; engine uses `params.dotOpeningAnchor` |
+| `dot` | `dot_on_hand` ← DOT Inventory Snapshot, `Inventory Summary` sheet (good cases) | **live** from Oct 28 2026; weeks before the first reading use `params.dotOpeningAnchor` |
 
 ⚠️ **An item number missing from either map drops every line carrying it, with no error.** `useDemandFeeds` now returns `unmappedOrderItems` — item number, lines, cases, value, Cortina SKU string and week range for anything `CORTINA_ITEM_TO_SKU` cannot translate — and the page renders it as a red band naming the cases and dollars it is not showing. Empty when the maps are complete. The two maps and the short codes:
 
@@ -276,7 +279,7 @@ Adding a SKU takes three edits and no migration: `ITEM_TO_SKU` and `CORTINA_ITEM
 
 ⚠️ **The `orders` series reads TWO different dates.** `req` and `cuts` bucket by the PO's *scheduled* delivery week; `dlv` and `rev` bucket by the line's *actual* delivery week (per line — DCs on one SO deliver on different days). Verified against SEED: `req` 49/49, `cuts` 49/49 exact. `cuts` is a **count of lines** carrying a cut reason, not a sum of cut cases. See ADR-059.
 
-🔴 **There is no DOT on-hand report** (Caroline, Aug 24 2026) — not "not yet", it does not exist. The Tracker's DOT rows are therefore a **model**, never actuals. Do not read `dotDoh` as measured.
+✅ **DOT on-hand is a reading in weeks with an upload** (BUILD_PLAN Oct 28–29, overturning the Aug 24 note that the report did not exist). *DOT actual OH (feed)* is measured; *DOT closing*, *DOT DOH* and the production recommendation are modelled forward from the latest reading on frozen production, so they stay placeholder. Do not read `dotDoh` as measured.
 
 ⚠️ **`otif` and `dotService` are separate on purpose.** OTIF is Walmart measuring us against MABD, keyed on Walmart's week; cut recovery is what DOT failed to ship, keyed on delivery date. Same shipments, opposite ends, and **the weeks do not align** — merging them averages two different things. See ADR-058.
 

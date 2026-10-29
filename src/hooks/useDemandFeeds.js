@@ -12,11 +12,15 @@ import { walmartWeekOf } from '../parsers/retailLinkSupplyPlan';
 // changing at all.
 //
 // ── Partial by design ────────────────────────────────────────────────────
-// Five of the engine's six series are live: pos, forecasts, otif, dotService
-// and orders. Only `production` is still SEED (`production_runs` holds 5 rows),
-// and the `dot` ON-HAND series has no source at all — there is no DOT on-hand
-// report (Caroline, Aug 24 2026), so the engine's forward DOT cascade runs on
-// `params.dotOpeningAnchor` permanently rather than pending a feed.
+// Six of the engine's seven series are live: pos, forecasts, otif, dotService,
+// orders and `dot` (DOT on-hand). Only `production` is still SEED
+// (`production_runs` holds 5 rows).
+//
+// `dot` comes from `dot_on_hand`, fed by DOT's Inventory Snapshot upload — the
+// report KNOWN_ISSUES §3 once said would never exist (it arrived 2026-10-27).
+// A reading is the CLOSING stock of its Walmart week; the engine's forward DOT
+// cascade opens from it. Weeks before the first reading still run off
+// `params.dotOpeningAnchor`, so they remain a model.
 //
 // The caller merges: live where this hook returns data, SEED everywhere else.
 // `sources` says which is which, and the page's banner reports it rather than
@@ -86,10 +90,11 @@ export function useDemandFeeds() {
     forecasts: null,
     dotService: null,
     dotDeliveries: null,
+    dotOnHand: null,
     otif: null,
     orders: null,
     unmappedOrderItems: [],
-    sources: { pos: 'seed', forecasts: 'seed', dotService: 'seed', otif: 'seed', orders: 'seed', dotDeliveries: 'seed' },
+    sources: { pos: 'seed', forecasts: 'seed', dotService: 'seed', otif: 'seed', orders: 'seed', dotDeliveries: 'seed', dot: 'seed' },
     asOf: null,
   });
 
@@ -97,7 +102,7 @@ export function useDemandFeeds() {
     let active = true;
 
     async function run() {
-      const [posR, fcstR, otifR, dotR, ordR] = await Promise.all([
+      const [posR, fcstR, otifR, dotR, ordR, ohR] = await Promise.all([
         fetchAll(() => supabase
           .from('retail_link_pos_weekly')
           // wmt_forecast_units and pos_units_if_instock are NOT engine inputs —
@@ -126,6 +131,14 @@ export function useDemandFeeds() {
           // may return rows in a different order per page and the pages then
           // overlap or skip.
           .order('id')),
+        // ~4 rows a week, so paging is not needed yet — but every other table
+        // here grew past 1,000 sooner than forecast, so it goes through fetchAll
+        // like the rest. Ordered on the full key so pages cannot overlap.
+        fetchAll(() => supabase
+          .from('dot_on_hand')
+          .select('sku, wm_week, snapshot_date, good_cases, committed_cases, expired_cases, expiring_60d_cases, earliest_good_expiry, cases_per_pallet')
+          .order('wm_week')
+          .order('sku')),
       ]);
       if (!active) return;
 
@@ -137,6 +150,7 @@ export function useDemandFeeds() {
       const otifRows = rows(otifR);
       const dotRows = rows(dotR);
       const orderRows = rows(ordR);
+      const ohRows = rows(ohR);
 
       const pos = posRows
         ? posRows
@@ -376,6 +390,24 @@ export function useDemandFeeds() {
       // future — "Live Retail Link data through week 202653" — while the real
       // data stopped at 202636. Filter on a POS value being present, which is
       // the same test the page's own `latestDataWk` uses.
+      // ── DOT on-hand: the engine's `dot` series ──
+      // `cases` is GOOD stock (RG, committed included) — what the cascade's
+      // closing balance means. The rest rides along for the page; the engine
+      // reads only wk / sku / cases.
+      const dotOnHand = ohRows
+        ? ohRows.map((r) => ({
+            wk: r.wm_week,
+            sku: r.sku,
+            cases: Number(r.good_cases),
+            committed: Number(r.committed_cases),
+            expired: Number(r.expired_cases),
+            expiring60: Number(r.expiring_60d_cases),
+            earliestExpiry: r.earliest_good_expiry,
+            casesPerPallet: r.cases_per_pallet == null ? null : Number(r.cases_per_pallet),
+            snapshotDate: r.snapshot_date,
+          }))
+        : null;
+
       const posWithData = pos?.filter((p) => p.units != null) ?? [];
       const asOf = posWithData.length ? Math.max(...posWithData.map((p) => p.wk)) : null;
 
@@ -386,6 +418,7 @@ export function useDemandFeeds() {
         forecasts,
         dotService,
         dotDeliveries,
+        dotOnHand,
         otif,
         orders,
         unmappedOrderItems,
@@ -396,6 +429,7 @@ export function useDemandFeeds() {
           otif: otif ? 'live' : 'seed',
           orders: orders ? 'live' : 'seed',
           dotDeliveries: dotDeliveries ? 'live' : 'seed',
+          dot: dotOnHand ? 'live' : 'seed',
         },
         asOf,
       });
