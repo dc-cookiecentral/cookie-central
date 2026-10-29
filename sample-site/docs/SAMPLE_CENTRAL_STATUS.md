@@ -24,8 +24,8 @@ disagrees with an ADR about *what is true now*, this file wins.
 | Layer | State |
 |---|---|
 | Schema | All migrations applied incl. `20260814120000` (seed_paul_hardy). **Remote ledger is NOT in sync** — see below |
-| `shipstation-customstore` | Deployed. `verify_jwt=false`, Basic Auth. Export withholds exception statuses |
-| `shipstation-deliverby` | Deployed. 15-min cron. Resolves by cached `shipstation_order_id` — **3.9s**, no longer pages history |
+| `shipstation-customstore` | Deployed. `verify_jwt=false`, Basic Auth. Export withholds exception statuses; strips XML-illegal control characters (Oct 27) |
+| `shipstation-deliverby` | Deployed. 15-min cron. Resolves by cached `shipstation_order_id` — **3.9s**, no longer pages history. Emails systems@ when an order never imports (Oct 27; **send blocked until Gmail is reconnected**) |
 | `shipstation-probe` | Deployed. Read-only inspector; `shipment_no`, `export_hours`, `capabilities` |
 | Frontend | On `main`. **Vercel auto-deploys `main`** — merging is enough, no manual redeploy |
 | ShipStation Custom Store | Connected to the **production** store (no sandbox — ADR-029). One store id: `se-531764` |
@@ -399,6 +399,26 @@ Set on five cancelled post-launch test orders: SMP-1206, -1207, -1210, -1211,
   ShipStation first.**
 - The export and the Deliver By sweep do not read `excluded`; both already skip
   cancelled orders.
+
+## Never reached ShipStation — Oct 27 2026 (BUILD_PLAN, Oct 27 entry)
+
+SMP-1213 sat four days unimported: its ship-to state was `New Jersey`, the
+export skips any non-2-letter state, and the only trace was a function log.
+
+- **Alert.** The sweep emails `systems@dirtycookie.com` once when an open,
+  Dirty-Cookie-fulfilled order has no `shipstation_order_id` 60 minutes after
+  submission (`importAlertDue`). Latched by `not_imported_alerted_at`; the latch
+  write re-queues the order for export. The site shows a **Not in ShipStation**
+  flag on the same rule (`notInShipStation`, mirrored constant).
+- **Sender.** systems@ itself, through the Gmail grant, which now asks for
+  `gmail.send`. ⚠️ **The live grant predates that** (refresh token from Jun 2),
+  so sends fail — logged in the sweep's `failed` — until someone reconnects.
+  Nothing is latched on a failed send, so the first sweep after reconnect sends.
+- **Fixed alongside:** control characters in the export (one U+000B invalidated
+  the whole batch); a blank custom line passing the item check; unbounded
+  custom-line quantity (now 1–999 and `qty >= 1`).
+- **Still open:** order + items are two inserts (see BUILD_PLAN, Oct 27);
+  split-order numbers and re-export overwrites are unverified.
 
 ## UI — rebuilt August 6
 

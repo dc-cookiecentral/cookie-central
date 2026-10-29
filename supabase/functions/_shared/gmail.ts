@@ -1,12 +1,19 @@
-// Gmail OAuth + read-only message access (gmail.readonly).
+// Gmail OAuth + message access for systems@dirtycookie.com.
 //
-// The OAuth consent screen is Internal (dirtycookie.com), scope is read-only,
-// and the redirect URI is fixed to the gmail-oauth-callback function. We only
-// ever read mail — never send or modify.
+// The OAuth consent screen is Internal (dirtycookie.com) and the redirect URI
+// is fixed to the gmail-oauth-callback function. Mail is read (the report
+// ingest) and, since Oct 2026, SENT — but only by sendMessage() below, for
+// Sample Central's "order never reached ShipStation" alert. Never modified or
+// deleted. Adding gmail.send needs a one-time reconnect (Connect Gmail): a
+// refresh token minted before then carries readonly alone, and sending with it
+// returns 403 while the ingest keeps working.
 
 const REDIRECT_URI =
   'https://niesswmibmonlbrbcecj.supabase.co/functions/v1/gmail-oauth-callback';
-const SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
+const SCOPE = [
+  'https://www.googleapis.com/auth/gmail.readonly',
+  'https://www.googleapis.com/auth/gmail.send',
+].join(' ');
 const TARGET_INBOX = 'systems@dirtycookie.com';
 const GMAIL = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
@@ -131,6 +138,46 @@ export async function getAttachment(
 }
 
 // ── Parsing ─────────────────────────────────────────────────────────────────
+
+// ── Sending ─────────────────────────────────────────────────────────────────
+// Prefix on every message this system sends. gmail-poll excludes it from the
+// inbox scan — the alerts land in the same inbox the ingest reads, and without
+// the exclusion each one would be fetched and run past the classifier.
+export const SYSTEM_SUBJECT_PREFIX = '[Sample Central]';
+
+// RFC 2047 — a raw non-ASCII Subject header arrives as mojibake.
+const encodeHeader = (v: string) =>
+  /^[\x20-\x7e]*$/.test(v) ? v : `=?UTF-8?B?${bytesToB64(new TextEncoder().encode(v))}?=`;
+
+function bytesToB64(bytes: Uint8Array): string {
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin);
+}
+
+/** Plain-text mail from the connected account (systems@). Throws on failure. */
+export async function sendMessage(
+  accessToken: string,
+  msg: { to: string; subject: string; text: string },
+): Promise<void> {
+  const mime = [
+    `To: ${msg.to}`,
+    `Subject: ${encodeHeader(msg.subject)}`,
+    'MIME-Version: 1.0',
+    'Content-Type: text/plain; charset=UTF-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    bytesToB64(new TextEncoder().encode(msg.text)),
+  ].join('\r\n');
+  const raw = bytesToB64(new TextEncoder().encode(mime))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const res = await fetch(`${GMAIL}/messages/send`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ raw }),
+  });
+  if (!res.ok) throw new Error(`gmail send ${res.status}: ${(await res.text()).slice(0, 300)}`);
+}
 
 function b64urlToBytes(data: string): Uint8Array {
   const b64 = data.replace(/-/g, '+').replace(/_/g, '/');

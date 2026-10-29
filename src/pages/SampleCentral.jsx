@@ -17,7 +17,7 @@ import {
   TEST_MODE, SHIPMENT_PREFIX, trackingUrl,
   ISSUE_FLAGS, issueLabel,
   FULFILLERS, FULFILLER_DEFAULT, FULFILLER_CORTINA, isCortinaFulfilled,
-  MAX_LINE_QTY, LARGE_ORDER_COOKIES, todayISO,
+  MAX_LINE_QTY, LARGE_ORDER_COOKIES, todayISO, clampLineQty, notInShipStation,
 } from '../utils/sampleCentral';
 
 // Sample Central runs OUTSIDE the shared Layout (App.jsx) so it can carry the
@@ -128,7 +128,9 @@ export default function SampleCentral() {
   const validationError = () => {
     if (!header.sales_rep_id) return { field: 'sales_rep_id', message: 'Pick a salesperson — they receive the shipment notification.' };
     if (!header.address_id) return { field: 'address_id', message: 'Pick a ship-to address.' };
-    if (cartLines.length === 0 && customItems.length === 0) return { field: 'items', message: 'Add at least one cookie or custom line.' };
+    // A custom line counts only once it has a spec — submit() drops blank ones,
+    // so counting them here let an order with nothing in it through.
+    if (cartLines.length === 0 && !customItems.some((c) => c.spec.trim())) return { field: 'items', message: 'Add at least one cookie or custom line.' };
     if (!tpComplete(header)) return { field: 'third_party', message: 'Carrier, account number and postal code are all needed — the co-man cannot bill the account without all three.' };
     return null;
   };
@@ -152,7 +154,7 @@ export default function SampleCentral() {
     setSubmitting(true);
     const items = [
       ...cartLines.map((l) => ({ product_code: l.code, custom: false, qty: l.qty, description: productLabel(l.product) || l.code })),
-      ...customItems.filter((c) => c.spec).map((c) => ({ product_code: null, custom: true, custom_spec: c.spec, project_no: c.project_no || null, qty: Number(c.qty) || 1, description: c.spec })),
+      ...customItems.filter((c) => c.spec.trim()).map((c) => ({ product_code: null, custom: true, custom_spec: c.spec.trim(), project_no: c.project_no || null, qty: clampLineQty(c.qty), description: c.spec.trim() })),
     ];
     const h = {
       sales_rep_id: header.sales_rep_id, account: header.account || null, address_id: header.address_id,
@@ -368,7 +370,7 @@ function ConfirmSubmit({ rep, addr, header, cartLines, customItems, temp, submit
               ))}
               {customLines.map((c, i) => (
                 <li key={c.id ?? i} className="flex gap-2 items-baseline">
-                  <span className="w-9 shrink-0 text-right font-mono text-[12px] font-bold text-dk">{Number(c.qty) || 1}×</span>
+                  <span className="w-9 shrink-0 text-right font-mono text-[12px] font-bold text-dk">{clampLineQty(c.qty)}×</span>
                   <span className="min-w-0 truncate text-[12px] font-normal text-gr" title={c.spec}>
                     {c.spec}
                     <span className="text-pk font-semibold"> · custom</span>
@@ -661,7 +663,7 @@ function CartDrawer({
               <div key={c.id ?? i} className="grid grid-cols-12 gap-1.5 mb-1.5">
                 <input value={c.spec} onChange={(e) => setCustomItems((arr) => arr.map((x, j) => (j === i ? { ...x, spec: e.target.value } : x)))} placeholder="Custom item spec" className="col-span-6 px-2 py-1 rounded border border-lt text-[14px]" />
                 <input value={c.project_no || ''} onChange={(e) => setCustomItems((arr) => arr.map((x, j) => (j === i ? { ...x, project_no: e.target.value } : x)))} placeholder="Project #" className="col-span-3 px-2 py-1 rounded border border-lt text-[14px] font-mono" />
-                <input type="number" value={c.qty} onChange={(e) => setCustomItems((arr) => arr.map((x, j) => (j === i ? { ...x, qty: e.target.value } : x)))} className="col-span-2 px-2 py-1 rounded border border-lt text-[14px]" />
+                <input type="number" min="1" max={MAX_LINE_QTY} step="1" value={c.qty} onChange={(e) => setCustomItems((arr) => arr.map((x, j) => (j === i ? { ...x, qty: e.target.value } : x)))} onBlur={() => setCustomItems((arr) => arr.map((x, j) => (j === i ? { ...x, qty: clampLineQty(x.qty) } : x)))} className="col-span-2 px-2 py-1 rounded border border-lt text-[14px]" />
                 <button
                   onClick={() => setCustomItems((arr) => arr.filter((_, j) => j !== i))}
                   aria-label={`Remove custom line ${i + 1}${c.spec ? `: ${c.spec}` : ''}`}
@@ -902,6 +904,12 @@ const colFlags = {
       {hasCustom && <span className={`${chip} bg-pink-100 text-pk`}>Custom</span>}
       {s.third_party_billing && <span className={`${chip} bg-violet-100 text-violet-700`}>3rd-party</span>}
       {s.issue_at && <span className={`${chip} bg-amber-500 text-white`}>Issue</span>}
+      {/* systems@ is emailed on the same rule — see notInShipStation. */}
+      {notInShipStation(s) && (
+        <span className={`${chip} bg-dk text-white`} title="Submitted over an hour ago and ShipStation has not imported it. The co-man cannot see this order. systems@ has been emailed.">
+          Not in ShipStation
+        </span>
+      )}
     </div>
   ),
 };

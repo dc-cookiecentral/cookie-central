@@ -413,7 +413,10 @@ No code changes required as long as the env var name stays the same.
 
 ## 9 · Gmail email agent (systems@dirtycookie.com)
 
-The AI agent reads `systems@` (read-only), classifies each message, and files it.
+The AI agent reads `systems@`, classifies each message, and files it. Since Oct 27
+2026 the same grant also **sends** one kind of mail: Sample Central's "order never
+reached ShipStation" alert (BUILD_PLAN, Oct 27 2026), subject-prefixed `[Sample Central]`, which
+gmail-poll excludes from its scan.
 Three Edge Functions + four migrations + the Vault secrets back it.
 
 ### 9.1 · One-time deploy
@@ -441,10 +444,12 @@ Three Edge Functions + four migrations + the Vault secrets back it.
 ### 9.2 · Connect / reconnect the inbox
 
 `/uploads → systems@ Inbox → Connect Gmail` → sign in as `systems@dirtycookie.com`
-→ grant read-only → lands back on `/uploads?gmail=connected`. The refresh token is
+→ grant read **and send** → lands back on `/uploads?gmail=connected`. The refresh token is
 stored in Vault as `GMAIL_REFRESH_TOKEN`. **If reconnect returns "no refresh_token":**
 Google only issues one on first consent — remove the app at
 `myaccount.google.com/permissions`, then Connect again.
+**Changing the systems@ password revokes the grant** — reconnect straight after a
+reset, or the daily poll (11:00 UTC) and the Sample Central alert both stop.
 
 ### 9.3 · Run a poll
 

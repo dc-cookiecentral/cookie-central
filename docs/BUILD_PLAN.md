@@ -59,6 +59,32 @@
   - [ ] Add the Item 360 finding and today's re-measure to `DEMAND_PLANNER_KNOWN_ISSUES.md` §9; re-measure ADR-063 now that BC is clean (ask before amending)
   - Note: Item Rate in the export is **not a case price**. It looks per-pound (inferred, unconfirmed): $4.1067 × 9 lb = $36.96 for the doughs, $7.7045 × 4.4 lb = $33.90 for BC. `walmart_unit_price` therefore isn't a case price; use `line_total / quantity_cases`.
 
+  **October 27 2026 — Sample Central: an order that never reached ShipStation.** PR #65 and `feat/import-alert` (merged locally); migration `20261027120000`. *(Was ADR-064; folded in here Oct 29 2026.)*
+
+  *Done*
+  - [x] SMP-1213 (Oct 23) found missing from ShipStation: ship-to state saved as `New Jersey`, so the export skipped it. Address set to `NJ`, order re-queued; imported as `se-1047364146` with Deliver by Oct 27 — 2026-10-27
+  - [x] Address form accepts a full state name or code (stored as the code) and refuses a bad state or zip at save (PR #65) — 2026-10-27
+  - [x] Stress test for silent failures: fuzzed the export XML, checked live data, read the pipeline. Live data clean — 2026-10-27
+  - [x] Control characters stripped from the export. One pasted U+000B made the whole document invalid and dropped the batch — 2026-10-27
+  - [x] Import alert: sweep emails systems@ once when an open order has no ShipStation id after 60 min; site shows a "Not in ShipStation" flag. gmail-poll skips `[Sample Central]` mail — 2026-10-27
+  - [x] Blank custom line no longer passes the item check; custom qty clamped 1–999; `qty >= 1` CHECK — 2026-10-27
+  - [x] Migration applied with `db push` (ledger in sync); four functions deployed; 17:00 sweep verified clean (`import_alerted: []`, `failed: []`) — 2026-10-27
+
+  *Decisions*
+  - **The Deliver By sweep emails systems@dirtycookie.com once when an open, Dirty-Cookie-fulfilled order still has no `shipstation_order_id` 60 min after submission; the site shows a "Not in ShipStation" flag on the same rule.** The state fix (PR #65) closes SMP-1213's cause. The alert catches causes nobody has found yet: for four days the only trace was a function log and `not_yet_imported: 1` in a sweep response nobody reads.
+  - Alert sends from systems@ via the existing Gmail grant (adds `gmail.send`), not a transactional provider: no vendor, no SPF/DKIM change. The August Resend scoping (amendment to ADR-044) stalled on a vendor account and an SPF merge on `dirtycookie.com`; Workspace needs neither.
+  - Threshold 60 min, not 30: has to cover one ShipStation pull plus one 15-minute sweep without false alarms.
+  - Only orders with no `shipstation_order_id` ever are alerted; an imported order whose record later vanished (ADR-039) is a different problem.
+  - Once per order, via `not_imported_alerted_at`. Nothing latches on a failed send, so it retries next sweep. The latch write re-queues the order for export, which is intended (a free retry).
+
+  *To do*
+  - [ ] **Reset the systems@ password** (lost) in Google Workspace admin, then **reconnect Gmail** straight away. A password change revokes the Gmail grant, so the report import stops until reconnect.
+  - [ ] After reconnect: check gmail-poll still runs, send one test alert
+  - [x] Merged `feat/import-alert` to `main` (production already ran it) — 2026-10-27
+  - [ ] Save order + items in one transaction (an item insert failure leaves an exported header; a pull between the two inserts imports it with no items). Mint `shipment_no` server-side in the same change.
+  - [ ] Check in ShipStation: do split orders come back as `SMP-####-1` (shipnotify would not match)? Does a re-export overwrite co-man edits on an awaiting order?
+  - [ ] Minor: address form allows blank street/city; account/notes truncate silently at 100/1,000 chars; `net._http_response` keeps only ~6 h
+
   **October 27–28 2026 — ingest data-quality fixes, and the DOT on-hand report exists after all.** Work ran in the claude.ai demand-planner session, not local Claude Code. Two root causes found while wiring that session's prototype to the live tables; both fixed in production.
 
   *Done*
@@ -90,16 +116,15 @@
   - **As-of = the workbook's CreatedDate, read in US Central time; a reading is the CLOSING stock of the Walmart week containing it** (Caroline, Oct 28). The sheets carry no date. Fallback: the file's modified time, with a warning; with neither, the file is refused rather than given a guessed week. A Tuesday reading taken as the week's close is ~3 days off; preferred over the prior week's close (~4 days).
   - **One row per (sku, wm_week), never backwards.** A same-week re-upload replaces the row unless the stored reading is newer; those rows are skipped, and a file older on every row is refused. Closes, from the start, the out-of-order bug the walmart_orders importer still has (Oct 23–26).
   - **What stays a model:** weeks after the latest reading (modelled on SEED production, so DOT closing / DOT DOH / recommended production keep the placeholder flag, KNOWN_ISSUES §1), and weeks before the first reading or a SKU missing from a file (still open from the 250-case `dotOpeningAnchor`). Only *DOT actual OH (feed)* lost its placeholder flag; no engine formula changed.
-  - **Decisions are recorded here, not as ADRs** (Caroline, Oct 29). `DECISIONS.md` stays as the history to ADR-063; ADR-064 folds into the Oct 27 entry. No new ADRs.
+  - **Decisions are recorded here, not as ADRs** (Caroline, Oct 29). `DECISIONS.md` stays as the history to ADR-063; ADR-064 folded into the Oct 27 entry (Oct 29). No new ADRs.
 
   *To do*
-  - [ ] Caroline review → merge. `main` must be merged into the branch first (the docs branch predates the Oct 27 entry); expect small conflicts in BUILD_PLAN and DECISIONS
-  - [ ] When `main` is merged in: fold ADR-064 (import alert) into the Oct 27 entry's *Decisions* and remove it from `DECISIONS.md`
+  - [x] `main` merged into the branch; ADR-064 folded into the Oct 27 entry and removed from `DECISIONS.md` — 2026-10-29
+  - [ ] Caroline review → merge to `main`
   - [ ] Apply migration `20261028150000` with `supabase db push`, then upload `Inventory Snapshot.xlsx` on card 7 and check 4 rows land in W39
   - [ ] Weekly routine: add the DOT Inventory Snapshot to the uploads (RUNBOOK check added)
   - [ ] Decide: retire `dot_inventory` + `src/parsers/dot.js`
   - [ ] B: fold the prototype UX in (funnel, action panel, Sunday dates, per-SKU packs); plan per piece first
-
 
 - **Phase 2 — Operations:** upcoming (weeks following Phase 1 ship).
 - **Phase 3 — Financials + Rollout:** late summer 2026.
