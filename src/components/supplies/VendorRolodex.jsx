@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { useSupplies } from '../hooks/useSupplies';
-import { Empty } from '../components/specsheet/pills';
-import { buildSupplyMaps, VendorStatus, ContactName } from '../components/supplies/supplyUi';
+import { Empty } from '../specsheet/pills';
+import { VendorStatus, ContactName } from './supplyUi';
 
-// Vendors rolodex (docs/SUPPLIES_SPEC.md, Phase V1 — READ-ONLY).
-// /vendors?vendor=<id> highlights and scrolls to one card; Supplies links here
-// from every vendor name, and each card links back to the items it supplies.
+// Vendors tab — the rolodex (docs/SUPPLIES_SPEC.md, Phase V1 — READ-ONLY).
+// /supplies?tab=vendors&vendor=<id> highlights and scrolls to one card; the
+// Supplies tab links here from every vendor name, and each card links back to
+// the items it supplies.
 
 const CATEGORIES = [
   ['raw', 'Ingredients — raw materials', '#2E7D6B'],
@@ -15,25 +15,14 @@ const CATEGORIES = [
   ['services', 'Services & co-manufacturing', '#7A5BA0'],
 ];
 
-export default function Vendors() {
-  const { data, loading, error } = useSupplies();
+export default function VendorRolodex({ data, maps }) {
   const [params] = useSearchParams();
   const vendorId = params.get('vendor');
   const [q, setQ] = useState('');
-  const maps = useMemo(() => (data ? buildSupplyMaps(data) : null), [data]);
 
   useEffect(() => {
-    if (vendorId && data) document.getElementById(`vendor-${vendorId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, [vendorId, data]);
-
-  if (loading) return <div className="text-sm text-gr py-10 text-center">Loading Vendors…</div>;
-  if (error)
-    return (
-      <div className="text-sm text-red-600 py-6">
-        {error}
-        <div className="text-[11px] text-gr mt-1">If tables are missing, apply the supplies migration + seed first.</div>
-      </div>
-    );
+    if (vendorId) document.getElementById(`vendor-${vendorId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [vendorId]);
 
   const needle = q.trim().toLowerCase();
   const matches = (v) =>
@@ -46,10 +35,7 @@ export default function Vendors() {
   return (
     <div>
       <div className="flex justify-between items-end mb-3 gap-3 flex-wrap">
-        <div>
-          <h1 className="text-xl font-bold text-dk">Vendors <span className="text-gr font-normal text-sm">· rolodex</span></h1>
-          <div className="text-[11px] text-gr">Every supplier, its terms and people. Double-click a contact name for details. Read-only.</div>
-        </div>
+        <div className="text-[11px] text-gr">Every supplier, its terms and people. Double-click a contact name for details.</div>
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
