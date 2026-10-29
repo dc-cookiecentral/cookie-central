@@ -649,7 +649,7 @@ Source: the `All Item Detail` sheet of `Dirty Cookie WK##.xlsx`. Long-format in 
 | `traited_stores` | int | |
 | `instock_pct` | numeric | A **fraction** (`0.9875`), not a percent |
 | `wmt_forecast_units`, `variance` | numeric | Walmart's forecast as restated in this sheet |
-| `store_on_hand`, `whse_on_hand` | int | ⚠️ **Current week only.** No weekly on-hand history exists in any export. NULL for backfilled weeks — never 0, because the engine blanks `storeOhDoh` on null and would compute a false zero |
+| `store_on_hand`, `whse_on_hand` | int | ⚠️ **Current week only.** No weekly on-hand history exists in any export. NULL for backfilled weeks — never 0, because the engine blanks `storeOhDoh` on null and would compute a false zero | `whse_on_hand` is Retail Link *Curr Whse On Hand* (Sales Summary): **Walmart's own warehouses (its DCs), in units**, not DOT's. Retail Link can't see DOT. Read by the funnel's *At Walmart DCs* row (÷ pack) since Oct 29 2026; the engine does not use it.
 | `source_week` | int | The week of the *file* this row came from |
 | `upload_id` | uuid FK → `upload_log` | |
 

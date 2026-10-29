@@ -32,7 +32,7 @@ import { execFileSync } from 'node:child_process';
 const LIVE_SHAPE = {
   loading: false, error: null,
   pos: [{ wk: 202628, sku: 'WC', units: 4616, dollars: 22414.78, instock: 0.9875,
-          traited: 2657, storesSelling: null, oh: 24137, _wmtFcstDetail: 5416.19 }],
+          traited: 2657, storesSelling: null, oh: 24137, whOh: 500, _wmtFcstDetail: 5416.19 }],
   forecasts: [{ snap: 202628, target: 202630, sku: 'WC', units: 5629, source: 'store' }],
   dotService: [{ wk: 202625, ordered: 84, cut: 42, pos: 2 }],
   dotDeliveries: [{ wk: 202625, sku: 'WC', delivered: 0, ordered: 84, cut: 42 }],

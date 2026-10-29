@@ -109,7 +109,7 @@ export function useDemandFeeds() {
           // the Sources tab needs them to show where a number came from and
           // where two Walmart figures disagree. Omitting them made that tab
           // silently empty rather than visibly broken.
-          .select('walmart_week, item_number, item_desc, pos_units, pos_dollars, pos_units_if_instock, units_per_store_week, traited_stores, instock_pct, store_on_hand, wmt_forecast_units')
+          .select('walmart_week, item_number, item_desc, pos_units, pos_dollars, pos_units_if_instock, units_per_store_week, traited_stores, instock_pct, store_on_hand, whse_on_hand, wmt_forecast_units')
           .order('walmart_week')),
         fetchAll(() => supabase
           .from('retail_link_forecast')
@@ -184,6 +184,11 @@ export function useDemandFeeds() {
               // exists. Left null rather than zeroed: the engine blanks
               // storeOhDoh on null and would compute a false 0 on zero.
               oh: r.store_on_hand,
+              // Walmart's OWN warehouses (its DCs) — Retail Link "Curr Whse On
+              // Hand", in units. NOT DOT's warehouse: Retail Link cannot see
+              // DOT, whose stock comes from dot_on_hand. Current week only, like
+              // `oh`. Not read by the engine; the funnel uses it.
+              whOh: r.whse_on_hand,
               // ── Not read by the engine; carried for the Sources tab ──
               // buildSkuSeries only reads traited/units/dollars/instock/oh, so
               // these ride along free. They exist so the page can show WHERE a

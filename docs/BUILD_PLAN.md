@@ -128,7 +128,27 @@
   - New from the first file: 851 good cases expire by Dec 26 (WC 229, PBG 182, CCF 440, over a quarter of CCF's good stock), on top of the 1,086 already expired. Input for B's action panel
   - [ ] Weekly routine: add the DOT Inventory Snapshot to the uploads (RUNBOOK check added)
   - [ ] Decide: retire `dot_inventory` + `src/parsers/dot.js`
-  - [ ] B: fold the prototype UX in (funnel, action panel, Sunday dates, per-SKU packs); plan per piece first
+  - [ ] B: fold the prototype UX in (funnel, action panel, Sunday dates, per-SKU packs); plan per piece first. **B1 funnel built Oct 29** (below)
+
+  **October 29 2026 — B1: the inventory funnel on `/demand-planner`.** Branch `feat/dp-funnel`. No migration, no engine change.
+
+  *Done*
+  - [x] "Where every case sits" panel on each SKU card, folded in from the prototype: Expired / Sellable at DOT, In transit to Walmart, At Walmart DCs, On store shelves, Sold this week (toggle: All time). Bars coloured by stage group; one entry per line; ###,###; dated (DOT as of … W##, Walmart thru wk ending Sun … W##). Card layout now matches the prototype: stats row on top, chart with the funnel beside it — 2026-10-29
+  - [x] `useDemandFeeds` reads `whse_on_hand` (through `fetchAll`) and passes it along on each POS row as `whOh`; the engine ignores it — 2026-10-29
+  - [x] Rendered on live data and read back: WC 246 / 1,195 / 336 / 42 / 2,037 / 417; PBG 458 / 554 / 189 / 20 / 1,538 / 103; CCF 382 / 1,292 / 252 / 36 / 2,338 / 333; BC 0 / 1,029 / 228 / no feed ×3. `smoke-render.mjs` 9/9, `vite build` clean — 2026-10-29
+
+  *Decisions* (Caroline, Oct 29)
+  - **At Walmart DCs = measured** Retail Link *Curr Whse On Hand* ÷ pack, labelled with that formula and "Walmart's own warehouses, not DOT". The prototype's implied figure (all deliveries − all POS − shelves) was rejected: on live data it read WC 5,582 / PBG 7,095 / CCF 4,197 cs against Walmart's own 42 / 20 / 36, a year of shrink, markdowns and data gaps, not stock. Units are assumed (same sheet and basis as store on-hand); the label shows the ÷ pack so it can be checked.
+  - **Keep the toggle, default "This wk".** "All time" sold (WC 13,169) is ~10× every stock row and would shrink the bars to slivers. The toggle moves only the Sold row.
+  - **Prototype layout.** Stats row on top; chart and funnel side by side; stacked on phones.
+  - **A row with no source says "no feed", never 0** (BC isn't in the Retail Link WK## pull yet).
+  - **Header is stock in the chain** (sellable + transit + DCs + shelves) with expired beside it. No "cases accounted for" total: stock and a sales flow don't add up.
+  - **Colour by stage group, not by row** (rows are named in text). DOT `#3E8E5A`, Walmart network `#E8A33D`, shopper `#6B3F8C`, all passing the dataviz palette validator (amber's sub-3:1 contrast relieved by the label + value on every row). The prototype's six colours failed it (the two greens are indistinguishable). Expired is a state: DOT green with a 45° hatch, ⚠ and the word.
+
+  *To do*
+  - [ ] Caroline review in the browser (Claude in Chrome once connected), then push to `main`
+  - [ ] Confirm with Becky that *Curr Whse On Hand* is units, not cases
+  - [ ] B2 plan: "This week's actions" panel (inputs now exist: 1,086 expired, 851 expiring by Dec 26)
 
 - **Phase 2 — Operations:** upcoming (weeks following Phase 1 ship).
 - **Phase 3 — Financials + Rollout:** late summer 2026.

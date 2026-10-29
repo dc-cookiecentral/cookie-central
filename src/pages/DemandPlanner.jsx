@@ -413,7 +413,7 @@ function chainChips(s) {
   return chips;
 }
 
-function FlowCard({ s, m }) {
+function FlowCard({ s, m, f }) {
   const data = buildFlow(s);
   const ticks = data.filter((d, i) => i === 0 || d.month !== data[i - 1].month).map(d => d.wl);
   const todayWl = s.lastActualIdx >= 0 ? data[s.lastActualIdx].wl : null;
@@ -439,8 +439,7 @@ function FlowCard({ s, m }) {
           {g != null && Math.abs(g) > 0.15 && <span className="ml-2 text-[11px] font-medium" style={{ color: "#C2185B" }}>raise with Walmart</span>}
         </span>
       </header>
-      <div className="grid gap-4 md:grid-cols-[210px_1fr]">
-        <div className="grid grid-cols-2 md:grid-cols-1 gap-3 content-start">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
           <Stat label="POS, last 4 wks (cs/wk)" value={F.int(m.l4wPos / UNITS_PER_CASE)}
             src="Retail Link · store POS" />
           <Stat label="True demand (cs/wk)" value={F.int(m.l4wTrue / UNITS_PER_CASE)}
@@ -452,8 +451,9 @@ function FlowCard({ s, m }) {
             src="NetSuite (Cortina) deliveries" />
           <Stat label="DOT days on hand" value={F.d1(m.dotDoh)} placeholder
             src="NOT REAL — modelled forward from the last DOT snapshot on frozen production" />
-        </div>
-        <div>
+      </div>
+      <div className="grid gap-5 md:grid-cols-[1fr_250px] items-start">
+        <div className="min-w-0">
           <div style={{ height: 190 }}>
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={data} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}>
@@ -484,8 +484,130 @@ function FlowCard({ s, m }) {
             ))}
           </div>
         </div>
+        <Funnel s={s} f={f} />
       </div>
     </section>
+  );
+}
+
+/* ---------------- inventory funnel ---------------- */
+// "Where every case sits" — one SKU's cases along the chain, upstream → shopper.
+// Folded in from the standalone prototype (B1, Oct 29 2026) with three changes:
+//   · "At Walmart DCs" is MEASURED (Retail Link "Curr Whse On Hand" ÷ pack),
+//     not the prototype's implied deliveries − POS − shelves, which on live
+//     data read 4,000–7,000 cs against Walmart's own ~20–42 (a year of shrink,
+//     markdowns and data gaps, not stock).
+//   · A row with no source says "no feed" rather than drawing a zero — BC is
+//     not yet in the Retail Link WK## pull.
+//   · No "cases accounted for" total: stock and a sales flow do not add up.
+//     The header is stock in the chain; expired is shown beside it, not in it.
+// Colour is by STAGE GROUP only (rows are named in text, so identity never
+// rests on colour): DOT green, Walmart-network amber, shopper plum — validated
+// with the dataviz palette script (all checks pass; amber's sub-3:1 contrast is
+// relieved by the label + value on every row). Expired is a STATE, not a
+// colour: DOT green with a 45° hatch, ⚠ and the word.
+const FUNNEL_GROUPS = {
+  dot:  { label: "With DOT (3PL)",  color: "#3E8E5A" },
+  wm:   { label: "Walmart network", color: "#E8A33D" },
+  shop: { label: "Shopper",         color: "#6B3F8C" },
+};
+
+function funnelRows(s, f, mode) {
+  const pack = packOf(s.sku).unitsPerCase;
+  const hasPos = s.cells.some(c => c.pos != null);
+  const last = s.lastActualIdx >= 0 ? s.cells[s.lastActualIdx] : null;
+  let store = null;
+  for (const c of s.cells) if (c.storeOh != null) store = { cs: c.storeOh / pack, wk: c.wk };
+  const d = f.dot;
+  const sold = !hasPos ? null
+    : mode === "week" ? (last?.pos != null ? last.pos / pack : null)
+    : s.cells.reduce((a, c) => a + (c.pos || 0), 0) / pack;
+  return [
+    { grp: "dot", k: "Expired at DOT", v: d ? d.expired : null, warn: true,
+      src: "DOT snapshot · EX lots" },
+    { grp: "dot", k: "Sellable at DOT", v: d ? d.cases - d.committed : null,
+      src: "DOT snapshot · RG lots − committed" },
+    { grp: "wm", k: "In transit to Walmart", v: d ? d.committed : null,
+      src: "DOT snapshot · Loaded + Picked" },
+    { grp: "wm", k: "At Walmart DCs", v: f.wh ? f.wh.units / pack : null,
+      src: `Retail Link Curr Whse On Hand ÷ ${pack} units/cs · Walmart's own warehouses, not DOT` },
+    { grp: "wm", k: "On store shelves", v: store ? store.cs : null,
+      src: `Retail Link Curr Str On Hand ÷ ${pack} units/cs` },
+    { grp: "shop", k: mode === "week" ? "Sold this week" : "Sold to shoppers", v: sold,
+      src: `Retail Link POS ÷ ${pack} units/cs${hasPos && mode === "week" && last ? " · wk ending Sun " + weekEndingSunday(last.wk) : ""}` },
+  ];
+}
+
+function Funnel({ s, f }) {
+  const [mode, setMode] = useState("week");
+  const rows = funnelRows(s, f, mode);
+  const maxV = Math.max(1, ...rows.map(r => r.v ?? 0));
+  const stock = rows.filter(r => !r.warn && r.grp !== "shop" && r.v != null).reduce((a, r) => a + r.v, 0);
+  const expired = rows[0].v;
+  let lastGrp = null;
+  return (
+    <div className="flex flex-col gap-1 rounded-xl border p-3" style={{ borderColor: "#EFE4E9", background: "#FBF8F6" }}>
+      <div className="flex items-center gap-2">
+        <div className="text-[10px] uppercase tracking-widest opacity-60 flex-1">Where every case sits</div>
+        <div className="flex gap-0.5 rounded-full border p-0.5" style={{ borderColor: "#E5D9DE", background: "#fff" }}
+          role="group" aria-label="Sold row period">
+          {[["week", "This wk"], ["all", "All time"]].map(([k, label]) => (
+            <button key={k} onClick={() => setMode(k)} aria-pressed={mode === k}
+              className="px-2 py-0.5 rounded-full text-[10px]"
+              style={mode === k ? { background: "#2D2235", color: "#fff" } : {}}>{label}</button>
+          ))}
+        </div>
+      </div>
+      <div className="cc-serif text-lg leading-none">{F.int(stock)} cs
+        <span className="text-[10px] cc-sans opacity-60"> in the chain{expired ? <> · + {F.int(expired)} expired</> : null}</span>
+      </div>
+      <div className="text-[9.5px] opacity-60 mb-1">
+        {f.dot
+          ? <>DOT as of {f.dot.label} <span style={{ opacity: 0.6 }}>W{String(f.dot.wk).slice(4)}</span></>
+          : "No DOT Inventory Snapshot yet"}
+        {" · "}
+        {f.rlWk ? <>Walmart thru wk ending <WeekLabel wk={f.rlWk} /></> : "no Retail Link feed"}
+      </div>
+      {rows.map((r) => {
+        const g = FUNNEL_GROUPS[r.grp];
+        const caption = r.grp !== lastGrp;
+        lastGrp = r.grp;
+        const has = r.v != null;
+        const w = has ? Math.max(r.v > 0 ? 4 : 2, (r.v / maxV) * 90) : 2;
+        const fill = !has || r.v === 0 ? "#E5D9DE"
+          : r.warn ? `repeating-linear-gradient(45deg, ${g.color} 0 3px, #FBF8F6 3px 5px)` : g.color;
+        return (
+          <Fragment key={r.k}>
+            {caption && (
+              <div className="flex items-center gap-1.5 text-[9px] uppercase tracking-widest font-semibold mt-1 opacity-75">
+                <span className="inline-block rounded-sm" style={{ width: 8, height: 8, background: g.color }} />{g.label}
+              </div>
+            )}
+            <div className="flex items-start gap-2"
+              title={has ? `${r.k}: ${F.int(r.v)} cs · ${F.int(r.v * packOf(s.sku).unitsPerCase)} units — ${r.src}` : `${r.k}: no feed — ${r.src}`}>
+              <div className="flex-none flex justify-center pt-0.5" style={{ width: 90 }}>
+                <div style={{ width: w, height: 14, background: fill,
+                  clipPath: "polygon(0 0, 100% 0, calc(100% - 3px) 100%, 3px 100%)" }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-[10.5px] flex-1">{r.warn && r.v > 0 ? "⚠ " : ""}{r.k}</span>
+                  <span className="cc-mono text-[10.5px] font-semibold"
+                    style={r.warn && r.v > 0 ? { color: "#8E1039" } : undefined}>
+                    {has ? F.int(r.v) : <span className="font-normal opacity-60">no feed</span>}
+                  </span>
+                </div>
+                <div className="text-[9px] opacity-55 leading-tight">{r.src}</div>
+              </div>
+            </div>
+          </Fragment>
+        );
+      })}
+      <div className="text-[9.5px] opacity-55 mt-1">
+        Width ∝ cases, ordered down the chain: a bulge is pooling stock, a pinch is a bottleneck.
+        The toggle changes only the Sold row.
+      </div>
+    </div>
   );
 }
 
@@ -1005,11 +1127,26 @@ function UnmappedItemsNotice({ items }) {
   );
 }
 
-function Summary({ series, metrics }) {
+// Per-SKU inputs for the funnel that the engine does not carry: the newest DOT
+// reading and Walmart's warehouse on-hand (both current-week figures).
+function funnelInputs(sku, s, feeds) {
+  const dots = (feeds.dotOnHand ?? []).filter(r => r.sku === sku);
+  const d = dots.length ? dots.reduce((a, r) => (r.wk > a.wk || (r.wk === a.wk && r.snapshotDate > a.snapshotDate) ? r : a)) : null;
+  let wh = null;
+  for (const p of (feeds.pos ?? [])) if (p.sku === sku && p.whOh != null && (!wh || p.wk > wh.wk)) wh = { units: p.whOh, wk: p.wk };
+  const posWks = s.cells.filter(c => c.pos != null).map(c => c.wk);
+  return {
+    dot: d && { ...d, label: new Date(`${d.snapshotDate}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }) },
+    wh,
+    rlWk: posWks.length ? Math.max(...posWks) : null,
+  };
+}
+
+function Summary({ series, metrics, feeds }) {
   return (
     <div className="flex flex-col gap-4">
       <FlowLegend latestWk={Math.max(0, ...metrics.map(m => m.latestWk ?? 0)) || null} />
-      {series.map((s, i) => <FlowCard key={s.sku} s={s} m={metrics[i]} />)}
+      {series.map((s, i) => <FlowCard key={s.sku} s={s} m={metrics[i]} f={funnelInputs(s.sku, s, feeds)} />)}
     </div>
   );
 }
@@ -1433,7 +1570,7 @@ export default function DemandPlanner() {
         )}
       </div>
       <main className="p-5 cc-sans">
-        {tab === "summary" && (<><UnmappedItemsNotice items={feeds.unmappedOrderItems} /><PlaceholderNotice /><div className="mt-4" /><ServiceHealth series={series} otif={feeds.otif} /><div className="mt-4" /><Summary series={series} metrics={metrics} /><DotServicePanel svc={svc} latestDataWk={latestDataWk} /></>)}
+        {tab === "summary" && (<><UnmappedItemsNotice items={feeds.unmappedOrderItems} /><PlaceholderNotice /><div className="mt-4" /><ServiceHealth series={series} otif={feeds.otif} /><div className="mt-4" /><Summary series={series} metrics={metrics} feeds={feeds} /><DotServicePanel svc={svc} latestDataWk={latestDataWk} /></>)}
         {tab === "tracker" && <Tracker series={series} onEdit={onEdit} />}
         {tab === "sources" && <Sources feeds={feeds} series={series} />}
       </main>
