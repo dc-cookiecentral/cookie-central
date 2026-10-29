@@ -1,7 +1,7 @@
 # Cookie Central — Build Plan
 
 ## Timeline
-*(current as of October 22, 2026)*
+*(current as of October 29, 2026)*
 - **Start:** Wednesday May 21, 2026
 - **Phase 1 demo:** delivered June 2026 (Marc + David) ✅
 - **Phase 1 ship:** largely live. AI email reader (Day 10) ✅ and lot-traceability chain UI (Day 11) ✅ done. Remaining: Cortina NetSuite real-file reconciliation (waiting on Harshita's sample); DOT/QBO real-file reconciliation non-blocking.
@@ -98,7 +98,7 @@
   - [ ] Re-upload older WK## Retail Link files — now non-destructive — to restore the erased store on-hand history
   - [ ] Ask Becky to add item 686669913 (BC) to the WK## Retail Link pull so it gets POS
   - [ ] Harshita: disposition decision on the 1,086 expired cases at DOT
-  - [ ] Decide whether to fold the prototype's funnel / action-panel / week-ending-Sunday UX into `/demand-planner`
+  - [x] Decided: fold the prototype's UX into `/demand-planner` as part B, one planned piece at a time (Caroline, Oct 28). B1 funnel shipped Oct 29 — see below — 2026-10-29
 
   **October 28–29 2026 — DOT on-hand is a live upload.** Branch `feat/dot-on-hand` (cut from `docs/session-2026-10-28-demand-ingest`); migration `20261028150000`.
 
@@ -120,7 +120,7 @@
 
   *To do*
   - [x] `main` merged into the branch; ADR-064 folded into the Oct 27 entry and removed from `DECISIONS.md` — 2026-10-29
-  - [ ] Caroline review → merge to `main`
+  - [x] Reviewed by Caroline and merged to `main` (fast-forward, three deploys: A, then two rounds of review fixes) — 2026-10-29
   - [x] Migration `20261028150000` applied with `supabase db push` (run from the feature worktree, so the uncommitted Supplies migration was not pushed); ledger in sync, `dot_on_hand` answers via the API — 2026-10-29. **Deviation:** the push also re-ran `20261027160000`, which had been pasted into the SQL editor on Oct 27 and so was missing from the ledger. It is idempotent; cut_reason lines still 268 afterwards
   - [x] Deployed to production by fast-forwarding `main` to this branch (Caroline, Oct 29: local login unavailable, so the upload is tested live) — 2026-10-29
   - [x] `Inventory Snapshot.xlsx` uploaded on card 7 (live site): 4 rows in W39 dated Oct 27, good 1,531 / 743 / 1,544 / 1,257, expired 1,086, committed 1,005, upload_log `complete` with no warnings — 2026-10-29
@@ -128,7 +128,7 @@
   - New from the first file: 851 good cases expire by Dec 26 (WC 229, PBG 182, CCF 440, over a quarter of CCF's good stock), on top of the 1,086 already expired. Input for B's action panel
   - [ ] Weekly routine: add the DOT Inventory Snapshot to the uploads (RUNBOOK check added)
   - [ ] Decide: retire `dot_inventory` + `src/parsers/dot.js`
-  - [ ] B: fold the prototype UX in (funnel, action panel, Sunday dates, per-SKU packs); plan per piece first. **B1 funnel built Oct 29** (below)
+  - [ ] B: fold the prototype UX in. **B1 funnel done Oct 29** (below). Still to plan, one piece at a time: B2 action panel, B3 week-ending-Sunday dates across the page (header, legend and card subtitles already done), B4 per-SKU case packs
 
   **October 29 2026 — B1: the inventory funnel on `/demand-planner`.** Branch `feat/dp-funnel`. No migration, no engine change.
 
@@ -155,10 +155,18 @@
   - **Stacked panel on a shared week axis, not a second y-axis** (~2,600 stores vs ~400 cases). Hover is linked across the two.
 
   *To do*
-  - [ ] Caroline review in the browser (Claude in Chrome once connected), then push to `main`
+  - [x] Pushed to `main` after each of Caroline's two screenshot reviews (`6c0e65f`, `7311dd9`, plus the chart rework in `ee1505c`/`c09ae6c`). Live bundle checked each time for a string only the new version contains — 2026-10-29
+  - [ ] Caroline: final look at the redrawn funnel, the full-height chart and the two-line store labels on the live page (not yet seen drawn; offscreen renders can't draw Recharts)
   - [ ] Confirm with Becky that *Curr Whse On Hand* is units, not cases
   - [ ] Ask Becky whether Retail Link can add a stores-with-sales count to the WK## pull (the bars would switch to it)
   - [ ] B2 plan: "This week's actions" panel (inputs now exist: 1,086 expired, 851 expiring by Dec 26)
+
+  *Session notes (Oct 28–29), for the next session*
+  - **Local review doesn't work.** On `localhost` the magic link returns to production (Supabase only redirects to allow-listed URLs), and the Password tab didn't work for Caroline either (cause not checked; most likely no password is set on the account). Fix one: add `http://localhost:5180/**` to Supabase → Auth → URL Configuration → Redirect URLs, or set a password. The dev-only `VITE_AUTH_BYPASS=true` exists but reads only (writes are refused by RLS), and needs Caroline's OK each time. This session reviewed on the live site instead.
+  - **Claude in Chrome** is installed in the systems@dirtycookie.com Chrome profile, but it only connects at session start: launch with `claude --chrome`.
+  - **`main` moved twice under this branch** (Supplies V1 #67, V1.1 #68, from another session). Both merged in cleanly; check `git log HEAD..origin/main` before every push.
+  - **Migrations:** `db push` is now the way (ledger in sync through `20261028150000`, Supplies `20261028120000` applied too); `.claude/instructions.md` still says "SQL editor".
+  - [ ] Update `.claude/instructions.md`: migrations go in with `supabase db push`, not the SQL editor
 
 - **Phase 2 — Operations:** upcoming (weeks following Phase 1 ship).
 - **Phase 3 — Financials + Rollout:** late summer 2026.
