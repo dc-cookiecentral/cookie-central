@@ -266,7 +266,10 @@ const FISCAL_MONTHS = ["Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","No
 const QTR_TINT = { 1: "#D9EFE4", 2: "#FADBE0", 3: "#DCE4F2", 4: "#FBEBD8" }; // matches her calendar
 const fiscalOf = wm => {
   const ww = wm % 100;
-  const i = FISCAL_CUM.findIndex(c => ww <= c);
+  // Week 53 exists (live POS carries 202653) but the table stops at 52, so
+  // findIndex returned -1 and the axis printed "undefined". It belongs to Jan.
+  const found = FISCAL_CUM.findIndex(c => ww <= c);
+  const i = found === -1 ? FISCAL_MONTHS.length - 1 : found;
   return { month: FISCAL_MONTHS[i], quarter: Math.floor(i / 3) + 1 };
 };
 const monthBands = cells => {
@@ -347,9 +350,10 @@ function buildFlow(s) {
   }));
 }
 
-function FlowLegend() {
+function FlowLegend({ latestWk }) {
+  // One entry per line (house convention), so each source reads on its own.
   const item = (color, label, dashed) => (
-    <span className="inline-flex items-center gap-1.5 mr-4">
+    <span className="flex items-center gap-1.5">
       <span className="inline-block" style={{ width: 14, height: 0,
         borderTop: dashed ? "2px dashed " + color : "3px solid " + color }} />{label}
     </span>
@@ -357,14 +361,20 @@ function FlowLegend() {
   return (
     <div className="text-[11px] opacity-80 rounded-xl border px-4 py-2 bg-white"
       style={{ borderColor: "#E5D9DE" }}>
-      <div className="flex flex-wrap items-center">
-        <span className="font-semibold mr-4">Chain flow, upstream → shopper · all series in cases/week:</span>
+      <div className="font-semibold mb-1">Chain flow, upstream → shopper · all series in cases/week</div>
+      <div className="flex flex-col gap-0.5">
         {item(FLOW_COLORS.dot, "DC → DOT · source: production log / NetSuite sales")}
         {item(FLOW_COLORS.depot, "DOT → Walmart depots · source: NetSuite (Cortina) deliveries")}
         {item(FLOW_COLORS.pos, "POS shopper takeaway · source: Retail Link")}
         {item(FLOW_COLORS.fcst, "Walmart sales forecast · source: Retail Link fcst pull", true)}
-        <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block" style={{ width: 2, height: 12, background: "#C2185B" }} />today W28 · shaded = forecast horizon
+        <span className="flex items-center gap-1.5">
+          {/* Was hardcoded "today W28" (Aug 13 snapshot) until Oct 29 2026. */}
+          <span className="inline-block" style={{ width: 2, height: 12, background: "#C2185B" }} />
+          <span>last week with POS: wk ending <WeekLabel wk={latestWk} /></span>
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block" style={{ width: 14, height: 10, background: "#FDF6FA", border: "1px solid #E5D9DE" }} />
+          shaded = forecast horizon
         </span>
       </div>
       <div className="mt-1 opacity-80">
@@ -423,7 +433,7 @@ function FlowCard({ s, m }) {
       <header className="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-3">
         <span className="text-[11px] tracking-widest uppercase font-semibold" style={{ color: "#C2185B" }}>{s.sku}</span>
         <h2 className="cc-serif text-lg leading-tight">{SKU_NAMES[s.sku]}</h2>
-        <span className="text-xs opacity-60">Retail Link data thru wk {m.latestWk ?? "\u2014"}</span>
+        <span className="text-xs opacity-60">Retail Link data thru wk ending <WeekLabel wk={m.latestWk} /></span>
         <span className="ml-auto text-sm" title="Walmart = latest Retail Link store forecast · us = DC internal forecast (trailing-4-wk true velocity × stores)">
           Walmart fcst vs our fcst, next 4 wks: <b style={{ color: gTone }}>{F.spct(g)}</b>
           {g != null && Math.abs(g) > 0.15 && <span className="ml-2 text-[11px] font-medium" style={{ color: "#C2185B" }}>raise with Walmart</span>}
@@ -453,7 +463,7 @@ function FlowCard({ s, m }) {
                 <XAxis dataKey="wl" ticks={ticks} tickLine={false} axisLine={{ stroke: "#E5D9DE" }}
                   tick={{ fontSize: 10, fontFamily: "IBM Plex Mono, monospace", fill: "#2D2235", opacity: 0.7 }}
                   tickFormatter={(wl) => { const d = data.find(x => x.wl === wl); return d ? d.month : wl; }} />
-                <YAxis width={42} tickLine={false} axisLine={false}
+                <YAxis width={42} tickLine={false} axisLine={false} tickFormatter={(v) => Number(v).toLocaleString("en-US")}
                   tick={{ fontSize: 10, fontFamily: "IBM Plex Mono, monospace", fill: "#2D2235", opacity: 0.7 }} />
                 <Tooltip formatter={fmtTip}
                   labelFormatter={(wl) => { const d = data.find(x => x.wl === wl); return d ? "W" + wl + " \u00b7 " + d.month + " (wk " + d.wk + ")" : wl; }}
@@ -998,7 +1008,7 @@ function UnmappedItemsNotice({ items }) {
 function Summary({ series, metrics }) {
   return (
     <div className="flex flex-col gap-4">
-      <FlowLegend />
+      <FlowLegend latestWk={Math.max(0, ...metrics.map(m => m.latestWk ?? 0)) || null} />
       {series.map((s, i) => <FlowCard key={s.sku} s={s} m={metrics[i]} />)}
     </div>
   );
