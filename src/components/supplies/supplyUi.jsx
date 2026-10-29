@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Empty } from '../specsheet/pills';
 
-// Shared pieces for /supplies and /vendors: lookup maps over useSupplies()
+// Shared pieces for the Supplies & Vendors tabs: lookup maps over useSupplies()
 // data, formatters, status chips, and the contact popover.
 
 export function buildSupplyMaps(data) {
@@ -42,7 +42,39 @@ export function buildSupplyMaps(data) {
     itemsByVendor.get(s.vendor_id).set(item.id, item);
   });
 
-  return { vendorsById, skusById, itemsById, skusByItem, quotesBySku, contactsByVendor, breaksByQuote, lastOrderByItem, itemsByVendor };
+  // One price point per quote, at its best (lowest) break, newest first.
+  // PO / invoice = actual purchase price; quote / verbal = offered price.
+  const pricePointsByItem = new Map();
+  data.quotes.forEach((quote) => {
+    const sku = skusById.get(quote.sku_id);
+    const item = sku && itemsById.get(sku.item_id);
+    if (!item) return;
+    const best = (breaksByQuote.get(quote.id) || [])
+      .filter((b) => unitPrice(item.kind, b) != null)
+      .reduce((m, b) => (m && unitPrice(item.kind, m) <= unitPrice(item.kind, b) ? m : b), null);
+    if (!best) return;
+    if (!pricePointsByItem.has(item.id)) pricePointsByItem.set(item.id, []);
+    pricePointsByItem.get(item.id).push({
+      id: quote.id, quote, sku, vendor: vendorsById.get(sku.vendor_id) || null, brk: best,
+      unit: unitPrice(item.kind, best), actual: isActual(quote), multiBreak: (breaksByQuote.get(quote.id) || []).length > 1,
+    });
+  });
+  pricePointsByItem.forEach((pts) => pts.sort((a, b) => String(b.quote.doc_date || '').localeCompare(String(a.quote.doc_date || ''))));
+
+  return { vendorsById, skusById, itemsById, skusByItem, quotesBySku, contactsByVendor, breaksByQuote, lastOrderByItem, itemsByVendor, pricePointsByItem };
+}
+
+export const isActual = (q) => ['po', 'invoice'].includes(q.doc_type);
+
+// Headline price for the macro list: the most recent PO/invoice, and the best
+// (lowest) quote still in play — not expired/closed, vendor not closed.
+// Everything else is history.
+export function headlinePrices(points = []) {
+  const lastPo = points.find((p) => p.actual) || null;
+  const bestQuote = points
+    .filter((p) => !p.actual && !['expired', 'closed'].includes(p.quote.status) && p.vendor?.status !== 'closed')
+    .reduce((m, p) => (m && m.unit <= p.unit ? m : p), null);
+  return { lastPo, bestQuote };
 }
 
 // ── formatters ──────────────────────────────────────────────────────────────
@@ -52,6 +84,18 @@ export const fmtMoney = (n) => usd(n, 2);
 export const fmtPerLb = (n) => (n == null ? null : `${usd(n, 4)}/lb`);
 export const fmtPerM = (n) => (n == null ? null : `${usd(n, 2)}/M`);
 export const fmtQty = (n) => (n == null ? null : Number(n).toLocaleString('en-US'));
+
+// The unit an item is compared on, straight from v_sku_pricing (never computed
+// here): $/lb for ingredients, $/1,000 for packaging (per piece if the SKU
+// isn't counted in thousands).
+export const unitPrice = (kind, b) =>
+  kind === 'ingredient' ? b.price_per_lb : b.price_per_thousand ?? b.price_per_unit;
+export const fmtUnit = (kind, b) =>
+  kind === 'ingredient' ? fmtPerLb(b.price_per_lb)
+    : b.price_per_thousand != null ? fmtPerM(b.price_per_thousand)
+      : b.price_per_unit != null ? `${usd(b.price_per_unit, 4)} ea` : null;
+// PO/invoice prices read black, quoted prices grey.
+export const priceTone = (q) => (q && isActual(q) ? 'text-dk' : 'text-gr');
 
 // Dates arrive as 'YYYY-MM-DD'; parse as local dates so they don't shift a day.
 const parseDate = (d) => {
@@ -111,7 +155,7 @@ export function VendorStatus({ v }) {
 export function VendorLink({ vendor }) {
   if (!vendor) return <Empty label="— vendor pending" />;
   return (
-    <Link to={`/vendors?vendor=${vendor.id}`} className="font-semibold text-pk hover:underline" onDoubleClick={(e) => e.stopPropagation()}>
+    <Link to={`/supplies?tab=vendors&vendor=${vendor.id}`} className="font-semibold text-pk hover:underline" onDoubleClick={(e) => e.stopPropagation()}>
       {vendor.name}
     </Link>
   );
