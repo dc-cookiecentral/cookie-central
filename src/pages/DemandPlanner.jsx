@@ -751,8 +751,9 @@ function ServiceBars({ rows, bad, warn, fmt }) {
   );
 }
 
-function ServiceHealth({ series, otif }) {
-  // ── In-store fill rate, from the POS feed ──
+// In-store fill rate per week, averaged across SKUs. Shared with the actions
+// panel so the two read the same number.
+function instockRows(series) {
   // Walmart restates in-stock along with POS, so read it off the series rather
   // than caching a headline number anywhere.
   const instockByWk = new Map();
@@ -770,11 +771,21 @@ function ServiceHealth({ series, otif }) {
       instockByWk.set(c.wk, a);
     }
   }
-  const isRows = [...instockByWk.values()]
+  return [...instockByWk.values()]
     .filter((a) => a.vals.length)
     .sort((a, b) => a.wk - b.wk)
     .map((a) => ({ wk: a.wk, v: a.vals.reduce((x, y) => x + y, 0) / a.vals.length, bySku: a.bySku }))
     .slice(-14);
+}
+
+// OTIF per week, from its own feed. Shared with the actions panel.
+const otifRowsOf = (otif) => (otif ?? []).filter((r) => r.otif != null).map((r) => ({
+  wk: r.wk, v: r.otif, note: F.int(r.unfilled) + " cs unfilled",
+})).slice(-14);
+
+function ServiceHealth({ series, otif }) {
+  // ── In-store fill rate, from the POS feed ──
+  const isRows = instockRows(series);
   const isNow = isRows[isRows.length - 1] ?? null;
   const isPrev = isRows[isRows.length - 2] ?? null;
   // Percentage POINTS, not a percentage change — a move from 98% to 96% is
@@ -787,9 +798,7 @@ function ServiceHealth({ series, otif }) {
   // shipments, opposite ends, and the weeks do not align — the DOT export is
   // keyed on delivery date, OTIF on Walmart's week.
   const src = otif ?? [];
-  const otifRows = src.filter((r) => r.otif != null).map((r) => ({
-    wk: r.wk, v: r.otif, note: F.int(r.unfilled) + " cs unfilled",
-  })).slice(-14);
+  const otifRows = otifRowsOf(otif);
   const otifNow = otifRows[otifRows.length - 1] ?? null;
   const otifOrdered = src.reduce((a, r) => a + (r.otif != null ? r.ordered : 0), 0);
   const otifOnTime = src.reduce((a, r) => a + (r.otif != null ? (r.onTime ?? 0) : 0), 0);
@@ -1202,6 +1211,130 @@ function funnelInputs(sku, s, feeds) {
     wh,
     rlWk: posWks.length ? Math.max(...posWks) : null,
   };
+}
+
+/* ---------------- this week's actions (B2) ---------------- */
+// Folded in from the prototype's ActionPanel (Caroline, Nov 2 2026), with every
+// flag on a MEASURED figure. The prototype's "DOT cover under 7 days" is left
+// out: dotDoh is still a placeholder (KNOWN_ISSUES §1), and a red flag on a
+// made-up number reads as a real alarm. It comes back with a production feed.
+//
+// Text is built as one string per action: React's server render splits
+// adjacent expressions with comments, which would hide them from the smoke test.
+const ACTION_OWNERS = {
+  dot: "Harshita · Cortina/DOT",
+  walmart: "Becky / David · Walmart",
+  ops: "Dirty Cookie ops",
+};
+const EXPIRING_RED_SHARE = 0.3;   // the prototype's threshold, now the amber → red line
+const GAP_WARN = 0.15, GAP_BAD = 0.4;
+const INSTOCK_BAD = 0.65, OTIF_BAD = 0.9; // Service health's red lines
+const STALE_WEEKS = 2;
+// Weeks apart, across the fiscal year end (52 weeks; live POS also carries 53).
+const wkIndex = wk => (Math.floor(wk / 100) - 2026) * 52 + (wk % 100);
+const wkTag = wk => "W" + String(wk).slice(4);
+const sortSkus = obj => Object.entries(obj).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+
+function buildActions({ series, metrics, feeds, todayWk }) {
+  const acts = [];
+  const add = (tone, who, text, src) => acts.push({ tone, who, text, src });
+
+  // ── DOT stock: the newest reading per SKU ──
+  const dots = series.map(s => funnelInputs(s.sku, s, feeds).dot).filter(Boolean);
+  const newestDot = dots.length ? dots.reduce((a, d) => (d.wk > a.wk || (d.wk === a.wk && d.snapshotDate > a.snapshotDate) ? d : a)) : null;
+  const dotSrc = d => "DOT Inventory Snapshot · " + d.label + " · " + wkTag(d.wk);
+
+  const expired = Object.fromEntries(dots.map(d => [d.sku, d.expired ?? 0]));
+  const expiredTotal = Object.values(expired).reduce((a, b) => a + b, 0);
+  if (expiredTotal > 0) add("bad", ACTION_OWNERS.dot,
+    "Decide what to do with " + F.int(expiredTotal) + " expired cases at DOT (" +
+      sortSkus(expired).map(([k, v]) => k + " " + F.int(v)).join(" · ") + ")",
+    dotSrc(newestDot));
+
+  for (const d of dots) {
+    if (!(d.expiring60 > 0)) continue;
+    const share = d.cases > 0 ? d.expiring60 / d.cases : null;
+    const first = d.earliestExpiry
+      ? new Date(`${d.earliestExpiry}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })
+      : null;
+    add(share != null && share > EXPIRING_RED_SHARE ? "bad" : "warn", ACTION_OWNERS.dot,
+      d.sku + ": " + F.int(d.expiring60) + " good cases expire within 60 days" +
+        (share != null ? " (" + F.pct0(share) + " of good stock" + (first ? ", first " + first : "") + ")" : "") +
+        " — sell these first",
+      dotSrc(d));
+  }
+
+  // ── Walmart's forecast vs ours, next 4 weeks ──
+  for (const m of metrics) {
+    if (m.n4wGap == null || Math.abs(m.n4wGap) <= GAP_WARN) continue;
+    add(Math.abs(m.n4wGap) > GAP_BAD ? "bad" : "warn", ACTION_OWNERS.walmart,
+      "Challenge the " + m.sku + " forecast — Walmart is " + F.spct(m.n4wGap) + " vs our velocity-based view, next 4 weeks",
+      "Retail Link forecast vs internal · after " + wkTag(m.latestWk));
+  }
+
+  // ── Service: red lines only ──
+  const isNow = instockRows(series).at(-1);
+  if (isNow && isNow.v < INSTOCK_BAD) add("bad", ACTION_OWNERS.walmart,
+    "In-store fill rate is " + F.pct(isNow.v) + ", below " + F.pct0(INSTOCK_BAD) + " — shelves are empty in stores carrying the item",
+    "Retail Link weekly · " + wkTag(isNow.wk));
+  const otifNow = otifRowsOf(feeds.otif).at(-1);
+  if (otifNow && otifNow.v < OTIF_BAD) add("bad", ACTION_OWNERS.walmart,
+    "OTIF is " + F.pct(otifNow.v) + ", below " + F.pct0(OTIF_BAD) + " (" + otifNow.note + ")",
+    "OTIF PO details · " + wkTag(otifNow.wk));
+
+  // ── Stale uploads: the page is only as current as its last file ──
+  const lastPosWk = feeds.sources?.pos === "live" ? feeds.asOf : null;
+  if (!lastPosWk) add("warn", ACTION_OWNERS.ops,
+    "No live Retail Link POS — upload the weekly export at Uploads → Retail Link Weekly", "page is on the " + SEED.asOf + " seed");
+  else if (todayWk && wkIndex(todayWk) - wkIndex(lastPosWk) > STALE_WEEKS) add("warn", ACTION_OWNERS.ops,
+    "Retail Link POS is " + (wkIndex(todayWk) - wkIndex(lastPosWk)) + " weeks behind — upload the latest weekly export at Uploads → Retail Link Weekly",
+    "newest POS week " + wkTag(lastPosWk) + " · today " + wkTag(todayWk));
+  if (!newestDot) add("warn", ACTION_OWNERS.ops,
+    "No DOT Inventory Snapshot uploaded — upload it at Uploads → DOT Inventory Snapshot", "no DOT on-hand reading");
+  else if (todayWk && wkIndex(todayWk) - wkIndex(newestDot.wk) > STALE_WEEKS) add("warn", ACTION_OWNERS.ops,
+    "DOT on-hand is " + (wkIndex(todayWk) - wkIndex(newestDot.wk)) + " weeks old — upload the latest Inventory Snapshot at Uploads → DOT Inventory Snapshot",
+    dotSrc(newestDot) + " · today " + wkTag(todayWk));
+
+  const order = { bad: 0, warn: 1 };
+  return acts.sort((a, b) => order[a.tone] - order[b.tone]);
+}
+
+const ACTION_TONE = {
+  bad: { bg: "#F8CBCB", fg: "#8E1039" },
+  warn: { bg: "#FDE9C8", fg: "#8A5A10" },
+  good: { bg: "#D8EFD8", fg: "#2C5E3A" },
+};
+
+function ActionPanel({ series, metrics, feeds }) {
+  const todayWk = walmartWeekOf(todayIso());
+  const acts = buildActions({ series, metrics, feeds, todayWk });
+  const shown = acts.length ? acts
+    : [{ tone: "good", who: null, text: "No flags this week", src: "checked " + wkTag(todayWk) }];
+  return (
+    <section className="bg-white rounded-2xl border p-5" style={{ borderColor: "#E5D9DE" }}>
+      <header className="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-3">
+        <h2 className="cc-serif text-lg">This week’s actions</h2>
+        <span className="text-xs opacity-60">
+          Flags from measured figures only. DOT days of cover is left out until production has a real feed.
+        </span>
+      </header>
+      <div className="flex flex-col gap-2">
+        {shown.map((a, i) => (
+          <div key={i} className="flex flex-wrap sm:flex-nowrap items-start gap-x-3 gap-y-1 text-[13px]">
+            <span className="flex-none mt-1.5 inline-block w-2 h-2 rounded-full" style={{ background: ACTION_TONE[a.tone].fg }} />
+            <div className="flex-1 min-w-0">
+              <div>{a.text}</div>
+              <div className="text-[10px] opacity-50">{a.src}</div>
+            </div>
+            {a.who && (
+              <span className="flex-none text-[10px] px-2 py-0.5 rounded-full ml-5 sm:ml-0"
+                style={{ background: ACTION_TONE[a.tone].bg, color: ACTION_TONE[a.tone].fg }}>{a.who}</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 function Summary({ series, metrics, feeds }) {
@@ -1632,7 +1765,7 @@ export default function DemandPlanner() {
         )}
       </div>
       <main className="p-5 cc-sans">
-        {tab === "summary" && (<><UnmappedItemsNotice items={feeds.unmappedOrderItems} /><PlaceholderNotice /><div className="mt-4" /><ServiceHealth series={series} otif={feeds.otif} /><div className="mt-4" /><Summary series={series} metrics={metrics} feeds={feeds} /><DotServicePanel svc={svc} latestDataWk={latestDataWk} /></>)}
+        {tab === "summary" && (<><UnmappedItemsNotice items={feeds.unmappedOrderItems} /><PlaceholderNotice /><div className="mt-4" /><ActionPanel series={series} metrics={metrics} feeds={feeds} /><div className="mt-4" /><ServiceHealth series={series} otif={feeds.otif} /><div className="mt-4" /><Summary series={series} metrics={metrics} feeds={feeds} /><DotServicePanel svc={svc} latestDataWk={latestDataWk} /></>)}
         {tab === "tracker" && <Tracker series={series} onEdit={onEdit} />}
         {tab === "sources" && <Sources feeds={feeds} series={series} />}
       </main>

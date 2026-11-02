@@ -159,7 +159,7 @@
   - [ ] Caroline: final look at the redrawn funnel, the full-height chart and the two-line store labels on the live page (not yet seen drawn; offscreen renders can't draw Recharts)
   - [ ] Confirm with Becky that *Curr Whse On Hand* is units, not cases
   - [ ] Ask Becky whether Retail Link can add a stores-with-sales count to the WK## pull (the bars would switch to it)
-  - [ ] B2 plan: "This week's actions" panel (inputs now exist: 1,086 expired, 851 expiring by Dec 26)
+  - [x] B2 plan: "This week's actions" panel — planned 2026-11-02, see below
 
   *Session notes (Oct 28–29), for the next session*
   - **Local review doesn't work.** On `localhost` the magic link returns to production (Supabase only redirects to allow-listed URLs), and the Password tab didn't work for Caroline either (cause not checked; most likely no password is set on the account). Fix one: add `http://localhost:5180/**` to Supabase → Auth → URL Configuration → Redirect URLs, or set a password. The dev-only `VITE_AUTH_BYPASS=true` exists but reads only (writes are refused by RLS), and needs Caroline's OK each time. This session reviewed on the live site instead.
@@ -167,6 +167,35 @@
   - **`main` moved under this branch four times** (Supplies V1 #67, V1.1 #68, V1.2 #69 and EOS #70, from other sessions). All merged in cleanly; check `git log HEAD..origin/main` before every push.
   - **Migrations:** `db push` is now the way (ledger in sync through `20261028150000`, Supplies `20261028120000` applied too); `.claude/instructions.md` still says "SQL editor".
   - [ ] Update `.claude/instructions.md`: migrations go in with `supabase db push`, not the SQL editor
+
+  **November 2 2026 — B2 planned: "This week's actions" on `/demand-planner`.** Branch `feat/dp-actions`. No migration, no engine change.
+
+  *Plan*
+  - Panel at the top of the Summary tab, above Service health (below the unmapped-items and placeholder notices). One line per action: tone dot, text with its number, owner chip, and the source and date of the figure (e.g. "DOT · Tue Oct 27 · W39"). Read-only: nothing to tick off.
+  - Flags, all from measured figures:
+    1. **Expired at DOT** (red, Harshita · Cortina/DOT): latest `dot_on_hand` reading, expired cases across SKUs, with the per-SKU split. Today: 1,086 (PBG 458).
+    2. **Expiring ≤60 days** (amber per SKU; red above 30% of that SKU's good stock; Harshita · Cortina/DOT): `expiring60`, with `earliestExpiry`. Today: WC 229, PBG 182, CCF 440 — all amber (CCF 28%).
+    3. **Forecast gap** (amber >15%, red >40%; Becky / David · Walmart): `n4wGap`, Walmart store forecast vs our internal forecast, next 4 weeks. Thresholds as the prototype.
+    4. **Service** (red only; Becky / David · Walmart): latest in-store fill rate below 65% or OTIF below 90%, the Service health panel's red lines.
+    5. **Stale data** (amber; Dirty Cookie ops): newest DOT reading or newest Retail Link POS week more than 2 Walmart weeks behind today's week. Upload card named.
+  - Nothing fires → one green line, "No flags this week", still dated.
+  - Copy the prototype's `ActionPanel` shape (`~/Projects/dirty-cookie/demand-planner/src/DemandPlanner.jsx:368`), rewritten on `funnelInputs` / `metrics` / `feeds`; a pure `buildActions()` so `smoke-render.mjs` can assert on it.
+  - Check: `smoke-render.mjs` (new shapes: flags firing, none firing, no DOT reading), `vite build`, read back against live data, then Caroline's screenshot review before merge.
+
+  *Decisions* (Caroline, Nov 2)
+  - **No DOT days-of-cover flag.** The prototype's "DOT cover under 7 days" reads `dotDoh`, still a placeholder (KNOWN_ISSUES §1). It comes back when production has a real feed.
+  - **Expiring fires on any case ≤60 days**, not the prototype's >30% of good (which would be silent today with 851 cases expiring by Dec 26). Over 30% turns it red.
+  - **Owner chips name people**, as in the prototype.
+  - **Placement: top of Summary**, above Service health.
+
+  *Done*
+  - [x] Built on `feat/dp-actions`: `buildActions()` + `ActionPanel` in `src/pages/DemandPlanner.jsx`, mounted above Service health. In-stock and OTIF rows factored out of `ServiceHealth` (`instockRows`, `otifRowsOf`) so the actions panel and Service health read one number — 2026-11-02
+  - [x] `smoke-render.mjs` now also checks the Summary tab's action text per shape (a flag that stops firing still renders); 9/9. `vite build` clean — 2026-11-02
+  - [x] Read back on live data (real `useDemandFeeds`, rendered offscreen): 8 actions. Red: 1,086 expired (PBG 458 · CCF 382 · WC 246); PBG forecast +66.7%; CCF +46.2%; OTIF W37 87.7% (185 cs unfilled). Amber: expiring WC 229 (15%) / PBG 182 (24%) / CCF 440 (28%); WC forecast +23.9%. No stale flag (POS W38, DOT W39, today W40). DOT and OTIF figures match the tables queried directly — 2026-11-02
+  - Note: the forecast-gap flags divide by our internal forecast, which leans on in-stock — the figure Walmart restated (KNOWN_ISSUES §6). PBG's +66.7% is the one most exposed to it.
+
+  *To do*
+  - [ ] Caroline: screenshot review on the live page, then merge
 
   **October 28–29 2026 — Supplies & Vendors (`docs/SUPPLIES_SPEC.md`).** PRs #67 (V1), #68 (V1.1), #69 (V1.2), all merged and live. Full build notes in the spec's status log.
 

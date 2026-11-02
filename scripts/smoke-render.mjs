@@ -46,7 +46,7 @@ const LIVE_SHAPE = {
 const LIVE_DOT_SHAPE = {
   ...LIVE_SHAPE,
   dotOnHand: [
-    { wk: 202639, sku: 'WC', cases: 1531, committed: 336, expired: 246, expiring60: 0,
+    { wk: 202639, sku: 'WC', cases: 1531, committed: 336, expired: 246, expiring60: 229,
       earliestExpiry: '2026-12-23', casesPerPallet: 189, snapshotDate: '2026-10-27' },
     { wk: 202639, sku: 'BC', cases: 1257, committed: 228, expired: 0, expiring60: 0,
       earliestExpiry: '2027-03-01', casesPerPallet: 96, snapshotDate: '2026-10-27' },
@@ -62,6 +62,17 @@ const EMPTY_SHAPE = {
   asOf: null,
 };
 
+// Rendering is not enough for the actions panel (B2): a flag that silently
+// stops firing still renders. Each shape's Summary tab must carry these lines.
+// None depends on today's date except "Retail Link POS is", which the live
+// shapes' week-202628 POS trips on any date after mid-August 2026.
+const EXPECT_SUMMARY = {
+  live: ['This week’s actions', 'Retail Link POS is', 'No DOT Inventory Snapshot uploaded'],
+  dot: ['Decide what to do with 246 expired cases at DOT (WC 246)',
+        'WC: 229 good cases expire within 60 days (15% of good stock, first Dec 23)'],
+  empty: ['This week’s actions', 'No live Retail Link POS', 'No DOT Inventory Snapshot uploaded'],
+};
+
 // The bundle must live inside the repo so node_modules resolves.
 const dir = mkdtempSync(join(process.cwd(), '.smoke-'));
 let failures = 0;
@@ -70,8 +81,13 @@ try {
   writeFileSync(join(dir, 'main.jsx'), `
     import React from 'react';
     import { renderToString } from 'react-dom/server';
+    import { writeFileSync } from 'node:fs';
     import P from './page.jsx';
-    try { console.log('OK ' + renderToString(React.createElement(P)).length); }
+    try {
+      const html = renderToString(React.createElement(P));
+      writeFileSync(${JSON.stringify(join(dir, 'out.html'))}, html);
+      console.log('OK ' + html.length);
+    }
     catch (e) { console.log('THREW ' + e.message); process.exitCode = 1; }
   `);
 
@@ -89,9 +105,13 @@ try {
         '--platform=node', '--loader:.jsx=jsx', '--jsx=automatic',
         `--outfile=${join(dir, 'out.cjs')}`, '--log-level=error'], { stdio: 'pipe' });
       const out = execFileSync('node', [join(dir, 'out.cjs')], { encoding: 'utf8' }).trim();
-      const ok = out.startsWith('OK');
+      const missing = out.startsWith('OK') && tab === 'summary'
+        ? EXPECT_SUMMARY[shapeName].filter(s => !readFileSync(join(dir, 'out.html'), 'utf8').includes(s))
+        : [];
+      const ok = out.startsWith('OK') && !missing.length;
       if (!ok) failures++;
-      console.log(`  ${ok ? '✅' : '❌'} ${shapeName.padEnd(5)} / ${tab.padEnd(8)} ${out}`);
+      console.log(`  ${ok ? '✅' : '❌'} ${shapeName.padEnd(5)} / ${tab.padEnd(8)} ${out}` +
+        (missing.length ? `\n      missing: ${missing.join(' | ')}` : ''));
     }
   }
 } finally {
