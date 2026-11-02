@@ -5,7 +5,8 @@ import { useSupplies } from '../hooks/useSupplies';
 import { buildSupplyMaps } from '../components/supplies/supplyUi';
 import SupplyItems from '../components/supplies/SupplyItems';
 import VendorRolodex from '../components/supplies/VendorRolodex';
-import SupplyEditModal from '../components/supplies/SupplyEditModal';
+import EditModal from '../components/shared/EditModal';
+import { supplyForm } from '../components/supplies/supplyForms';
 
 // Supplies & Vendors (docs/SUPPLIES_SPEC.md, Phase V1 — READ-ONLY).
 // One window, two tabs over the same data: Supplies (items → vendor price
@@ -80,8 +81,9 @@ export default function Supplies() {
       )}
 
       {modal && (
-        <SupplyEditModal
-          modal={modal}
+        <EditModal
+          {...supplyForm(modal)}
+          data={data}
           onClose={() => setModal(null)}
           onSaved={() => {
             setModal(null);
