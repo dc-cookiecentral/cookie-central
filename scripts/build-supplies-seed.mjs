@@ -59,10 +59,24 @@ const SKIP_ITEM = /^DC Classic Frozen Dough/;
 // rev 6 flowwrap-film gap, attached to the matching sheet film items.
 const RF_FILM_NOTE = (runout) =>
   `Flowwrap film, 9″ repeat × 15.75″ web (die-line on file). Runout ${runout}. Catalogue rev 6: NO dated LallyPak film quote on file — the sheet price below is undated; request a per-SKU film quote (lead time back-plans the reorder PO).`;
+// The sheet splits these by chip count (1000ct / 4000ct = chips per lb). They
+// are one ingredient each: merged, with the count carried on each SKU's order
+// unit, so every vendor and size sits side by side on $/lb. Each SKU keeps the
+// id it had under its sheet name (`idKey`), so its quotes, breaks and PO links
+// move to the merged item in place; the emptied sheet items are then deleted.
+const ITEM_MERGES = {
+  'White Chocolate Chips 1000ct': { into: 'White Chocolate Chips', count: '1K ct' },
+  'White Chocolate Chips 4000ct': { into: 'White Chocolate Chips', count: '4K ct' },
+  'Peanut Butter Chips 1000ct': { into: 'Peanut Butter Chips', count: '1K ct' },
+  'Peanut Butter Chips 4000ct': { into: 'Peanut Butter Chips', count: '4K ct' },
+};
+const MERGED_NOTE = 'Merged from the Assembler sheet’s 1000ct and 4000ct items (Nov 2 ’26). 1K / 4K is the chip count per lb, shown on each SKU’s order unit — compare on $/lb.';
 const ITEM_NOTES = {
   'Film - Walmart CCF': RF_FILM_NOTE('Dec 8 ’26'),
   'Film - Walmart WCCB': RF_FILM_NOTE('Dec 21 ’26'),
   'Film - Walmart PBJ': RF_FILM_NOTE('Oct ’27'),
+  'White Chocolate Chips': MERGED_NOTE,
+  'Peanut Butter Chips': MERGED_NOTE,
 };
 
 const num = (s) => {
@@ -99,6 +113,9 @@ function mergeSheet(items, skuByKey, skipped) {
   const byName = new Map(items.map((i) => [i.name, i]));
   for (const r of sheetRows()) {
     if (r.item === '1' && r.brand === 'Moisturlok') r.item = 'Moisturlok'; // sheet typo
+    const sheetItem = r.item;
+    const merged = ITEM_MERGES[sheetItem];
+    if (merged) r.item = merged.into;
     const vendor = r.distributor in VENDOR_ALIASES ? VENDOR_ALIASES[r.distributor] : (r.distributor || null);
 
     if (SKIP_ITEM.test(r.item)) { skipped.push(`${r.item} (finished good)`); continue; }
@@ -141,6 +158,10 @@ function mergeSheet(items, skuByKey, skipped) {
     } else {
       sku.order_unit = pkg ? `${pkg} (weight not on sheet)` : 'not on sheet';
       if (r.cost != null) breaks = [[1, r.cost]];
+    }
+    if (merged) {
+      sku.idKey = `${sheetItem}|${vendor ?? ''}|${sku.brand ?? ''}|${sku.order_unit}`;
+      sku.order_unit = `${sku.order_unit} · ${merged.count}`;
     }
 
     const facts = [
@@ -188,6 +209,23 @@ const upsert = (table, cols, rows, { keep = [], insertOnly = false } = {}) =>
     cols.filter((c) => c !== 'id')
       .map((c) => (keep.includes(c) ? `${c} = COALESCE(${table}.${c}, EXCLUDED.${c})` : `${c} = EXCLUDED.${c}`)).join(', ') + ';\n');
 
+// ITEM_MERGES: the SKU upsert has already re-pointed every SKU to the merged
+// item, so the old sheet items are empty. Carry an assumed cost typed on one of
+// them over (only if the merged item has none; 1000ct before 4000ct), then
+// delete them. A no-op on re-runs.
+function mergedItemsSql() {
+  const byTarget = new Map();
+  for (const [from, { into }] of Object.entries(ITEM_MERGES)) byTarget.set(into, [...(byTarget.get(into) ?? []), from]);
+  let sql = '\n-- Merged items (ITEM_MERGES)\n';
+  for (const [into, froms] of byTarget) {
+    const olds = froms.map((n) => id('item', n)).join(', ');
+    sql += `UPDATE supply_items SET assumed_cost = (SELECT o.assumed_cost FROM supply_items o WHERE o.id IN (${olds}) AND o.assumed_cost IS NOT NULL ORDER BY o.name LIMIT 1)\n` +
+      `  WHERE id = ${id('item', into)} AND assumed_cost IS NULL;\n` +
+      `DELETE FROM supply_items WHERE id IN (${olds}) AND NOT EXISTS (SELECT 1 FROM supply_skus s WHERE s.item_id = supply_items.id);\n`;
+  }
+  return sql;
+}
+
 function build() {
   const items = structuredClone(REV6_ITEMS);
   const skuByKey = new Map();
@@ -215,7 +253,7 @@ function build() {
     irows.push([id('item', i.name), q(i.name), q(i.kind), i.primary ? id('vendor', i.primary) : 'NULL', q(i.notes)]);
     for (const s of i.skus) {
       if (s.vendor && !vendorNames.has(s.vendor)) throw new Error(`unknown vendor ${s.vendor}`);
-      let skey = `${i.name}|${s.vendor ?? ''}|${s.brand ?? ''}|${s.order_unit}`;
+      let skey = s.idKey ?? `${i.name}|${s.vendor ?? ''}|${s.brand ?? ''}|${s.order_unit}`;
       if (skuKeys.has(skey)) skey += `|${s.item_code ?? s.vendor_item_code}`;
       if (skuKeys.has(skey)) throw new Error(`duplicate sku key ${skey}`);
       skuKeys.add(skey);
@@ -258,6 +296,7 @@ BEGIN;
     upsert('supply_pos', ['id', 'po_number', 'vendor_id', 'po_date', 'fulfillment', 'packing_slip_ref', 'ship_date', 'freight_cost', 'notes'], porows, { insertOnly: true }) + '\n' +
     upsert('quotes', ['id', 'sku_id', 'vendor_id', 'doc_type', 'doc_ref', 'doc_date', 'valid_until', 'moq', 'lead_time', 'terms', 'one_time_costs', 'status', 'notes', 'doc_path', 'po_id'], qrows, { keep: ['po_id'] }) + '\n' +
     upsert('quote_breaks', ['id', 'quote_id', 'qty', 'price_per_order_qty'], brows) +
+    mergedItemsSql() +
     // Items the seed used to create under another name (their SKUs and quotes cascade).
     (RETIRED_ITEMS.length ? `\nDELETE FROM supply_items WHERE id IN (${RETIRED_ITEMS.map((n) => id('item', n)).join(', ')});\n` : '') +
     '\nCOMMIT;\n';
