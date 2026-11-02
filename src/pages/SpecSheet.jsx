@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useSpecSheet, deleteSpecRow, toggleSampleEligible } from '../hooks/useSpecSheet';
+import { useSpecSheet, saveSpecRow, deleteSpecRow, toggleSampleEligible } from '../hooks/useSpecSheet';
 import {
   buildMaps, cookieForm, cookieTier, cookieStorage, cookieOfEach, caseStorage,
   caseBrand, caseNetOz, ozToLb, casesPerPallet,
 } from '../utils/cookulator';
 import SpecTable from '../components/specsheet/SpecTable';
-import EditModal from '../components/specsheet/EditModal';
+import EditModal from '../components/shared/EditModal';
+import { SPEC_FORMS } from '../components/specsheet/specForms';
 import {
   Empty, TBD, Code, StoragePill, PrepPill, FormPill, TierPill, OzPill, BrandPill, SampleChip, SampleToggle,
 } from '../components/specsheet/pills';
@@ -115,9 +116,10 @@ export default function SpecSheet() {
 
       {modal && (
         <EditModal
-          kind={modal.kind}
+          config={SPEC_FORMS[modal.kind]}
           row={modal.row}
           data={data}
+          onSave={(payload) => saveSpecRow(SPEC_FORMS[modal.kind].table, SPEC_FORMS[modal.kind].key, payload)}
           onClose={() => setModal(null)}
           onSaved={() => {
             setModal(null);
