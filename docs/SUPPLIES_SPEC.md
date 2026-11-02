@@ -10,7 +10,7 @@
 
 - **Edit lock = Spec Sheet pattern** (`src/pages/SpecSheet.jsx`):
   `canEdit = ['admin','ops'].includes(profile?.role)` · local `editMode` · `editing = canEdit && editMode` · same 🔒/🔓 toggle button copy and styling. Edit/Add controls render only when `editing`.
-- **Forms = `components/specsheet/EditModal.jsx` pattern**: config map `F[kind] = { table, key, title, fields[] }`, field types `text|number|select|bool|textarea|csv`, `optionsFrom` cross-refs, upsert on natural key (the `saveSpecRow` pattern).
+- **Forms = `components/shared/EditModal.jsx`** (extracted in V2.1 from the Spec Sheet's modal): config `{ title, key, fields[] }` plus an `onSave(payload)` the page supplies, field types `text|number|date|select|bool|textarea|csv`, `optionsFrom` cross-refs, per-field `hint` / `validate` / `disabled` (values or `(form) =>` functions). Spec Sheet configs: `specsheet/specForms.js` (upsert on natural key via `saveSpecRow`); Supplies: `supplies/supplyForms.js`. Header comment in `EditModal.jsx` is the reference.
 - **Writes RLS-gated** (admin/ops) + **audit_log** field-level trigger, same as spine tables.
 - Routing under `InternalOnly` in `App.jsx`; Sidebar `NAV` entries. Tailwind tokens (`bg-pk`, `border-lt`), Outfit, pink section headers.
 
@@ -133,7 +133,7 @@ Each phase = one branch/PR (ERP deploys via GitHub integration — no CLI deploy
 - [x] Phase V1 — built Oct 28 2026 (PR #67), **live Oct 29 2026**: migration pushed with `--include-all`, seed pasted, 11 PDFs uploaded by hand — see "V1 build notes" below
 - [x] V1.1 (PR #68) and V1.2 (PR #69) review changes — live Oct 29 2026, notes below
 - [x] Chip items consolidated (Nov 2 2026, branch `feat/supplies-merge-chips`): the Assembler sheet's *White Chocolate Chips 1000ct / 4000ct* → **White Chocolate Chips**, *Peanut Butter Chips 1000ct / 4000ct* → **Peanut Butter Chips** (`ITEM_MERGES` in `build-supplies-seed.mjs`). 1K / 4K (chips per lb) moves onto each SKU's order unit (`25 lb box · 4K ct`); $/lb unchanged and now side by side. SKU/quote/break ids kept, so the re-seed re-points rather than recreates (PO links survive); an assumed cost on an old item carries over; the emptied items are deleted. 48 → 46 items. **Not yet applied:** re-run the seed in the SQL editor.
-- [ ] Phase V2 — **started Oct 29 2026:** edit lock + assumed-cost and PO forms shipped in V1.2. Still to do: shared EditModal (V2.1), add/edit vendors, items, SKUs, quotes, PDF upload
+- [ ] Phase V2 — **started Oct 29 2026:** edit lock + assumed-cost and PO forms shipped in V1.2. **V2.1 done Nov 2 2026** (branch `feat/supplies-v2.1-edit-modal`): shared `components/shared/EditModal.jsx`; Spec Sheet and Supplies both on it, `SupplyEditModal` removed. No behavior change — all 7 Spec Sheet forms (add + edit) render byte-identical to the old modal, and the 6 Supplies form states identical up to attribute order. Still to do (V2.2): add/edit vendors, items, SKUs, quotes, PDF upload
 - [ ] Phase V3a, V3b — not started
 
 ### V1 build notes — Oct 28 2026
