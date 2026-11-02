@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Empty } from '../specsheet/pills';
-import { VendorStatus, ContactName } from './supplyUi';
+import { VendorStatus, ContactName, REF_LABEL } from './supplyUi';
 
 // Vendors tab — the rolodex (docs/SUPPLIES_SPEC.md, Phase V1 — READ-ONLY).
 // /supplies?tab=vendors&vendor=<id> highlights and scrolls to one card; the
@@ -61,7 +61,10 @@ export default function VendorRolodex({ data, maps }) {
 }
 
 function VendorCard({ vendor: v, maps, selected }) {
-  const contacts = [...(maps.contactsByVendor.get(v.id) || [])].sort((a, b) => b.is_primary - a.is_primary);
+  // Contacts from documents first, Marc's rolodex after; primary first within each.
+  const contacts = [...(maps.contactsByVendor.get(v.id) || [])]
+    .sort((a, b) => (a.source === 'marc_sheet') - (b.source === 'marc_sheet') || b.is_primary - a.is_primary);
+  const documented = maps.documentedVendors.has(v.id);
   const items = [...(maps.itemsByVendor.get(v.id)?.values() || [])].sort((a, b) => a.name.localeCompare(b.name));
   const facts = [
     ['Address', v.address],
@@ -80,6 +83,14 @@ function VendorCard({ vendor: v, maps, selected }) {
         <div className="text-[13px] font-bold text-dk">{v.name}</div>
         <VendorStatus v={v.status} />
       </div>
+      {!documented && (
+        <div
+          title={`Everything on this card comes from ${REF_LABEL} or is not on file — no quote, invoice or PO yet.`}
+          className="mb-1.5 inline-block px-1.5 py-px rounded border border-dashed border-gr/40 text-[9px] italic text-gr/80"
+        >
+          No quote, invoice or PO on file — <span className="not-italic font-semibold text-pk">request a quote</span>
+        </div>
+      )}
       {facts.map(([k, val]) => (
         <div key={k} className="flex gap-2 text-[10.5px] py-px">
           <span className="w-[62px] flex-shrink-0 text-gr uppercase text-[8px] font-bold pt-[2px]">{k}</span>

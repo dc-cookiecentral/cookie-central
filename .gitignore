@@ -20,4 +20,5 @@ dc-packaging/
 # Supplies rev 6 vendor data (contacts, account #s, negotiated pricing) and the
 # seed generated from it — local only, this repo is public. Exception to ADR-019.
 scripts/supplies-data.local.mjs
+scripts/marc-supplies.local.xlsx
 supabase/seeds/supplies_seed.sql

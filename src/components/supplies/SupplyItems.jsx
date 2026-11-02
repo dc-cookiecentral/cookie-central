@@ -4,12 +4,14 @@ import { openSupplyDoc } from '../../hooks/useSupplies';
 import SpecTable from '../specsheet/SpecTable';
 import { Empty, Code } from '../specsheet/pills';
 import {
-  fmtMoney, fmtQty, fmtDate, fmtUnit, fmtCost, fmtPct, priceTone, headlinePrices, isActual, DocDate, QuoteStatus, docLabel,
-  VendorLink, ContactName,
+  fmtMoney, fmtQty, fmtDate, fmtUnit, fmtCost, fmtPct, priceTone, headlinePrices, isActual, isReference, sourceRank, DocDate, QuoteStatus, docLabel,
+  VendorLink, ContactName, RefTag, GetQuoteFlag, REF_LABEL,
 } from './supplyUi';
 
 // Supplies tab (docs/SUPPLIES_SPEC.md).
-//   items list (Ingredients / Packaging) — headline price: last PO + best quote;
+//   items list (Ingredients / Packaging) — headline price: last PO + best quote,
+//     with Marc's sheet faint beneath (never the best quote; ⚑ get a quote when
+//     it is the only price);
 //   assumed cost with the actual landed cost under it, flagged at ±5%
 //     → dblclick an item: its price lines open directly under the item row
 //       → dblclick a line: terms & notes, PO pickup/freight, 📄 original document
@@ -41,7 +43,7 @@ export default function SupplyItems({ data, maps, editing, setModal }) {
       vendorCount: new Set((maps.skusByItem.get(i.id) || []).map((s) => s.vendor_id).filter(Boolean)).size,
       lastOrder: maps.lastOrderByItem.get(i.id) || null,
       points: maps.pricePointsByItem.get(i.id) || [],
-      ...headlinePrices(maps.pricePointsByItem.get(i.id)),
+      ...headlinePrices(maps.pricePointsByItem.get(i.id), maps.documentedItems.has(i.id)),
       cost: maps.itemCostById.get(i.id) || null,
       freightPending: maps.freightPendingItems.has(i.id),
     }))
@@ -58,7 +60,7 @@ export default function SupplyItems({ data, maps, editing, setModal }) {
     },
     {
       key: 'price', label: 'Price', // relabelled per section
-      value: (r) => (r.lastPo || r.bestQuote)?.unit ?? '',
+      value: (r) => (r.lastPo || r.bestQuote || r.bestRef)?.unit ?? '',
       render: (r) => <HeadlinePrice row={r} />,
     },
     {
@@ -104,7 +106,7 @@ export default function SupplyItems({ data, maps, editing, setModal }) {
     <div>
       <div className="text-[11px] text-gr mb-3 bg-cd border border-lt rounded-lg p-2.5">
         <b>Double-click an item</b> for its vendors and price points. <b>Double-click a price line</b> for terms, notes and the original document.
-        Prices in <b className="text-dk">black</b> come from a PO or invoice; prices in <b>grey</b> are quotes. The list shows the latest PO and the best open quote — <b>▸</b> expands the history.
+        Prices in <b className="text-dk">black</b> come from a PO or invoice; prices in <b>grey</b> are quotes; prices in <i className="text-gr/60">faint italic</i> are recorded on {REF_LABEL} — no document behind them, so they never count as the best quote. <b className="text-pk">⚑ get a quote</b> marks items priced only from {REF_LABEL}. The list shows the latest PO and the best open quote — <b>▸</b> expands the history.
         <b> Actual</b> cost is the latest PO landed — ingredient/product price + its share of the PO’s freight (split by weight), shown broken out.
         <b className="text-red-600"> ⚑</b> marks an assumed cost 5% or more off actual; <b className="text-amber-600">⚑</b> marks a PO whose freight (or pickup / delivered) isn’t entered yet.
         $/lb and $/1,000 are <b>derived</b> from the document price — never typed. Date badges age against today: green &lt; 60 days, amber 60–90, red &gt; 90 or past validity.
@@ -118,9 +120,9 @@ export default function SupplyItems({ data, maps, editing, setModal }) {
 // ── macro-list price: latest PO (black) + best open quote (grey), ▸ history ──
 function HeadlinePrice({ row }) {
   const [open, setOpen] = useState(false);
-  const { lastPo, bestQuote, points, kind } = row;
+  const { lastPo, bestQuote, bestRef, needsQuote, points, kind } = row;
   if (!points.length) return <Empty label="— no price on file" />;
-  const shown = [lastPo, bestQuote].filter(Boolean);
+  const shown = [lastPo, bestQuote, bestRef].filter(Boolean);
   const more = points.length - shown.length;
   const point = (p, label) => (
     <div key={p.id + label} className="whitespace-nowrap">
@@ -133,6 +135,8 @@ function HeadlinePrice({ row }) {
     <div>
       {lastPo && point(lastPo, `last ${lastPo.quote.doc_type === 'invoice' ? 'invoice' : 'PO'}`)}
       {bestQuote && point(bestQuote, 'best quote')}
+      {bestRef && point(bestRef, REF_LABEL)}
+      {needsQuote && <GetQuoteFlag />}
       {!shown.length && <span className="text-[10px] text-gr italic">No open quote or PO</span>}
       {more > 0 && (
         <button
@@ -293,7 +297,8 @@ function ItemDrill({ item, maps, lineId, setLineId, onClose, editing, setModal }
     return quotes.map((quote) => ({ id: quote.id, sku, vendor, quote, breaks: maps.breaksByQuote.get(quote.id) || [] }));
   });
   lines.sort((a, b) =>
-    (b.vendor?.id === item.primary_vendor_id) - (a.vendor?.id === item.primary_vendor_id)
+    sourceRank(a.quote) - sourceRank(b.quote)
+    || (b.vendor?.id === item.primary_vendor_id) - (a.vendor?.id === item.primary_vendor_id)
     || (STATUS_RANK[a.quote?.status] ?? 9) - (STATUS_RANK[b.quote?.status] ?? 9)
     || String(b.quote?.doc_date || '').localeCompare(String(a.quote?.doc_date || '')));
 
@@ -337,7 +342,8 @@ function ItemDrill({ item, maps, lineId, setLineId, onClose, editing, setModal }
     {
       key: 'source', label: 'Source', value: (l) => l.quote?.status || '',
       render: (l) =>
-        l.quote ? (
+        isReference(l.quote) ? <RefTag />
+        : l.quote ? (
           <div>
             <QuoteStatus v={l.quote.status} />
             <div className="text-[10px] text-md mt-0.5">{docLabel(l.quote)}</div>
@@ -348,7 +354,8 @@ function ItemDrill({ item, maps, lineId, setLineId, onClose, editing, setModal }
     {
       key: 'date', label: 'Date', value: (l) => l.quote?.doc_date || '',
       render: (l) =>
-        l.quote ? (
+        isReference(l.quote) ? <span className="text-[10px] italic text-gr/70">undated</span>
+        : l.quote ? (
           <div>
             <DocDate date={l.quote.doc_date} validUntil={l.quote.valid_until} />
             {l.quote.doc_path && (
@@ -411,7 +418,9 @@ function LineDetail({ line, item, maps, onClose, editing, setModal }) {
           <div className="text-[12px] font-bold text-dk">
             {vendor?.name || 'Vendor pending'} — {sku.brand_name || 'brand not on file'}
           </div>
-          {quote && (
+          {isReference(quote) ? (
+            <div className="mt-0.5"><RefTag /></div>
+          ) : quote && (
             <div className="text-[10px] text-md flex items-center gap-1.5 mt-0.5">
               <QuoteStatus v={quote.status} /> {docLabel(quote)} · <DocDate date={quote.doc_date} validUntil={quote.valid_until} />
             </div>
@@ -426,7 +435,13 @@ function LineDetail({ line, item, maps, onClose, editing, setModal }) {
           <button onClick={onClose} className="text-[10px] font-semibold px-2 py-0.5 rounded border border-lt text-gr hover:text-pk">✕</button>
         </div>
       </div>
-      <div className="grid gap-x-6 gap-y-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))' }}>
+      {isReference(quote) && (
+        <div className="mb-2 px-2.5 py-1.5 rounded-lg border border-dashed border-pk/40 bg-pc text-[11px] text-md">
+          This price is recorded on {REF_LABEL} — there is no quote, invoice or PO behind it.
+          {' '}<b className="text-pk">Ask {vendor?.name || 'the vendor'} for a quote</b> and file it to confirm or replace it.
+        </div>
+      )}
+      <div className={`grid gap-x-6 gap-y-2 ${isReference(quote) ? 'opacity-70' : ''}`} style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))' }}>
         {fields.map(([k, v]) => (
           <div key={k}>
             <div className="text-[8px] font-bold uppercase tracking-wider text-gr">{k}</div>
