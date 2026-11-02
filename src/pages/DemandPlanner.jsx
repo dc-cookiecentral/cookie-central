@@ -1268,7 +1268,7 @@ function buildActions({ series, metrics, feeds, todayWk }) {
   for (const m of metrics) {
     if (m.n4wGap == null || Math.abs(m.n4wGap) <= GAP_WARN) continue;
     add(Math.abs(m.n4wGap) > GAP_BAD ? "bad" : "warn", ACTION_OWNERS.walmart,
-      "Challenge the " + m.sku + " forecast — Walmart is " + F.spct(m.n4wGap) + " vs our velocity-based view, next 4 weeks",
+      "Challenge the " + m.sku + " forecast: Walmart is " + F.spct(m.n4wGap) + " vs ours, next 4 weeks",
       "Retail Link forecast vs internal · after " + wkTag(m.latestWk));
   }
 
@@ -1741,7 +1741,7 @@ export default function DemandPlanner() {
         {anyLive ? (
           <>
             <span className="font-semibold">
-              Live Retail Link data through week {feeds.asOf ?? '—'}.
+              Live Retail Link data through wk ending <WeekLabel wk={feeds.asOf} />.
             </span>
             <span>
               Demand side ({liveSeries.join(', ')}) from uploaded Retail Link files.
@@ -1765,7 +1765,7 @@ export default function DemandPlanner() {
         )}
       </div>
       <main className="p-5 cc-sans">
-        {tab === "summary" && (<><UnmappedItemsNotice items={feeds.unmappedOrderItems} /><PlaceholderNotice /><div className="mt-4" /><ActionPanel series={series} metrics={metrics} feeds={feeds} /><div className="mt-4" /><ServiceHealth series={series} otif={feeds.otif} /><div className="mt-4" /><Summary series={series} metrics={metrics} feeds={feeds} /><DotServicePanel svc={svc} latestDataWk={latestDataWk} /></>)}
+        {tab === "summary" && (<><UnmappedItemsNotice items={feeds.unmappedOrderItems} /><ActionPanel series={series} metrics={metrics} feeds={feeds} /><div className="mt-4" /><PlaceholderNotice /><div className="mt-4" /><ServiceHealth series={series} otif={feeds.otif} /><div className="mt-4" /><Summary series={series} metrics={metrics} feeds={feeds} /><DotServicePanel svc={svc} latestDataWk={latestDataWk} /></>)}
         {tab === "tracker" && <Tracker series={series} onEdit={onEdit} />}
         {tab === "sources" && <Sources feeds={feeds} series={series} />}
       </main>

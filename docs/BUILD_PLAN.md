@@ -186,7 +186,7 @@
   - **No DOT days-of-cover flag.** The prototype's "DOT cover under 7 days" reads `dotDoh`, still a placeholder (KNOWN_ISSUES §1). It comes back when production has a real feed.
   - **Expiring fires on any case ≤60 days**, not the prototype's >30% of good (which would be silent today with 851 cases expiring by Dec 26). Over 30% turns it red.
   - **Owner chips name people**, as in the prototype.
-  - **Placement: top of Summary**, above Service health.
+  - **Placement: top of Summary**, above Service health. *Revised in review: above the placeholder notice too.*
 
   *Done*
   - [x] Built on `feat/dp-actions`: `buildActions()` + `ActionPanel` in `src/pages/DemandPlanner.jsx`, mounted above Service health. In-stock and OTIF rows factored out of `ServiceHealth` (`instockRows`, `otifRowsOf`) so the actions panel and Service health read one number — 2026-11-02
@@ -195,7 +195,9 @@
   - Note: the forecast-gap flags divide by our internal forecast, which leans on in-stock — the figure Walmart restated (KNOWN_ISSUES §6). PBG's +66.7% is the one most exposed to it.
 
   *To do*
-  - [ ] Caroline: screenshot review on the live page, then merge
+  - [x] Committed (`dd08eb3`), branch pushed, `main` fast-forwarded and pushed; live bundle `index-cCeq-449.js` checked for the panel's text — 2026-11-02
+  - [x] First review pass (Caroline's screenshot, Nov 2): the panel moves above the "Do not plan production" notice (only three actions were above the fold); forecast lines shortened to "Walmart is +66.7% vs ours, next 4 weeks" so they fit one line; the banner's "through week 202638" now reads week-ending Sunday + W## like the header — 2026-11-02
+  - [ ] Caroline: second look on the live page, including the amber rows
 
   **October 28–29 2026 — Supplies & Vendors (`docs/SUPPLIES_SPEC.md`).** PRs #67 (V1), #68 (V1.1), #69 (V1.2), all merged and live. Full build notes in the spec's status log.
 
