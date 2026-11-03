@@ -245,7 +245,7 @@
   *Done*
   - [x] White Chocolate Chips 1000ct/4000ct and Peanut Butter Chips 1000ct/4000ct merged into one item each; 1K/4K (chips per lb) on each SKU's order unit, $/lb side by side (`ITEM_MERGES`, commit `32af9bc`, pushed straight to `main`) — 2026-11-02
   - [x] V2.1 (PR #71): shared `components/shared/EditModal.jsx`; Spec Sheet configs → `specsheet/specForms.js`, Supplies forms → `supplies/supplyForms.js`, `SupplyEditModal` removed. No behavior change (old vs new modal HTML diffed for every form, add + edit) — 2026-11-02
-  - [x] Marc's sheet as the base, de-emphasized (branch `feat/supplies-marc-reference`): migration `20261102120000_supplies_reference_tier.sql` (`quotes.doc_type 'reference'`, `vendor_contacts.source 'marc_sheet'`); seed reads Marc's workbook; faint reference prices, "⚑ get a quote", undocumented-vendor badge, faint rolodex contacts. Verified in PGlite (old → new seed, idempotent, guards) and by rendering both tabs — built 2026-11-02, **not yet merged or applied**
+  - [x] Marc's sheet as the base, de-emphasized (branch `feat/supplies-marc-reference`): migration `20261102120000_supplies_reference_tier.sql` (`quotes.doc_type 'reference'`, `vendor_contacts.source 'marc_sheet'`); seed reads Marc's workbook; faint reference prices, "⚑ get a quote", undocumented-vendor badge, faint rolodex contacts. Verified in PGlite (old → new seed, idempotent, guards) and by rendering both tabs — built 2026-11-02; merged to `main` (`d48a900`, no PR — none was opened and `gh` isn't installed) and **live 2026-11-02**: migration and seed run in the SQL editor, bundle `index-B7yMX9a8.js` checked for the new UI text
 
   *Decisions* (Caroline, Nov 2)
   - **1K / 4K is a unit, not a different item.** Kept as a SKU attribute on the order unit; compare on $/lb. (1K/4K is chip count per lb — Walmart uses 1K WCC, Kroger 4K.)
@@ -259,9 +259,10 @@
   - **New, not in the plan: the "reference" tier.** Marc's sheet arrived mid-session; it needed a schema change (doc_type + contact source) before V2.2.
 
   *To do*
-  - [ ] Merge `feat/supplies-marc-reference`; copy Marc's workbook to `cookie-central/scripts/marc-supplies.local.xlsx`; `supabase db push`; rebuild the seed and paste it in the SQL editor
-  - [ ] Re-run the seed to apply the chip merge too (it is in the same seed; not yet applied on its own)
-  - [ ] Click through the reference tier on the live page (faint lines, flags, rolodex badges)
+  - [x] Merged (`d48a900`); Marc's workbook copied to `cookie-central/scripts/marc-supplies.local.xlsx`; migration `20261102120000` and the rebuilt seed (34 vendors · 34 contacts · 47 items · 82 SKUs) run in the SQL editor — 2026-11-02. *Deviation: migration pasted in the SQL editor, not `supabase db push` — the CLI wasn't on PATH. It is missing from the migration ledger, so the next `db push` will re-run it; it is idempotent (DROP/ADD constraint, ADD COLUMN IF NOT EXISTS), so that is harmless — same as `20261027160000` on Oct 29.*
+  - [x] Chip merge applied — same seed run — 2026-11-02
+  - [ ] Caroline: click through the reference tier on the live page (faint lines, flags, rolodex badges) — data verified only by a database test, not on the live page (Supplies data is readable only when signed in)
+  - [ ] Clean up: `git worktree remove ../cookie-central-chips`; delete branch `feat/supplies-marc-reference` on GitHub
   - [ ] V2.2, in this order: Add quote + PDF upload (so "⚑ get a quote" leads somewhere), vendors + contacts (incl. "confirm" for Marc's contacts), items + SKUs, deletes
   - [ ] Check name mappings assumed from Marc's sheet: "Salina" = Solina, distributor "Moisturlok" = Anderson Advanced, "See Fresh Coast Bakery" = Fresh Coast
   - [ ] Decide: delete `prototype/Assembler_Ingredient_Data.csv` (nothing reads it now)
