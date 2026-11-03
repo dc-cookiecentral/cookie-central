@@ -759,8 +759,8 @@ Source: DOT's **Inventory Snapshot** export (three tabs: Inventory Summary, WH S
 | `gtin`, `dot_item_number`, `cases_per_pallet` | text / text / numeric | BC is 96 per pallet; the doughs 189 |
 | `good_cases` | numeric | Total Inventory on **RG** lots. **Includes committed** |
 | `committed_cases` | numeric | Loaded + Picked on RG lots. Available = good − committed |
-| `expired_cases` | numeric | Total Inventory on **EX** lots. Not in good |
-| `expiring_60d_cases`, `earliest_good_expiry` | numeric / date | RG stock expiring within 60 days of `snapshot_date`; the earliest RG expiry |
+| `expired_cases` | numeric | Total Inventory on **EX** lots. Not in good. Read by `/demand-planner`'s actions panel (red "decide what to do" flag) since Nov 2 2026 |
+| `expiring_60d_cases`, `earliest_good_expiry` | numeric / date | RG stock expiring within 60 days of `snapshot_date`; the earliest RG expiry. Read by `/demand-planner`'s actions panel since Nov 2 2026: amber on any case, red above 30% of good |
 | `lot_count`, `upload_id`, `updated_at` | | |
 
 `PRIMARY KEY (sku, wm_week)` — a re-upload in the same week replaces the row, **unless the stored reading is newer**: the importer skips those (and refuses the file if every row would go backwards).

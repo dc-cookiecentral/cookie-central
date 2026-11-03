@@ -128,7 +128,7 @@
   - New from the first file: 851 good cases expire by Dec 26 (WC 229, PBG 182, CCF 440, over a quarter of CCF's good stock), on top of the 1,086 already expired. Input for B's action panel
   - [ ] Weekly routine: add the DOT Inventory Snapshot to the uploads (RUNBOOK check added)
   - [ ] Decide: retire `dot_inventory` + `src/parsers/dot.js`
-  - [ ] B: fold the prototype UX in. **B1 funnel done Oct 29** (below). Still to plan, one piece at a time: B2 action panel, B3 week-ending-Sunday dates across the page (header, legend and card subtitles already done), B4 per-SKU case packs
+  - [ ] B: fold the prototype UX in. **B1 funnel done Oct 29** (below). **B2 actions panel built and live Nov 2** (below). Still to plan, one piece at a time: B3 week-ending-Sunday dates across the page (header, legend and card subtitles already done), B4 per-SKU case packs
 
   **October 29 2026 — B1: the inventory funnel on `/demand-planner`.** Branch `feat/dp-funnel`. No migration, no engine change.
 
@@ -168,7 +168,7 @@
   - **Migrations:** `db push` is now the way (ledger in sync through `20261028150000`, Supplies `20261028120000` applied too); `.claude/instructions.md` still says "SQL editor".
   - [ ] Update `.claude/instructions.md`: migrations go in with `supabase db push`, not the SQL editor
 
-  **November 2 2026 — B2 planned: "This week's actions" on `/demand-planner`.** Branch `feat/dp-actions`. No migration, no engine change.
+  **November 2 2026 — B2: "This week's actions" on `/demand-planner`. Planned, built, live.** Branch `feat/dp-actions` (same as `main`). Commits `dd08eb3`, `48a7c1b`, merge `d7c63dc`. No migration, no engine change.
 
   *Plan*
   - Panel at the top of the Summary tab, above Service health (below the unmapped-items and placeholder notices). One line per action: tone dot, text with its number, owner chip, and the source and date of the figure (e.g. "DOT · Tue Oct 27 · W39"). Read-only: nothing to tick off.
@@ -197,7 +197,19 @@
   *To do*
   - [x] Committed (`dd08eb3`), branch pushed, `main` fast-forwarded and pushed; live bundle `index-cCeq-449.js` checked for the panel's text — 2026-11-02
   - [x] First review pass (Caroline's screenshot, Nov 2): the panel moves above the "Do not plan production" notice (only three actions were above the fold); forecast lines shortened to "Walmart is +66.7% vs ours, next 4 weeks" so they fit one line; the banner's "through week 202638" now reads week-ending Sunday + W## like the header — 2026-11-02
-  - [ ] Caroline: second look on the live page, including the amber rows
+  - [x] Review fixes committed (`48a7c1b`) and live: bundle `index-CRAbeeid.js` carries all three changes — 2026-11-02
+  - [ ] Caroline: second look on the live page, including the amber rows (does amber read clearly against red?)
+  - [ ] `smoke-render.mjs`: add a shape where nothing fires, to cover the green "No flags this week" line (see deviations)
+  - [ ] Settle KNOWN_ISSUES §6 (which in-stock figure is right): the forecast-gap flags, PBG's +66.7% above all, rest on it
+
+  *Deviations from the plan* (Nov 2)
+  - **Placement.** Planned below the placeholder notice; moved above it after Caroline's first screenshot, because only three of eight actions were above the fold.
+  - **Forecast wording** shortened from the prototype's "vs our velocity-based view" to "vs ours", so the line fits one row.
+  - **Banner.** Not in the plan: "Live Retail Link data through week 202638" changed to week-ending Sunday + W##, to match the header. Spotted on the same screenshot.
+  - **Smoke test.** The plan named three new shapes (flags firing, none firing, no DOT reading). Only text checks on the existing three shapes were added: `live` and `empty` cover "no DOT reading", `dot` covers expired and expiring. The green "No flags this week" path has no test (to do above).
+  - **Deploy of the review fixes.** The first push was refused because `main` had moved (Supplies V2.1, PR #71, from another session). Merged `origin/main` (`d7c63dc`, no conflicts), re-ran smoke 9/9 and `vite build`, then pushed. So that deploy also carried Supplies V2.1.
+  - **Review was by screenshot.** Claude in Chrome was open in the browser but not connected to this session: it only attaches at session start (`claude --chrome`).
+  - Note for next time: the deploy-check loop gave a false "not yet live" (it grepped a large bundle held in a shell variable); `curl … | grep` on the asset directly confirmed it. Check that way.
 
   **October 28–29 2026 — Supplies & Vendors (`docs/SUPPLIES_SPEC.md`).** PRs #67 (V1), #68 (V1.1), #69 (V1.2), all merged and live. Full build notes in the spec's status log.
 
