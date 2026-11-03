@@ -219,14 +219,41 @@
   - **Seed re-runs leave app edits alone:** POs insert-only, `po_id` fill-only, `assumed_cost` not seeded; `RETIRED_ITEMS` deletes renamed placeholders.
 
   *To do*
-  - [ ] Back up `scripts/supplies-data.local.mjs` outside the repo (it exists only on this Mac)
+  - [ ] Back up `scripts/supplies-data.local.mjs` outside the repo (it exists only on this Mac) — *Nov 2: now also `scripts/marc-supplies.local.xlsx`*
   - [ ] Enter freight on Batory SP026 and AAI SP029 once the trucks are booked; McCormick SP028 pickup / delivered + freight (all three yellow-flagged)
   - [ ] Set assumed costs per item
   - [ ] AAI Moisturlok unit price off PO SP029 (slip has none); who books the EXW Stockton cold-storage pickup
-  - [ ] Confirm ERP 121002 = Great River dough-puck tray; decide whether the undated Assembler-sheet prices stay "active" quotes
+  - [x] ~~Confirm ERP 121002 = Great River dough-puck tray; decide whether the undated Assembler-sheet prices stay "active" quotes~~ — superseded 2026-11-02: the Assembler sheet was replaced by Marc's sheet, whose prices are a de-emphasized "reference" tier, not quotes; 121002 isn't on Marc's sheet, so the code was dropped (see Nov 2 below)
   - [ ] Click through `/supplies` in the real app (verified only by server renders); compare against the v13 prototype
   - [ ] Find why `upload-supply-docs.mjs` didn't upload on Caroline's run
-  - [ ] Rest of V2 (shared EditModal; add/edit vendors, items, quotes, PDF upload), then V3a / V3b
+  - [ ] Rest of V2 — *Nov 2: V2.1 shared EditModal done (#71); V2.2 add/edit vendors, items, SKUs, quotes, PDF upload still to do* — then V3a / V3b
+
+  **November 2 2026 — Supplies: chip merge, V2.1 shared modal, Marc's sheet as the base.** Notes in `docs/SUPPLIES_SPEC.md` status log.
+
+  *Done*
+  - [x] White Chocolate Chips 1000ct/4000ct and Peanut Butter Chips 1000ct/4000ct merged into one item each; 1K/4K (chips per lb) on each SKU's order unit, $/lb side by side (`ITEM_MERGES`, commit `32af9bc`, pushed straight to `main`) — 2026-11-02
+  - [x] V2.1 (PR #71): shared `components/shared/EditModal.jsx`; Spec Sheet configs → `specsheet/specForms.js`, Supplies forms → `supplies/supplyForms.js`, `SupplyEditModal` removed. No behavior change (old vs new modal HTML diffed for every form, add + edit) — 2026-11-02
+  - [x] Marc's sheet as the base, de-emphasized (branch `feat/supplies-marc-reference`): migration `20261102120000_supplies_reference_tier.sql` (`quotes.doc_type 'reference'`, `vendor_contacts.source 'marc_sheet'`); seed reads Marc's workbook; faint reference prices, "⚑ get a quote", undocumented-vendor badge, faint rolodex contacts. Verified in PGlite (old → new seed, idempotent, guards) and by rendering both tabs — built 2026-11-02, **not yet merged or applied**
+
+  *Decisions* (Caroline, Nov 2)
+  - **1K / 4K is a unit, not a different item.** Kept as a SKU attribute on the order unit; compare on $/lb. (1K/4K is chip count per lb — Walmart uses 1K WCC, Kroger 4K.)
+  - **Marc's sheet replaces the Assembler sheet** (it is a newer copy of it). The 26 Assembler-only SKUs/prices are retired (`LEGACY_SHEET`, frozen), guarded: anything with a PO link or a typed assumed cost stays.
+  - **Marc's data is shown, but de-emphasized**, to push people toward real quotes and POs: never the best quote or actual cost, always below documents; items with no document get "⚑ get a quote". Chosen over hiding it behind a toggle.
+  - **Marc's workbook stays out of git** (contacts + pricing; repo is public): `scripts/marc-supplies.local.xlsx`, gitignored.
+
+  *Deviations*
+  - **Chip merge went straight to `main`, no PR** — `gh` isn't installed here, so it was pushed as a fast-forward. Later work went through PRs (#71) via the GitHub "new PR" link.
+  - **V2.1 also moved the Supplies modal onto the shared one.** The spec only named the Spec Sheet; doing both now means V2.2's forms start on one modal.
+  - **New, not in the plan: the "reference" tier.** Marc's sheet arrived mid-session; it needed a schema change (doc_type + contact source) before V2.2.
+
+  *To do*
+  - [ ] Merge `feat/supplies-marc-reference`; copy Marc's workbook to `cookie-central/scripts/marc-supplies.local.xlsx`; `supabase db push`; rebuild the seed and paste it in the SQL editor
+  - [ ] Re-run the seed to apply the chip merge too (it is in the same seed; not yet applied on its own)
+  - [ ] Click through the reference tier on the live page (faint lines, flags, rolodex badges)
+  - [ ] V2.2, in this order: Add quote + PDF upload (so "⚑ get a quote" leads somewhere), vendors + contacts (incl. "confirm" for Marc's contacts), items + SKUs, deletes
+  - [ ] Check name mappings assumed from Marc's sheet: "Salina" = Solina, distributor "Moisturlok" = Anderson Advanced, "See Fresh Coast Bakery" = Fresh Coast
+  - [ ] Decide: delete `prototype/Assembler_Ingredient_Data.csv` (nothing reads it now)
+  - [ ] Install `gh` so PRs can be opened from the session
 
   **October 29 2026 — EOS: the Rocks tab went blank at the quarter turn.** No migration, no data change.
 

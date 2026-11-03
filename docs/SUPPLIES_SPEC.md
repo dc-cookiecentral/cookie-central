@@ -2,7 +2,7 @@
 
 **Purpose:** record supplier data — every ingredient and packaging component, who sells it, at what price and terms, with the original quote/invoice PDFs attached.
 **UI reference:** `supplies_module_prototype_v13.html` (approved Oct 27) — brand tokens, drill-down interaction, rolodex.
-**Seed data:** dc-supplies catalogue **rev 6** (LallyPak, Green Bay, PGI, PowPack, Sterling, Anderson Advanced, SH Bakery, STS, Great River, BTE, Fresh Coast, **Batory Foods, GNT USA/Exberry, McCormick, FormTight**) + ERP item codes.
+**Seed data:** dc-supplies catalogue **rev 6** (LallyPak, Green Bay, PGI, PowPack, Sterling, Anderson Advanced, SH Bakery, STS, Great River, BTE, Fresh Coast, **Batory Foods, GNT USA/Exberry, McCormick, FormTight**) + ERP item codes. *Since Nov 2 2026, the second source is Marc's item-by-supplier sheet (gitignored `scripts/marc-supplies.local.xlsx`, replacing the Assembler CSV), loaded as a de-emphasized "reference" tier — see the status log.*
 
 ---
 
