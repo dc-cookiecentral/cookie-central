@@ -56,7 +56,8 @@ export function buildSupplyMaps(data) {
     if (!pricePointsByItem.has(item.id)) pricePointsByItem.set(item.id, []);
     pricePointsByItem.get(item.id).push({
       id: quote.id, quote, sku, vendor: vendorsById.get(sku.vendor_id) || null, brk: best,
-      unit: unitPrice(item.kind, best), actual: isActual(quote), multiBreak: (breaksByQuote.get(quote.id) || []).length > 1,
+      unit: unitPrice(item.kind, best), actual: isActual(quote), reference: isReference(quote),
+      multiBreak: (breaksByQuote.get(quote.id) || []).length > 1,
     });
   });
   pricePointsByItem.forEach((pts) => pts.sort((a, b) => String(b.quote.doc_date || '').localeCompare(String(a.quote.doc_date || ''))));
@@ -66,24 +67,39 @@ export function buildSupplyMaps(data) {
   const itemCostById = new Map((data.itemCost || []).map((c) => [c.item_id, c]));
   // Items with a PO line whose freight (or pickup / delivered) isn't entered yet.
   const freightPendingItems = new Set((data.lineCost || []).filter((c) => c.freight_pending).map((c) => c.item_id));
+  // Vendors with at least one real document (quote / invoice / PO / verbal) on
+  // file; the rest are known only from Marc's sheet.
+  const documentedVendors = new Set(data.quotes.filter((q) => !isReference(q)).map((q) => q.vendor_id));
+  // Items with any document at all, priced or not (a PO awaiting its price counts).
+  const documentedItems = new Set(data.quotes.filter((q) => !isReference(q)).map((q) => skusById.get(q.sku_id)?.item_id));
 
   return {
     vendorsById, skusById, itemsById, skusByItem, quotesBySku, contactsByVendor, breaksByQuote, lastOrderByItem, itemsByVendor,
-    pricePointsByItem, posById, lineCostByQuote, itemCostById, freightPendingItems,
+    pricePointsByItem, posById, lineCostByQuote, itemCostById, freightPendingItems, documentedVendors, documentedItems,
   };
 }
 
 export const isActual = (q) => ['po', 'invoice'].includes(q.doc_type);
+// A price recorded on Marc's sheet: no document behind it. Shown faint, ranked
+// below every document, never the best quote or the actual cost.
+export const isReference = (q) => q?.doc_type === 'reference';
+export const REF_LABEL = 'Marc’s sheet';
+// Documents first, then Marc's sheet, then SKUs with no price at all.
+export const sourceRank = (q) => (!q ? 2 : isReference(q) ? 1 : 0);
 
 // Headline price for the macro list: the most recent PO/invoice, and the best
 // (lowest) quote still in play — not expired/closed, vendor not closed.
-// Everything else is history.
-export function headlinePrices(points = []) {
+// Marc's sheet is shown separately (bestRef), never as the best quote;
+// needsQuote = Marc's sheet prices the item and no document of any kind is on
+// file for it. Everything else is history.
+export function headlinePrices(points = [], hasDocument = false) {
+  const live = (p) => !['expired', 'closed'].includes(p.quote.status) && p.vendor?.status !== 'closed';
+  const lowest = (ps) => ps.reduce((m, p) => (m && m.unit <= p.unit ? m : p), null);
   const lastPo = points.find((p) => p.actual) || null;
-  const bestQuote = points
-    .filter((p) => !p.actual && !['expired', 'closed'].includes(p.quote.status) && p.vendor?.status !== 'closed')
-    .reduce((m, p) => (m && m.unit <= p.unit ? m : p), null);
-  return { lastPo, bestQuote };
+  const bestQuote = lowest(points.filter((p) => !p.actual && !p.reference && live(p)));
+  const bestRef = lowest(points.filter((p) => p.reference && live(p)));
+  const needsQuote = !hasDocument && points.some((p) => p.reference);
+  return { lastPo, bestQuote, bestRef, needsQuote };
 }
 
 // ── formatters ──────────────────────────────────────────────────────────────
@@ -106,8 +122,29 @@ export const fmtUnit = (kind, b) =>
 // Assumed / actual cost are per item in the item's comparison unit.
 export const fmtCost = (kind, v) => (v == null ? null : kind === 'ingredient' ? fmtPerLb(v) : fmtPerM(v));
 export const fmtPct = (v) => (v == null ? null : `${v > 0 ? '+' : ''}${(Number(v) * 100).toFixed(1)}%`);
-// PO/invoice prices read black, quoted prices grey.
-export const priceTone = (q) => (q && isActual(q) ? 'text-dk' : 'text-gr');
+// PO/invoice prices read black, quoted prices grey, Marc's sheet faint italic.
+export const priceTone = (q) => (q && isActual(q) ? 'text-dk' : isReference(q) ? 'text-gr/60 italic !font-normal' : 'text-gr');
+
+// "Marc's sheet · no document" — what a reference line shows where a document
+// would show its status chip.
+export function RefTag({ short }) {
+  return (
+    <span
+      title="Recorded on Marc’s sheet — not a quote, invoice or PO. File a document to confirm it."
+      className="inline-block px-1.5 py-px rounded border border-dashed border-gr/40 text-[9px] italic text-gr/80 whitespace-nowrap"
+    >
+      {REF_LABEL}{short ? '' : ' · no document'}
+    </span>
+  );
+}
+// The nudge on an item priced only from Marc's sheet.
+export function GetQuoteFlag() {
+  return (
+    <span title="Only Marc’s sheet prices this item — ask a vendor for a quote and file it." className="text-[9px] font-bold text-pk whitespace-nowrap">
+      ⚑ get a quote
+    </span>
+  );
+}
 
 // Dates arrive as 'YYYY-MM-DD'; parse as local dates so they don't shift a day.
 const parseDate = (d) => {
@@ -145,7 +182,7 @@ export function QuoteStatus({ v }) {
   return v ? <span className={`inline-block px-1.5 py-px rounded text-[9px] font-bold uppercase ${cls}`}>{label}</span> : <Empty />;
 }
 
-const DOC_TYPE = { quote: 'Quote', invoice: 'Invoice', po: 'PO', verbal: 'Verbal' };
+const DOC_TYPE = { quote: 'Quote', invoice: 'Invoice', po: 'PO', verbal: 'Verbal', reference: REF_LABEL };
 export const docTypeLabel = (t) => DOC_TYPE[t] || t;
 // 'PO · SP028-2026' style label; skips the type when the ref already says it
 // ('PO SP026-2026', 'Proforma …' still gets 'Invoice ·').
@@ -175,6 +212,7 @@ export function VendorLink({ vendor }) {
 
 // ── contact popover (double-click a contact name) ───────────────────────────
 export function ContactName({ contact }) {
+  const fromSheet = contact.source === 'marc_sheet';
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -201,8 +239,8 @@ export function ContactName({ contact }) {
   return (
     <span ref={ref} className="relative inline-block">
       <span
-        title="Double-click for contact details"
-        className="underline decoration-dotted decoration-gr underline-offset-2 cursor-pointer"
+        title={fromSheet ? 'From Marc’s rolodex — confirm before relying on it. Double-click for details.' : 'Double-click for contact details'}
+        className={`underline decoration-dotted decoration-gr underline-offset-2 cursor-pointer ${fromSheet ? 'italic text-gr/70' : ''}`}
         onDoubleClick={(e) => {
           e.stopPropagation();
           window.getSelection()?.removeAllRanges();
@@ -217,6 +255,7 @@ export function ContactName({ contact }) {
             {contact.name}
             {contact.is_primary && <span className="ml-1.5 text-[8px] font-bold uppercase text-pk">primary</span>}
           </div>
+          {fromSheet && <div className="text-[9px] italic text-gr mb-1">From Marc’s rolodex — not from a document. Confirm before relying on it.</div>}
           {rows.length === 0 ? (
             <div className="text-[10px] text-gr italic">No contact details on file.</div>
           ) : (

@@ -2,7 +2,7 @@
 
 **Purpose:** record supplier data — every ingredient and packaging component, who sells it, at what price and terms, with the original quote/invoice PDFs attached.
 **UI reference:** `supplies_module_prototype_v13.html` (approved Oct 27) — brand tokens, drill-down interaction, rolodex.
-**Seed data:** dc-supplies catalogue **rev 6** (LallyPak, Green Bay, PGI, PowPack, Sterling, Anderson Advanced, SH Bakery, STS, Great River, BTE, Fresh Coast, **Batory Foods, GNT USA/Exberry, McCormick, FormTight**) + ERP item codes.
+**Seed data:** dc-supplies catalogue **rev 6** (LallyPak, Green Bay, PGI, PowPack, Sterling, Anderson Advanced, SH Bakery, STS, Great River, BTE, Fresh Coast, **Batory Foods, GNT USA/Exberry, McCormick, FormTight**) + ERP item codes. *Since Nov 2 2026, the second source is Marc's item-by-supplier sheet (gitignored `scripts/marc-supplies.local.xlsx`, replacing the Assembler CSV), loaded as a de-emphasized "reference" tier — see the status log.*
 
 ---
 
@@ -134,6 +134,13 @@ Each phase = one branch/PR (ERP deploys via GitHub integration — no CLI deploy
 - [x] V1.1 (PR #68) and V1.2 (PR #69) review changes — live Oct 29 2026, notes below
 - [x] Chip items consolidated (Nov 2 2026, branch `feat/supplies-merge-chips`): the Assembler sheet's *White Chocolate Chips 1000ct / 4000ct* → **White Chocolate Chips**, *Peanut Butter Chips 1000ct / 4000ct* → **Peanut Butter Chips** (`ITEM_MERGES` in `build-supplies-seed.mjs`). 1K / 4K (chips per lb) moves onto each SKU's order unit (`25 lb box · 4K ct`); $/lb unchanged and now side by side. SKU/quote/break ids kept, so the re-seed re-points rather than recreates (PO links survive); an assumed cost on an old item carries over; the emptied items are deleted. 48 → 46 items. **Not yet applied:** re-run the seed in the SQL editor.
 - [ ] Phase V2 — **started Oct 29 2026:** edit lock + assumed-cost and PO forms shipped in V1.2. **V2.1 done Nov 2 2026** (branch `feat/supplies-v2.1-edit-modal`): shared `components/shared/EditModal.jsx`; Spec Sheet and Supplies both on it, `SupplyEditModal` removed. No behavior change — all 7 Spec Sheet forms (add + edit) render byte-identical to the old modal, and the 6 Supplies form states identical up to attribute order. Still to do (V2.2): add/edit vendors, items, SKUs, quotes, PDF upload
+- [x] **Marc's sheet as the base, de-emphasized** (Nov 2 2026, branch `feat/supplies-marc-reference`). Marc's workbook (item-by-supplier tab + Contact Info tab; gitignored as `scripts/marc-supplies.local.xlsx`) **replaces** `prototype/Assembler_Ingredient_Data.csv` (an older copy of it) as the seed's second source. Caroline's call: show it, but faintly, to push people toward real quotes and POs.
+  - Migration `20261102120000_supplies_reference_tier.sql`: `quotes.doc_type` gains `'reference'` (a price recorded on Marc's sheet, no document behind it); `vendor_contacts.source` = `'marc_sheet'` for his contacts (NULL = from a document / the app).
+  - UI: reference prices are faint italic, tagged "Marc's sheet · no document", ranked below every document, never the best quote or the actual cost. Items priced only from his sheet (no document of any kind) get **⚑ get a quote**; vendor cards with no document get "No quote, invoice or PO on file — request a quote"; his contacts are faint with a "confirm" note.
+  - Seed: 61 reference prices, 16 contacts (5 skipped — already on file from documents), 2 new vendors (Sweet Solutions, A & B Ingredients). Rows that are rev 6 SKUs lend their ERP code and add Marc's price only where it differs from the document (Moisturlok, Xtra Soft, master case, SRP-8); identical ones (corn starch, McCormick, Exberry) add nothing. Finished-case rows skipped (finished goods).
+  - The 26 Assembler-only SKUs/prices are deleted (`LEGACY_SHEET`, frozen), except any with a linked PO; emptied items are deleted unless an assumed cost was typed. Checked in PGlite: migrations → old seed → app edits → migration → new seed ×2 (idempotent, guards hold).
+  - ERP 121002 → Great River tray dropped with the old sheet (Marc's sheet doesn't have it).
+  - **To apply:** `supabase db push` (the migration), then `node scripts/build-supplies-seed.mjs` and paste `supabase/seeds/supplies_seed.sql` in the SQL editor.
 - [ ] Phase V3a, V3b — not started
 
 ### V1 build notes — Oct 28 2026
