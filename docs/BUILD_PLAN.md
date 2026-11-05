@@ -232,7 +232,7 @@
   - **Seed re-runs leave app edits alone:** POs insert-only, `po_id` fill-only, `assumed_cost` not seeded; `RETIRED_ITEMS` deletes renamed placeholders.
 
   *To do*
-  - [ ] Back up `scripts/supplies-data.local.mjs` outside the repo (it exists only on this Mac) — *Nov 2: now also `scripts/marc-supplies.local.xlsx`*
+  - [x] Back up `scripts/supplies-data.local.mjs` outside the repo (it exists only on this Mac) — *Nov 2: now also `scripts/marc-supplies.local.xlsx`* — 2026-11-05: both copied by Caroline to the **systems@dirtycookie.com** Google Drive (unshared folder). Not via the Drive connector, which is signed into her personal Gmail. Re-copy after either file changes
   - [ ] Enter freight on Batory SP026 and AAI SP029 once the trucks are booked; McCormick SP028 pickup / delivered + freight (all three yellow-flagged)
   - [ ] Set assumed costs per item
   - [ ] AAI Moisturlok unit price off PO SP029 (slip has none); who books the EXW Stockton cold-storage pickup
