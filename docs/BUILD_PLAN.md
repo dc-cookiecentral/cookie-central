@@ -299,12 +299,60 @@ Rules set in the July 2026 senior review and build plan. They still hold. Full r
 
 *Folded in Oct 22 2026 (all in git history):* `EXTENSION_BUILD_PLAN.md`, `CLAUDE_CODE_TASKS.md` and `SENIOR_REVIEW.md` (the July plan, task list and review; that work is done, see Timeline) and `DATA_MODEL_ADDITIONS.md` (now the as-built section of `DATA_MODEL.md`). `PRELAUNCH.md`'s open items moved to the Launch checklist below.
 
-## 🔴 OPEN — Row-cap truncation. **NO LONGER PENDING: this crossed on or before Oct 12 2026**
+## 🟢 FIXED (Nov 5 2026), pending deploy and review — Row-cap truncation. *Crossed on or before Oct 12 2026*
 
 **Raised:** Aug 24 2026, during the Demand Planner live-data work.
-**Status:** ⚠️ **ACTIVE.** The forecast below came true early — see "Current state".
+**Status:** ✅ **Fixed on `fix/row-cap`, Nov 5 2026** — see "Built" below. Was ⚠️ ACTIVE from Oct 12: the forecast below came true early.
 **Severity:** silent data loss on pages the team trusts. No error, no empty state.
-**Owner:** unassigned.
+**Owner:** Claude Code, branch `fix/row-cap` (planned Nov 5 2026).
+
+### Measured Nov 5 2026 (exact counts via the API)
+
+```
+po_changes         5,496   read per PO only (eq po_id) — not affected
+po_line_items      1,858   nested under purchase_orders — complete once the parent is paged
+purchase_orders    1,502   unpaged select returns 1,000 → 502 POs and 629 order lines missing
+cortina_invoices   1,148   unpaged select returns 1,000 → 148 invoices missing  ← NEW, not in the table below
+retail_link_forecast 828   already paged (useDemandFeeds)
+retail_link_otif     654   already paged (useDemandFeeds)
+```
+
+Two corrections to the "Impact" table below: **`usePayments` no longer reads `payments`**; its list hook `useCortinaInvoices` reads `cortina_invoices`, which has now crossed too. Edge functions (`gmail-extract` etc.) read one PO at a time and are not affected. `useEomSnapshot` filters by month.
+
+### Plan (Nov 5 2026)
+
+1. Move `fetchAll` from `src/hooks/useDemandFeeds.js` to `src/lib/fetchAll.js`; `useDemandFeeds` imports it (no behaviour change).
+2. Page through it, each with `.order('id')` so pages neither overlap nor skip: `usePurchaseOrders` (list, nested `po_line_items`), `useAlerts` (`purchase_orders`, and its small `payments` read while there), `useCortinaInvoices`. Client-side sorting (urgency, unpaid/date) stays as is.
+3. `scripts/row-counts.mjs`: exact count of every table `src/` reads, flagging any over 800. RUNBOOK §6.2's row-count watch runs it instead of the single `purchase_orders` check.
+4. Check: `vite build`; `smoke-render.mjs` (shares `fetchAll`); each hook's loaded totals on live data match the exact counts (1,502 POs / 1,858 lines / 1,148 invoices); Caroline reviews `/orders` and `/payments` by URL.
+
+*Decisions* (Caroline, Nov 5)
+- **Count script + runbook**, not paging every whole-table read now: the script flags the next table before it crosses.
+- **Product Orders and Payments stay hidden.** This fixes their data only; un-hiding is part of their rework.
+
+### Built (Nov 5 2026)
+
+- [x] `src/lib/fetchAll.js` (moved from `useDemandFeeds`, which imports it; Demand Planner smoke 9/9) — 2026-11-05
+- [x] Paged, each `.order('id')`: `usePurchaseOrders` list, `useCortinaInvoices`, `useAlerts` (`purchase_orders` + `payments`) — 2026-11-05
+- [x] `scripts/row-counts.mjs`; RUNBOOK §6.2 runs it, §5.9 marked fixed — 2026-11-05
+- [x] Read back on live data by running the real hooks offscreen, against `main`'s versions:
+
+  | Hook | `main` (unpaged) | `fix/row-cap` | Exact count |
+  |---|---|---|---|
+  | `usePurchaseOrders` | 1,000 POs · 1,207 lines | 1,502 · 1,858 | 1,502 · 1,858 |
+  | `useCortinaInvoices` | 1,000 | 1,148 | 1,148 |
+  | `useAlerts` | 218 alerts | **388 alerts** | — |
+
+  170 alerts were silently missing. The unpaged line count also drifts between runs (1,229 earlier the same day): without an `ORDER BY`, *which* 1,000 POs come back is not stable. `vite build` clean — 2026-11-05
+
+*Deviations from the plan* (Nov 5)
+- `row-counts.mjs` also reads `useSupplies`' table list (it calls `supabase.from(table)` with a variable, invisible to a `.from('…')` grep).
+- With the anon key, internal-only tables (Supplies) count **0**, not an error. The three tables this ticket is about are readable by all (`USING (true)`), so their counts are exact. The script takes `SUPABASE_SERVICE_ROLE_KEY` for exact counts everywhere and says so when it runs on anon.
+- New, not fixed: `useSupplies` reads nine tables/views unpaged. All are under 100 rows today; the script will flag them.
+
+*To do*
+- [ ] Merge to `main` and deploy; Caroline checks `/orders` and `/payments` by URL (both stay hidden)
+- [ ] Then close this ticket (move it out of the open section)
 
 ### The problem
 
@@ -355,9 +403,9 @@ curl -sI "$VITE_SUPABASE_URL/rest/v1/<table>?select=id" \
 
 ### Acceptance
 
-- [ ] The three hooks page rather than single-shot, each with a stable `ORDER BY`.
-- [ ] A count check on `purchase_orders` and `po_line_items` matches what the page displays.
-- [ ] `RUNBOOK.md` §6.2's weekly row-count watch is being done, or replaced by something automatic.
+- [x] The three hooks page rather than single-shot, each with a stable `ORDER BY` — 2026-11-05
+- [ ] A count check on `purchase_orders` and `po_line_items` matches what the page displays. *Hook level done Nov 5 (1,502 / 1,858); page level waits on Caroline's review.*
+- [x] `RUNBOOK.md` §6.2's weekly row-count watch is replaced by `scripts/row-counts.mjs` (run weekly, not automatic) — 2026-11-05
 
 **Also worth deciding:** whether to page every hook pre-emptively rather than wait for each table to cross 1,000 one at a time. Tables currently well under: `raw_material_lots` 158, `lot_shipments` 129, `raw_materials` 32.
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { fetchAll } from '../lib/fetchAll';
 import { daysUntil } from '../utils/dates';
 
 // Alerts engine (BUILD_PLAN 7.2). Computed from live state — does NOT live in
@@ -28,12 +29,16 @@ export function useAlerts() {
     let active = true;
     async function run() {
       setLoading(true);
+      // purchase_orders is paged (1,502 rows on Nov 5 2026, past the silent
+      // 1,000-row cap): a PO beyond the cap would never raise its alert, which
+      // reads exactly like "nothing is wrong". payments is paged while here.
       const [posR, dotR, rawR, paysR] = await Promise.all([
-        supabase
+        fetchAll(() => supabase
           .from('purchase_orders')
           .select(
             'id, po_number, retailer, mabd, ship_status, ship_date_original, payment_status, payment_terms, ship_date_actual, total_amount, paid_amount'
-          ),
+          )
+          .order('id')),
         supabase
           .from('dot_inventory')
           .select('sku, on_hand, allocated, weekly_velocity, snapshot_date')
@@ -42,7 +47,7 @@ export function useAlerts() {
           .from('raw_materials')
           .select('id, code, name, quantity, unit, expiry_status, expired_quantity, default_lead_days, category')
           .in('category', ['raw_material', 'packaging']),
-        supabase.from('payments').select('po_id, payment_date'),
+        fetchAll(() => supabase.from('payments').select('po_id, payment_date').order('id')),
       ]);
       if (!active) return;
       const firstErr = posR.error || dotR.error || rawR.error || paysR.error;

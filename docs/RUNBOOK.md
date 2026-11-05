@@ -297,7 +297,11 @@ Already happened once: `po_line_items` (1,194 rows) was truncated on the Demand 
 
 ⚠️ **It is happening again, now.** Measured Oct 12 2026: `purchase_orders` **1,265 rows** and `po_line_items` **1,606**, both returning exactly 1,000 unpaged. (This paragraph said "currently at risk… crosses 1,000 around Nov 2026" from Aug 24 until Oct 13; the daily `walmart_orders` ingest grows the table faster than the ~45–50/month that estimate assumed.) **Product Orders**, **Payments** and **Alerts** are dropping rows today — limited only by all three being hidden from the sidebar. The hooks needing the fix: `usePurchaseOrders.js`, `usePayments.js`, `useAlerts.js`. **Fix this before Product Orders comes back.**
 
-**Tracked** as an open ticket at the top of `BUILD_PLAN.md`. **The fix** is the `fetchAll` helper already in `src/hooks/useDemandFeeds.js` — page in 1,000-row chunks with a stable `ORDER BY` (without one, pages can overlap and skip).
+✅ **Fixed Nov 5 2026** (branch `fix/row-cap`): those three hooks now page. Measured then: `purchase_orders` 1,502, `po_line_items` 1,858, `cortina_invoices` 1,148 (crossed too; it is what `usePayments` reads), `po_changes` 5,496 (read per PO only, so unaffected). On live data the fixed hooks load 1,502 POs / 1,858 lines / 1,148 invoices / 388 alerts, against 1,000 / ~1,210 / 1,000 / 218 before.
+
+**Tracked** as an open ticket at the top of `BUILD_PLAN.md`. **The fix** is `fetchAll` in `src/lib/fetchAll.js` (moved there from `useDemandFeeds.js` Nov 5 2026) — page in 1,000-row chunks with a stable `ORDER BY` (without one, pages can overlap and skip). Nested resources such as `po_line_items ( … )` are not capped; paging the parent is enough.
+
+**To check every table at once:** `node scripts/row-counts.mjs` (§6.2).
 
 **To check any table:**
 ```bash
@@ -330,7 +334,7 @@ Anything jumping → click through to the page that owns it.
 
 ### 6.2 · Weekly
 
-- **Row-count watch** — `purchase_orders` against the 1,000-row query cap (§5.9). ⚠️ **At 1,265 as of Oct 12 2026 — the cap is already crossed and three pages are truncating.** `po_line_items` is at 1,606. The watch is now a fix, not a watch.
+- **Row-count watch** — run `node scripts/row-counts.mjs` (§5.9). It lists every table `src/` reads with its exact count and flags any over 800 rows (🟠) or past the 1,000-row cap (🔴). For a newly flagged table, grep its name: every whole-table read of it must go through `fetchAll`; reads filtered to one PO or one week are fine. Nov 5 2026: 🔴 `po_changes`, `po_line_items`, `purchase_orders`, `cortina_invoices` (all paged or filtered); 🟠 `retail_link_forecast` 828 (paged). With the anon key, internal-only tables (Supplies) count 0; set `SUPABASE_SERVICE_ROLE_KEY` for exact counts.
 - **Demand Planner freshness** — the banner's "as of" week should track the latest Retail Link upload; the DOT panel warns when it lags POS. ⚠️ As of Oct 13 2026 the DOT Order History is ~11 weeks behind (last upload Aug 24 2026) while the Retail Link files are current — that gap is a missed upload, not a limitation.
 - **Unmapped SKU check** — if `/demand-planner` shows a red band saying cases of NetSuite orders are missing, Cortina has added an item number the app does not know. Act on it: every figure on the page understates the order book until it is mapped. See ADR-063.
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { fetchAll } from '../lib/fetchAll';
 import { walmartWeekOf } from '../parsers/retailLinkSupplyPlan';
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -71,16 +72,8 @@ const CORTINA_ITEM_TO_SKU = { 1252: 'WC', 1251: 'PBG', 1287: 'CCF', 1324: 'BC' }
 // and the `orders` series disagreed with its own source (req fell to 37/49
 // against SEED; paged, it is 49/49). Every one of these tables grows by a file
 // a week, so page ALL of them rather than guessing which crosses the line next.
-const PAGE = 1000;
-async function fetchAll(build) {
-  const out = [];
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await build().range(from, from + PAGE - 1);
-    if (error) return { data: out.length ? out : null, error };
-    out.push(...(data ?? []));
-    if (!data || data.length < PAGE) return { data: out, error: null };
-  }
-}
+// `fetchAll` lives in src/lib/fetchAll.js (moved Nov 5 2026, shared with the
+// order, invoice and alert hooks).
 
 export function useDemandFeeds() {
   const [state, setState] = useState({

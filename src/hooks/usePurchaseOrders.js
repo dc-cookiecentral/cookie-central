@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { fetchAll } from '../lib/fetchAll';
 import { daysUntil } from '../utils/dates';
 
 const PO_FIELDS = `
@@ -37,9 +38,12 @@ export function usePurchaseOrders() {
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    // Paged: 1,502 POs on Nov 5 2026, past the silent 1,000-row cap. The
+    // nested line items come back whole once the parent is paged.
+    const { data, error } = await fetchAll(() => supabase
       .from('purchase_orders')
-      .select(`${PO_FIELDS}, po_line_items ( id, sku, quantity_cases, unit_cost, line_total )`);
+      .select(`${PO_FIELDS}, po_line_items ( id, sku, quantity_cases, unit_cost, line_total )`)
+      .order('id'));
     if (error) setError(error.message);
     else setOrders((data ?? []).slice().sort(sortByUrgency));
     setLoading(false);

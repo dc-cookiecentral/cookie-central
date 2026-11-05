@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { fetchAll } from '../lib/fetchAll';
 
 // Payments are driven by the Cortina Walmart Orders export (cortina_invoices),
 // which gives us Stage 1 (Cortina → DC) directly. Stage 2 (Walmart → Cortina)
@@ -37,7 +38,9 @@ export function useCortinaInvoices() {
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase.from('cortina_invoices').select(INVOICE_SELECT);
+    // Paged: 1,148 invoices on Nov 5 2026, past the silent 1,000-row cap.
+    const { data, error } = await fetchAll(() => supabase
+      .from('cortina_invoices').select(INVOICE_SELECT).order('id'));
     if (error) setError(error.message);
     else {
       const shaped = (data ?? []).map(shapeInvoice).sort((a, b) => {
