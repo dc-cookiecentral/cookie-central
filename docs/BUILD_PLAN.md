@@ -224,7 +224,7 @@
   - **Vendor data stays out of git — the repo is public.** Rev 6 contacts, account numbers and pricing live in the gitignored `scripts/supplies-data.local.mjs`; the generated `supplies_seed.sql` is gitignored too. Exception to ADR-019 (seeds committed).
   - **Seed = catalogue rev 6 + the Assembler ingredient sheet**, because rev 6 has no Brown Sugar and none of the ERP codes the spec names. 32 vendors, not 11.
   - **V1 migration applied with `--include-all`:** `20261028150000_dot_on_hand` reached the live DB first, so the earlier-dated supplies migration had to go in out of order. Additive and independent, so safe.
-  - **PDFs uploaded by hand** in the dashboard: `upload-supply-docs.mjs` didn't land anything on Caroline's run (cause not found); the packing slip went up with `supabase storage cp`.
+  - **PDFs uploaded by hand** in the dashboard: `upload-supply-docs.mjs` didn't land anything on Caroline's run (cause found 2026-11-05: a pasted command line was read as the key; re-run succeeded, see To do); the packing slip went up with `supabase storage cp`.
   - **Freight counts for pickup and delivered POs**, split across a PO's lines by weight, always shown separately from the ingredient price. Actual cost = the latest PO, landed.
   - **Assumed cost is typed** ($/lb ingredients, $/1,000 packaging) — the one hand-entered cost figure, since it's an assumption, not a document price. Red ⚑ when ≥5% off actual; yellow ⚑ when a PO lacks pickup/delivered or freight (enter 0 for none).
   - **Part of V2 pulled forward:** the edit lock plus assumed-cost and PO forms shipped in V1.2. Supplies got its own small modal; extracting the shared `EditModal` (V2.1) is still to do.
@@ -237,7 +237,7 @@
   - [ ] AAI Moisturlok unit price off PO SP029 (slip has none); who books the EXW Stockton cold-storage pickup
   - [x] ~~Confirm ERP 121002 = Great River dough-puck tray; decide whether the undated Assembler-sheet prices stay "active" quotes~~ — superseded 2026-11-02: the Assembler sheet was replaced by Marc's sheet, whose prices are a de-emphasized "reference" tier, not quotes; 121002 isn't on Marc's sheet, so the code was dropped (see Nov 2 below)
   - [ ] Click through `/supplies` in the real app (verified only by server renders); compare against the v13 prototype
-  - [ ] Find why `upload-supply-docs.mjs` didn't upload on Caroline's run
+  - [x] Find why `upload-supply-docs.mjs` didn't upload on Caroline's run — 2026-11-05: the script was fine (all 11 PDFs build with `--out`). Pasting the `read -s` key prompt together with the next command line made the prompt take that line as the key, so Storage answered "Invalid Compact JWS" for every file. With `read -s` run on its own and the service_role key checked (`eyJ…`, 2 dots), Caroline re-ran it and reports all 11 uploaded to `supply-docs`
   - [ ] Rest of V2 — *Nov 2: V2.1 shared EditModal done (#71); V2.2 add/edit vendors, items, SKUs, quotes, PDF upload still to do* — then V3a / V3b
 
   **November 2 2026 — Supplies: chip merge, V2.1 shared modal, Marc's sheet as the base.** Notes in `docs/SUPPLIES_SPEC.md` status log.
@@ -262,7 +262,7 @@
   - [x] Merged (`d48a900`); Marc's workbook copied to `cookie-central/scripts/marc-supplies.local.xlsx`; migration `20261102120000` and the rebuilt seed (34 vendors · 34 contacts · 47 items · 82 SKUs) run in the SQL editor — 2026-11-02. *Deviation: migration pasted in the SQL editor, not `supabase db push` — the CLI wasn't on PATH. It is missing from the migration ledger, so the next `db push` will re-run it; it is idempotent (DROP/ADD constraint, ADD COLUMN IF NOT EXISTS), so that is harmless — same as `20261027160000` on Oct 29.*
   - [x] Chip merge applied — same seed run — 2026-11-02
   - [ ] Caroline: click through the reference tier on the live page (faint lines, flags, rolodex badges) — data verified only by a database test, not on the live page (Supplies data is readable only when signed in)
-  - [ ] Clean up: `git worktree remove ../cookie-central-chips`; delete branch `feat/supplies-marc-reference` on GitHub
+  - [x] Clean up: `git worktree remove ../cookie-central-chips`; delete branch `feat/supplies-marc-reference` on GitHub — done 2026-11-02 at the end of that session, along with the merged `feat/supplies-merge-chips`, `feat/supplies-v2.1-edit-modal`, `supplies-v1`, `supplies-v1.1` and `supplies-v1.2`
   - [ ] V2.2, in this order: Add quote + PDF upload (so "⚑ get a quote" leads somewhere), vendors + contacts (incl. "confirm" for Marc's contacts), items + SKUs, deletes
   - [ ] Check name mappings assumed from Marc's sheet: "Salina" = Solina, distributor "Moisturlok" = Anderson Advanced, "See Fresh Coast Bakery" = Fresh Coast
   - [ ] Decide: delete `prototype/Assembler_Ingredient_Data.csv` (nothing reads it now)
