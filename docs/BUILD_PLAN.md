@@ -227,6 +227,7 @@
   *To do*
   - [ ] Caroline: pause the daily email job (RUNBOOK §9.6a), if still wanted
   - [ ] Find why the Walmart orders import stopped after Oct 28 (email not sent? Gmail grant revoked by a systems@ password change, §9.2? stuck `processing`?). With an admin login: `upload_log where source='email'`, `gmail_sync_state`
+    - *Clarified Nov 5:* the stalled feed is the **NetSuite / Cortina `Walmart_Orders_…` export** (card 6), not Retail Link: Retail Link tables are separate and current (POS W38, OTIF W37). It normally arrives **nightly**, so 8 days is not timing. Caroline will refresh once the next email arrives. First check: search systems@ for `Walmart_Orders` after Oct 28 — there → our Gmail connection (reconnect on `/uploads`, then Check for new); absent → Cortina stopped sending (ask DMorales, or upload the latest file on card 6, which carries the full history). A broken Gmail connection would also block Caroline's weekly Retail Link email
   - [ ] Decide: make Customer Order Details an upload (like the Inventory Snapshot) — would split DOT sellable into open-ordered vs free in the funnel, add a "near-dated lots shipping" check to the actions panel, and show orders as soon as DOT has them
   - [ ] Ask Cortina: do Walmart DCs accept cases with ~6 weeks of shelf life left (the Dec 16–31 lots shipping now)?
 
@@ -245,6 +246,13 @@
   - [ ] First live weekly email after deploy: check four `source='email'` upload rows and `gmail_messages.error` empty
   - [ ] Not tested on a real Supply Plan or Dirty Cookie WK## file (none on disk); the first email is that test
   - Note: the daily job reads only the last 2 days. If Caroline's latest weekly email is older than that, it will not be picked up on deploy — reset `gmail_sync_state.last_polled_at` (RUNBOOK §9.6a) or upload by hand
+
+  *Raised at the end of the session (Nov 5)*
+  - [ ] **Demand Planner UI and charts review.** Caroline: "the UI and graphs still kinda suck on the demand planner". Not started: Claude in Chrome was open but not connected to this session, and the dev auth-bypass route was declined. Next session: launch `claude --chrome` from `cookie-central`, open `/demand-planner` (live), review every section (actions panel, Service health, the product cards' chart + store bars + funnel, cut recovery, Tracker) at desktop and phone width, and come back with a prioritised list and mock-ups before changing code
+  - [ ] Caroline's second look at B2's amber rows (still open from Nov 2) — fold into the UI review
+  - [ ] Inventory's DOT block (`WarehouseView` / `ProductView` via `useDotInventory`) reads `dot_inventory`, which has always been empty; the real DOT stock is `dot_on_hand`. Point it there (ties into "retire `dot_inventory`", Oct 28–29)
+  - [ ] Recommended next build after the UI review: Customer Order Details as an upload (see to-do above)
+  - [ ] Optional: turn the Retail Link report suggestions into a page Caroline can send to Caroline Collins
 
   **October 28–29 2026 — Supplies & Vendors (`docs/SUPPLIES_SPEC.md`).** PRs #67 (V1), #68 (V1.1), #69 (V1.2), all merged and live. Full build notes in the spec's status log.
 
