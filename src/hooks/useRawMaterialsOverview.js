@@ -11,8 +11,8 @@ const TYPE_ORDER = ['Ingredients', 'Finished Goods', 'Packaging'];
 
 // One analytics row per normalized ingredient (ingredient_catalog), grouped by
 // type. Combines the ingredient master (cost / lead / MOQ / shelf life per
-// brand), live Assemblers inventory (on hand + expiring lots), and the
-// production run rate to derive weeks-on-hand, reorder timing, and a
+// brand), co-packer inventory (on hand + expiring lots), and the
+// production run rate (historical Assemblers runs; no production feed since Nov 2026) to derive weeks-on-hand, reorder timing, and a
 // recommendation.
 export function useRawMaterialsOverview() {
   const prod = useProductionData();

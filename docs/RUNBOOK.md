@@ -2,7 +2,7 @@
 
 Procedures and known-fixes for keeping Cookie Central live. Read top-to-bottom once; reach back when something specific breaks. Symptoms in **bold** mean "ctrl-F this when it happens."
 
-> ⚠️ **Five pages are hidden from the sidebar pending rework** (Aug 21 2026): Weekly Report, Product Orders, Payments, EOM Snapshot and Lot Trace. Procedures below that reference `/orders`, `/payments`, `/weekly`, `/snapshot` or `/trace` **still work — the routes are intact**, they are just not linked in the nav. Type the URL. The flag is `hidden: true` in `src/components/Sidebar.jsx`; deleting it brings a page back. Internal users now land on `/inventory` rather than `/orders`.
+> ⚠️ **Five pages are hidden from the sidebar pending rework** (Aug 21 2026): Weekly Report, Product Orders, Payments, EOM Snapshot and Lot Trace. *(Lot Trace was deleted Nov 5 2026 with the Assemblers code.)* Procedures below that reference `/orders`, `/payments`, `/weekly`, `/snapshot` or `/trace` **still work — the routes are intact**, they are just not linked in the nav. Type the URL. The flag is `hidden: true` in `src/components/Sidebar.jsx`; deleting it brings a page back. Internal users now land on `/inventory` rather than `/orders`.
 >
 > **Product Orders and the BOL flow return around Oct 2026** with substantial changes, and the **`systems@` email reader is being kept** — the daily poll stays on and §9's procedures remain current. **The weekly Bentonville Retail Link email is retired**, so §9 steps specific to `weekly_report` mail no longer fire; `weekly_reports` stopped at 2026-07-06.
 
@@ -29,7 +29,6 @@ All uploads go through `/uploads`. The page leads with the **six exports actuall
 |---|---|---|
 | Cortina | NetSuite PO export (.csv/.xlsx) | `purchase_orders` + `po_line_items` |
 | Cortina | DOT portal CSV | `dot_inventory` (snapshot rows tagged by `snapshot_date`) |
-| Assemblers | **One** multi-sheet workbook (Production / Reject / Inventory / Shipment / N Job sheets) | `production_runs` + `production_pallets` + `production_subcomponents` + `production_rejects` + `lot_shipments` + `raw_materials` + `raw_material_lots` |
 | QuickBooks | Invoices/payments CSV | `invoices` + `payments` |
 | Retail Link | `Dirty Cookie Supply Plan Wk##.xlsx` | `retail_link_supply_plan` |
 | Retail Link | `Dirty Cookie WK##.xlsx` | `retail_link_pos_weekly` + `retail_link_forecast` |
@@ -52,7 +51,7 @@ Every upload writes one row to `upload_log` with `status='processing'` → `comp
 
 ### 2.5 · Start a transition
 
-`/reference → Transitions → + New`. The standard 6-step checklist is added automatically (UPC, NetSuite, packaging, Assemblers, DOT, depletion plan). Checkboxes toggle in-place and persist.
+`/reference → Transitions → + New`. The standard 6-step checklist is added automatically (UPC, NetSuite, packaging, co-packer, DOT, depletion plan). Checkboxes toggle in-place and persist.
 
 ### 2.6 · Manually capture a delivered FG lot or BOL
 
@@ -70,6 +69,8 @@ Six files, in the order they appear on `/uploads`:
 | 4 | `OTIF STORE Performance … 3 weeks` | Same format, wider window. **Upload both** — they overlap on purpose |
 | 5 | `DOT Report` — `Order History (N).xlsx` | Outbound DOT orders and **cut** cases. Drives cut recovery: the volume DOT never shipped, which NetSuite never sees. **Arrives weekly** — if the planner's cut-recovery panel warns it is 2+ weeks behind POS, an upload was missed |
 | 6 | `Walmart Report (NetSuite)` | Drives the planner's `orders` series (requested / delivered / revenue / cuts) and carries the **Cut Reason** column. Also auto-ingests nightly from `systems@` |
+
+**Files 1–4 arrive by email** (once the Nov 5 2026 functions are deployed): Bentonville Merchants' weekly "Dirty Cookie \| Weekly Reporting \| WK##" from caroline@bentonvillemerchants.com carries them, and the email agent imports each through its card's parser (§9.3). Check `/uploads` for four `source='email'` rows that week; upload by hand only a file that is missing or listed as unrecognised. Files 5–7 (DOT) are still manual.
 
 Then `/demand-planner` picks them up on next load; its banner's "as of" is the newest week **with data**, not the time of the fetch.
 
@@ -144,7 +145,7 @@ To revoke without deleting: drop the seed and set the profile role to something 
 
 ### 4.1 · Roll back a bad upload
 
-Every upload tags its rows with `source_upload_id` (the `upload_log.id`). To back out the last Assemblers upload:
+Every upload tags its rows with `source_upload_id` (the `upload_log.id`). To back out an upload (example below: the last Assemblers production upload; Assemblers imports ended Nov 5 2026, the pattern is the same for any `source_upload_id` table):
 
 ```sql
 WITH last_run AS (
@@ -175,7 +176,7 @@ WHERE po_number IN ('PO14201', 'PO14255');   -- example
 
 ### 4.3 · Add a new upload type
 
-Production → assemblers + dot + qbo + netsuite + production + weekly_report (current). To add another:
+Registered types are in `src/parsers/index.js` (`PARSERS`); `assemblers` and `production` were removed Nov 5 2026. To add another:
 1. Build the parser in `src/parsers/<name>.js`, register in `src/parsers/index.js`
 2. Add the card to `src/pages/Uploads.jsx`
 3. Add the value to the `upload_log.upload_type` CHECK constraint via a new migration
@@ -417,7 +418,7 @@ No code changes required as long as the env var name stays the same.
 
 ## 9 · Gmail email agent (systems@dirtycookie.com)
 
-The AI agent reads `systems@`, classifies each message, and files it. Since Oct 27
+The email agent reads `systems@` and imports two emails, matched by sender and subject: Bentonville Merchants' weekly Retail Link report and Cortina's daily Walmart Orders. Everything else is ignored. **Narrowed Nov 5 2026** (Caroline): the Assemblers report (leaving that co-packer), PO / BOL / supplier-confirmation extraction (a later phase) and the AI classifier were removed; they are in git history before that change, and the data they imported stays. Since Oct 27
 2026 the same grant also **sends** one kind of mail: Sample Central's "order never
 reached ShipStation" alert (BUILD_PLAN, Oct 27 2026), subject-prefixed `[Sample Central]`, which
 gmail-poll excludes from its scan.
@@ -458,19 +459,18 @@ reset, or the daily poll (11:00 UTC) and the Sample Central alert both stop.
 ### 9.3 · Run a poll
 
 `Check for new ↻` on the inbox card (or the daily cron) runs `gmail-poll`: it lists
-new mail, classifies with Haiku, writes `gmail_messages` (deduped on the Gmail
+new mail, classifies it **by rule** (sender + subject; no AI since Nov 5 2026), writes `gmail_messages` (deduped on the Gmail
 message id), and tail-calls `gmail-extract`. **Where each class lands:**
 
 | Class | Lands in |
 |---|---|
-| PO / supplier_confirmation | `po_emails` (+ advisory `po_changes` `change_source='email'`) |
-| BOL | `po_emails` + `po_lot_numbers` (+ advisory `po_changes`) |
-| assemblers_report | runs the .xlsx through the production parser → `production_*` / `raw_materials`, one `upload_log` row `source='email'` |
-| weekly_report | `weekly_reports` (body scorecard; .xlsx attachments are recorded, not parsed) |
+| walmart_orders | subject `Walmart_Orders_YYYY-MM-DD` from DMorales@CortinaFoods.com (matched by rule, no AI). Runs the .xlsx (Cortina's full Walmart order book) through `walmartOrders.js` → **`purchase_orders`, `po_line_items`, `cortina_invoices`** (live data, overwritten), one `upload_log` row `source='email'`. The only email feed the Demand Planner reads (its NetSuite orders series) |
+| weekly_report | subject `Dirty Cookie \| Weekly Reporting \| WK##` from **caroline@bentonvillemerchants.com** (was blayn@ until Jul 2026). Every .xlsx attachment is routed **by its contents** (`_shared/retailLinkDetect.ts`, never the filename) to the parser of upload card 1–4: a `Data` sheet with `wm_item_nbr` → Supply Plan; an `All Item Detail` sheet → Dirty Cookie WK##; a `Host PO Nbr` header → OTIF (1- and 3-week alike). One `upload_log` row `source='email'` per file. A file nobody recognises is listed in `gmail_messages.error` and skipped; the other files still import. The email body and screenshots are no longer imported (`weekly_reports` stays as it was) |
+| PO / BOL / supplier_confirmation / assemblers_report | **retired Nov 5 2026.** Older unprocessed rows of these classes are left untouched |
 | other | logged only |
 
-Structured extraction is **advisory** — it never edits `purchase_orders` directly;
-review email-sourced values via Original-vs-Current and Delivery & Lots.
+**Scope of a run:** inbox messages from the last **2 days** (30 on the very first run), at most 40, minus `[Sample Central]` mail; up to 20 pending messages extracted per run. **Nothing is sent to Anthropic** since Nov 5 2026 (before that, Haiku classified every unmatched email and Sonnet read PO / BOL / supplier mail). `ANTHROPIC_API_KEY` is no longer needed by these functions.
+
 
 ### 9.4 · Reprocess / debug a message
 
@@ -483,6 +483,25 @@ then Check for new. A failed message has `processed=true` + an `error` string.
 
 Reconnect via the button (§9.2) — it overwrites `GMAIL_REFRESH_TOKEN`. To rotate the
 Anthropic key, see §8.3 (the functions read it from Vault, no redeploy needed).
+
+### 9.6a · Pause / resume email import
+
+Not paused as of Nov 5 2026 (Caroline chose to document it first). Two things pull mail: the daily job and the **Check for new** button.
+
+**Pause** (SQL editor):
+```sql
+select cron.unschedule('gmail-poll-daily');
+select jobname, schedule, active from cron.job;          -- gmail-poll-daily gone
+```
+The button still pulls on demand; it has no off switch yet (a code change: hide it in `/uploads` and/or have `gmail-poll` return early). Already-imported data is untouched.
+
+**Resume:** re-run the `cron.schedule(...)` block from `20260602150000_gmail_poll_cron.sql`. ⚠️ A run only looks back **2 days**, so mail that arrived during a longer pause would be skipped for good. Before the first run after a pause, widen the window once:
+```sql
+update gmail_sync_state set last_polled_at = null;       -- next run scans 30 days
+```
+then Check for new. Walmart Orders don't strictly need it (each export is the full order book, so the newest one is enough); the weekly Retail Link emails from the gap do (each week's files are that week's data). A pause over 30 days needs those weeks uploaded by hand on cards 1–4.
+
+**Is it running?** The newest `purchase_orders.updated_at` is a quick proxy for the Walmart orders import (anon key is enough): on Nov 5 2026 it read `2026-10-28 11:00 UTC`, the last successful daily run. For the full picture: `select created_at, upload_type, filename, status from upload_log where source='email' order by created_at desc limit 10;` and `select * from gmail_sync_state;`.
 
 ### 9.6 · Parked PO emails (email arrived before the PO)
 
@@ -511,7 +530,6 @@ where po_id is null and source='email' group by 1;`
 | Sign-in throwing schema/identity errors | Caroline — see §5.3 / §5.6 |
 | Wrong PO data | Cortina (Harshita Gedela — NetSuite source) → Marc/Caroline to reconcile |
 | Weekly report missing | Bentonville Merchants (Blayn) — confirm email sent; then check parser |
-| Assemblers upload errors | Marc — confirm file is the standard format; then Caroline if parser-side |
 | Payment discrepancy | David / Paul (finance) |
 | Inventory mismatch | Marc (ops) — adjust via `/inventory` → Product view |
 | Vercel deploy failure | Vercel dashboard logs → Caroline |

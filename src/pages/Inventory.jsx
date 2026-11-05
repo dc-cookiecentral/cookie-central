@@ -3,13 +3,11 @@ import WarehouseView from '../components/WarehouseView';
 import ProductView from '../components/ProductView';
 import ReorderView from '../components/ReorderView';
 import LandingView from '../components/LandingView';
-import ReorderCalculator from '../components/ReorderCalculator';
 
 const VIEWS = [
   { key: 'warehouse', label: 'By Warehouse' },
   { key: 'product', label: 'By Product' },
   { key: 'reorder', label: 'Reorder' },
-  { key: 'calculator', label: 'Reorder Calculator' },
 ];
 
 export default function Inventory() {
@@ -64,14 +62,6 @@ export default function Inventory() {
         </div>
       )}
 
-      {view === 'calculator' && (
-        <div>
-          <div className="text-[11px] font-extrabold uppercase tracking-wider text-pk mb-2">
-            Scenario-Based Reorder Calculator
-          </div>
-          <ReorderCalculator />
-        </div>
-      )}
     </div>
   );
 }

@@ -57,8 +57,8 @@ function exportOrderPdf(group) {
 
 // Raw-ingredient reorder (BUILD_PLAN 5.3-5.5). Preview/manual mode: Marc picks
 // a distributor/brand and enters an order qty per ingredient, then confirms to
-// create pending orders. Velocity-based suggested qty is stubbed until the
-// Assemblers production report gives us real consumption rates.
+// create pending orders. Velocity-based suggested qty is stubbed: there is no
+// production feed for consumption rates (the Assemblers report was removed Nov 2026).
 export default function ReorderView({ onOrdersCreated }) {
   const { materials, loading, error, refresh } = useRawMaterials();
   const [draft, setDraft] = useState({}); // id -> { supplierId, qty }
@@ -143,14 +143,14 @@ export default function ReorderView({ onOrdersCreated }) {
       <div className="bg-gradient-to-r from-pink-100 to-violet-100 px-4 py-2">
         <div className="text-[10px] font-bold text-pk">Preview / manual order mode</div>
         <div className="text-[9px] text-md">
-          Pick distributor + brand and set a quantity. Suggested qty populates once the
-          Assemblers production report provides consumption rates.
+          Pick distributor + brand and set a quantity. There is no suggested qty yet: it needs
+          consumption rates from a production feed.
         </div>
       </div>
 
       {materials.length === 0 ? (
         <div className="px-4 py-8 text-center text-sm text-gr">
-          No raw-material ingredients yet — upload an Assemblers inventory report first.
+          No raw-material ingredients yet.
         </div>
       ) : (
         <table className="w-full border-collapse text-[11px]">

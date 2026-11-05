@@ -16,7 +16,7 @@ export function parseCsvFile(file) {
 }
 
 // Parse an .xlsx/.xls File into header-keyed row objects. Reads EVERY sheet
-// and concatenates rows (the Assemblers report splits items across two sheets
+// and concatenates rows (the old Assemblers report split items across two sheets
 // with identical headers). Parsers skip rows missing their key column, so any
 // stray sheet is harmless.
 export async function parseXlsxFile(file) {

@@ -1,17 +1,18 @@
 // gmail-extract — act on classified-but-unprocessed gmail_messages.
 //
-//   PO / BOL / supplier_confirmation → Sonnet structured extraction →
-//        po_emails (+ po_lot_numbers + advisory po_changes(change_source='email'))
-//   assemblers_report → download the .xlsx → existing production.js parser →
-//        importRecords (service client) → upload_log(source='email')
-//   weekly_report     → existing weeklyEmail.js body parser → weekly_reports
-//   other             → marked processed, no action
+//   walmart_orders → Cortina Walmart Orders .xlsx → walmartOrders.js →
+//        purchase_orders + po_line_items + cortina_invoices, upload_log(source='email')
+//   weekly_report  → every .xlsx attachment of the Bentonville Merchants weekly
+//        email, each routed BY ITS CONTENTS to the Retail Link parser that
+//        recognises it (upload cards 1–4), upload_log(source='email') per file
+//   other          → marked processed, no action
 //
-// Advisory by design (PO/BOL/confirmation): writes the email + lots + a
-// po_changes audit row per differing field, but does NOT mutate purchase_orders
-// (that stays a reviewed action via the existing UI, and avoids double-logging
-// against the track_po_changes trigger). The attachment pipelines DO write their
-// real tables — they replace a manual upload.
+// Narrowed Nov 5 2026 (Caroline): the Assemblers report (we are leaving that
+// co-packer) and the PO / BOL / supplier_confirmation extraction (a later
+// phase) were removed, along with the AI classifier in gmail-poll. Both are in
+// git history before this change. The weekly email's body scorecard and image
+// screenshots (weekly_reports, the hidden Weekly Report page) are no longer
+// imported either: its four spreadsheets carry the data.
 //
 // Deploy:  npx supabase functions deploy gmail-extract
 
@@ -26,38 +27,19 @@ import {
   getAttachment,
   type ParsedAttachment,
 } from '../_shared/gmail.ts';
-import { extractEmail } from '../_shared/anthropic.ts';
 import { runEmailImport } from '../_shared/emailUpload.ts';
-import { importWeekly } from '../_shared/weeklyImport.ts';
-// Reuse the existing Assemblers parsers unchanged (client injected):
-//   production — the multi-sheet production workbook (Production/Reject/…)
-//   assemblers — the standalone Inventory Snapshot Report (raw_materials/lots)
-import production from '../../../src/parsers/production.js';
-import assemblers from '../../../src/parsers/assemblers.js';
-// Reuse the Cortina Walmart Orders parser (groups SOs → purchase_orders +
-// po_line_items + cortina_invoices). Client injected, same as production.
+import { detectRetailLink, type RetailLinkType } from '../_shared/retailLinkDetect.ts';
+// Reuse the browser upload parsers unchanged (client injected). Each reads a
+// Blob through file.arrayBuffer() and takes its dates from the file contents.
 import walmartOrders from '../../../src/parsers/walmartOrders.js';
+import retailLink from '../../../src/parsers/retailLink.js';
+import retailLinkOtif from '../../../src/parsers/retailLinkOtif.js';
+import retailLinkSupplyPlan from '../../../src/parsers/retailLinkSupplyPlan.js';
 
-const STRUCTURED = new Set(['PO', 'BOL', 'supplier_confirmation']);
-
-// PO fields the extraction can advise on, mapped to the email's extracted value.
-const CHANGE_FIELDS: [string, keyof Awaited<ReturnType<typeof extractEmail>>][] = [
-  ['carrier', 'carrier'],
-  ['bol_number', 'bol_number'],
-  ['ship_date_actual', 'ship_date'],
-  ['destination_dc', 'destination_dc'],
-  ['total_cases', 'total_cases'],
-  ['total_amount', 'total_amount'],
-  ['mabd', 'mabd'],
-];
-
-function compact(obj: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(obj)) {
-    if (v !== null && v !== undefined && !(Array.isArray(v) && v.length === 0)) out[k] = v;
-  }
-  return out;
-}
+// The only classes acted on. Older rows of retired classes (PO, BOL,
+// supplier_confirmation, assemblers_report) that are still unprocessed are left
+// as they are, untouched, rather than swept or retried.
+const HANDLED = ['walmart_orders', 'weekly_report'];
 
 Deno.serve(async (req) => {
   const pre = handleCors(req);
@@ -65,17 +47,16 @@ Deno.serve(async (req) => {
 
   const supabase = serviceClient();
   try {
-    const [clientId, clientSecret, refreshToken, apiKey] = await Promise.all([
+    const [clientId, clientSecret, refreshToken] = await Promise.all([
       getSecret(supabase, 'GMAIL_OAUTH_CLIENT_ID'),
       getSecret(supabase, 'GMAIL_OAUTH_CLIENT_SECRET'),
       getSecret(supabase, 'GMAIL_REFRESH_TOKEN'),
-      getSecret(supabase, 'ANTHROPIC_API_KEY'),
     ]);
     if (!refreshToken) return json({ error: 'Gmail not connected.' }, 400);
     const accessToken = await refreshAccessToken(clientId!, clientSecret!, refreshToken);
 
     // "other" needs no action — bulk-mark it processed in one shot so it never
-    // accumulates as pending (and doesn't consume the actionable batch limit).
+    // accumulates as pending.
     const { data: swept } = await supabase
       .from('gmail_messages')
       .update({ processed: true })
@@ -88,21 +69,17 @@ Deno.serve(async (req) => {
       .from('gmail_messages')
       .select('*')
       .eq('processed', false)
-      .neq('classification', 'other')
+      .in('classification', HANDLED)
       .order('internal_date', { ascending: true })
       .limit(20);
 
     const results: unknown[] = [];
     for (const gm of pending ?? []) {
       try {
-        if (STRUCTURED.has(gm.classification)) {
-          results.push(await handleStructured(supabase, apiKey!, accessToken, gm));
-        } else if (gm.classification === 'assemblers_report') {
-          results.push(await handleAssemblers(supabase, accessToken, gm));
-        } else if (gm.classification === 'walmart_orders') {
+        if (gm.classification === 'walmart_orders') {
           results.push(await handleWalmartOrders(supabase, accessToken, gm));
         } else if (gm.classification === 'weekly_report') {
-          results.push(await handleWeekly(supabase, accessToken, gm));
+          results.push(await handleWeeklyRetailLink(supabase, accessToken, gm));
         }
       } catch (e) {
         const msg = String((e as Error)?.message ?? e);
@@ -111,227 +88,17 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Weekly-report images are downloaded + stored only for messages processed
-    // by THIS run. Historical weeks already marked processed=true won't be
-    // revisited — to back-fill their screenshots, reset those gmail_messages to
-    // processed=false (and clear `error`), then re-run gmail-extract.
-    const note =
-      'Weekly-report images are stored only for messages processed in this run. ' +
-      'To back-fill historical weeks, set gmail_messages.processed=false (and ' +
-      'error=null) for those weekly_report messages and re-run gmail-extract.';
-
-    return json({ ok: true, processed: results.length, otherSwept, results, note });
+    return json({ ok: true, processed: results.length, otherSwept, results });
   } catch (e) {
     return json({ error: String((e as Error)?.message ?? e) }, 500);
   }
 });
 
-// ── PO / BOL / supplier_confirmation ────────────────────────────────────────
-async function handleStructured(
-  supabase: SupabaseClient,
-  apiKey: string,
-  accessToken: string,
-  gm: any,
-) {
-  const parsed = parseMessage(await getMessage(accessToken, gm.gmail_message_id));
-  const ext = await extractEmail(apiKey, {
-    from: parsed.from,
-    subject: parsed.subject,
-    body: parsed.body,
-  });
-
-  // Resolve the PO (nullable — back-fills if the PO arrives later).
-  let poId: string | null = null;
-  let po: any = null;
-  if (ext.po_number) {
-    const { data } = await supabase
-      .from('purchase_orders')
-      .select('id, carrier, bol_number, ship_date_actual, destination_dc, total_cases, total_amount, mabd')
-      .eq('po_number', ext.po_number)
-      .maybeSingle();
-    if (data) {
-      po = data;
-      poId = data.id;
-    }
-  }
-
-  const extracted_data = compact({
-    po_number: ext.po_number,
-    carrier: ext.carrier,
-    bol_number: ext.bol_number,
-    ship_date: ext.ship_date,
-    mabd: ext.mabd,
-    delivery_date: ext.delivery_date,
-    total_amount: ext.total_amount,
-    total_cases: ext.total_cases,
-    destination_dc: ext.destination_dc,
-    lots: ext.lots.length || null,
-    anomalies: ext.anomalies,
-    classification: gm.classification,
-  });
-
-  const { data: emailRow, error: emailErr } = await supabase
-    .from('po_emails')
-    .insert({
-      po_id: poId,
-      email_timestamp: parsed.internalDate,
-      sender_name: ext.sender_name ?? parsed.fromName,
-      sender_org: ext.sender_org,
-      summary: ext.summary,
-      extracted_data,
-      source: 'email',
-    })
-    .select('id')
-    .single();
-  if (emailErr) throw emailErr;
-
-  // Finished-good lots — persisted even when the PO isn't in the DB yet (po_id
-  // null = "parked"). A later NetSuite load back-fills po_id via the
-  // link_parked_po_emails RPC, joining on extracted_from_email_id.
-  let lotCount = 0;
-  if (ext.lots.length) {
-    const rows = ext.lots
-      .filter((l) => l.lot_number)
-      .map((l) => ({
-        po_id: poId, // may be null (parked); back-filled when the PO arrives
-        lot_number: String(l.lot_number),
-        sku: l.sku ?? null,
-        quantity_cases: l.quantity_cases ?? null,
-        bol_reference: ext.bol_number ?? null,
-        received_date: ext.delivery_date ?? null,
-        source: 'email',
-        extracted_from_email_id: emailRow.id,
-      }));
-    if (rows.length) {
-      const { error } = await supabase.from('po_lot_numbers').insert(rows);
-      if (!error) lotCount = rows.length;
-    }
-  }
-
-  // Advisory change rows for fields the email contradicts on the PO.
-  let changeCount = 0;
-  if (poId && po) {
-    const changeRows = [];
-    for (const [field, key] of CHANGE_FIELDS) {
-      const val = ext[key] as string | number | null;
-      if (val === null || val === undefined) continue;
-      const cur = po[field];
-      if (String(cur ?? '') !== String(val)) {
-        changeRows.push({
-          po_id: poId,
-          field_name: field,
-          original_value: cur === null || cur === undefined ? null : String(cur),
-          new_value: String(val),
-          change_source: 'email',
-          change_reason: `From email: ${gm.subject ?? gm.classification}`,
-        });
-      }
-    }
-    if (changeRows.length) {
-      const { error } = await supabase.from('po_changes').insert(changeRows);
-      if (!error) changeCount = changeRows.length;
-    }
-  }
-
-  await supabase
-    .from('gmail_messages')
-    .update({ processed: true, po_id: poId, po_email_id: emailRow.id, error: null })
-    .eq('id', gm.id);
-
-  return {
-    id: gm.id,
-    classification: gm.classification,
-    po_number: ext.po_number,
-    poMatched: !!poId,
-    lots: lotCount,
-    changes: changeCount,
-  };
-}
-
-// ── assemblers_report → production OR inventory-snapshot parser ──────────────
-// The classifier lumps several different Assemblers attachments under this one
-// label. We only have structured importers for two of them, told apart by the
-// workbook's actual shape:
-//   • production workbook — has a 'Production' (or 'Job …') sheet → production.js
-//     → production_* tables
-//   • Inventory Snapshot Report — a sheet whose header row carries 'Item code'
-//     plus 'Pallet Number'/'Inventory status' → assemblers.js → raw_materials
-//     (+ raw_material_lots)
-// Anything else (Mix Sheet, Batch Sheet, …) has no structured importer, so it is
-// reclassified to 'other' (rather than fed to the wrong parser and logged as a
-// misleading 0-row "success", which is what routing everything to production.js
-// used to do).
-function inventorySnapshotSheet(XLSX: any, wb: any): string | null {
-  for (const n of wb.SheetNames) {
-    const header = (XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, range: 0 })[0] ?? []) as unknown[];
-    const cols = new Set(header.map((h) => String(h ?? '').trim().toLowerCase()));
-    if (cols.has('item code') && (cols.has('pallet number') || cols.has('inventory status'))) return n;
-  }
-  return null;
-}
-
-async function handleAssemblers(supabase: SupabaseClient, accessToken: string, gm: any) {
-  const parsed = parseMessage(await getMessage(accessToken, gm.gmail_message_id));
-  const att = parsed.attachments.find((a) => /\.xlsx?$/i.test(a.filename ?? ''));
-  if (!att) throw new Error('assemblers_report but no .xlsx attachment found');
-
-  const bytes = await getAttachment(accessToken, gm.gmail_message_id, att.attachmentId);
-  // Both parsers read via file.arrayBuffer() — a Blob satisfies them.
-  const blob = new Blob([bytes], {
+async function attachmentBlob(accessToken: string, messageId: string, att: ParsedAttachment): Promise<Blob> {
+  const bytes = await getAttachment(accessToken, messageId, att.attachmentId);
+  return new Blob([bytes as BlobPart], {
     type: att.mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   });
-
-  const XLSX = await import('xlsx');
-  const wb = XLSX.read(await blob.arrayBuffer(), { type: 'array' });
-  const isProductionWorkbook = wb.SheetNames.some((n) => /^production$/i.test(n) || /^job\s/i.test(n));
-  const snapshotSheet = isProductionWorkbook ? null : inventorySnapshotSheet(XLSX, wb);
-
-  let parser: any;
-  let parsedOut: { records: any[]; errors?: { row?: number; message: string }[] };
-  let uploadType: string;
-  if (isProductionWorkbook) {
-    parser = production;
-    uploadType = 'production';
-    parsedOut = await (production as any).parseFile(blob);
-  } else if (snapshotSheet) {
-    parser = assemblers;
-    uploadType = 'assemblers';
-    const rows = XLSX.utils.sheet_to_json(wb.Sheets[snapshotSheet], { defval: null, raw: false });
-    parsedOut = (assemblers as any).parse(rows);
-  } else {
-    // Mix Sheet / Batch Sheet / any other Assemblers attachment we don't import:
-    // reclassify to 'other' so it isn't retried or shown as a failed import.
-    await supabase
-      .from('gmail_messages')
-      .update({ processed: true, classification: 'other', error: null })
-      .eq('id', gm.id);
-    return {
-      id: gm.id,
-      classification: 'other',
-      reclassifiedFrom: 'assemblers_report',
-      filename: att.filename,
-      reason: `no importer for sheets [${wb.SheetNames.join(', ')}]`,
-    };
-  }
-
-  const res = await runEmailImport(supabase, parser, parsedOut, {
-    filename: att.filename,
-    uploadType,
-  });
-
-  await supabase
-    .from('gmail_messages')
-    .update({ processed: true, upload_log_id: res.uploadId, error: null })
-    .eq('id', gm.id);
-
-  return {
-    id: gm.id,
-    classification: gm.classification,
-    reportType: uploadType,
-    filename: att.filename,
-    inserted: res.inserted,
-    uploadId: res.uploadId,
-  };
 }
 
 // ── walmart_orders → Cortina Walmart Orders parser ──────────────────────────
@@ -343,10 +110,7 @@ async function handleWalmartOrders(supabase: SupabaseClient, accessToken: string
     ?? parsed.attachments.find((a) => /\.xlsx?$/i.test(a.filename ?? ''));
   if (!att) throw new Error('walmart_orders but no .xlsx attachment found');
 
-  const bytes = await getAttachment(accessToken, gm.gmail_message_id, att.attachmentId);
-  const blob = new Blob([bytes], {
-    type: att.mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  });
+  const blob = await attachmentBlob(accessToken, gm.gmail_message_id, att);
   const parsedOut = await (walmartOrders as any).parseFile(blob);
 
   const res = await runEmailImport(supabase, walmartOrders as any, parsedOut, {
@@ -368,157 +132,57 @@ async function handleWalmartOrders(supabase: SupabaseClient, accessToken: string
   };
 }
 
-// ── weekly_report → existing weekly parser + image attachments ──────────────
-const WEEKLY_IMAGE_BUCKET = 'weekly-report-attachments';
-const IMAGE_MIME = /^image\//i;
-const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp)$/i;
+// ── weekly_report → Retail Link parsers, one per attachment ─────────────────
+// The weekly email carries the four files of upload cards 1–4 (Supply Plan,
+// Dirty Cookie WK##, OTIF 1 week, OTIF 3 weeks). Each .xlsx is routed by its
+// contents (_shared/retailLinkDetect.ts), never its filename. A file nobody
+// recognises is reported, not imported and not dropped silently; the rest of
+// the email still imports.
+const RETAIL_LINK_PARSERS: Record<RetailLinkType, any> = {
+  retail_link_supply_plan: retailLinkSupplyPlan,
+  retail_link: retailLink,
+  retail_link_otif: retailLinkOtif,
+};
 
-function safeName(name: string): string {
-  return String(name || '').replace(/[^a-zA-Z0-9._-]/g, '_') || 'image';
-}
+async function handleWeeklyRetailLink(supabase: SupabaseClient, accessToken: string, gm: any) {
+  const parsed = parseMessage(await getMessage(accessToken, gm.gmail_message_id));
+  const files = parsed.attachments.filter((a) => !a.inline && /\.xlsx?$/i.test(a.filename ?? ''));
+  if (!files.length) throw new Error('weekly_report but no .xlsx attachment found');
 
-const isImageAtt = (a: ParsedAttachment) =>
-  IMAGE_MIME.test(a.mimeType ?? '') || IMAGE_EXT.test(a.filename ?? '');
-
-// Signature logos/banners are small; Retail Link screenshots are 1000px+. A
-// readable dimension below this is treated as decoration and dropped (backstop
-// for a logo that arrives as a real attachment rather than inline/CID).
-const MIN_DATA_IMAGE_DIM = 400;
-
-// Best-effort intrinsic dimension sniff (max of width/height) for the common
-// raster formats, read straight from the file header. Returns null if unknown
-// (in which case we keep the image — never drop on uncertainty).
-function imageMaxDim(b: Uint8Array): number | null {
-  const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
-  // PNG: \x89PNG, IHDR width@16 / height@20 (big-endian u32)
-  if (b.length > 24 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) {
-    return Math.max(dv.getUint32(16), dv.getUint32(20));
-  }
-  // GIF: "GIF8", width@6 / height@8 (little-endian u16)
-  if (b.length > 10 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) {
-    return Math.max(dv.getUint16(6, true), dv.getUint16(8, true));
-  }
-  // JPEG: walk segments to a SOF marker (0xC0–0xCF, excl. C4/C8/CC)
-  if (b.length > 4 && b[0] === 0xff && b[1] === 0xd8) {
-    let o = 2;
-    while (o + 9 < b.length) {
-      if (b[o] !== 0xff) { o++; continue; }
-      const marker = b[o + 1];
-      if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
-        return Math.max(dv.getUint16(o + 7), dv.getUint16(o + 5)); // width, height
-      }
-      const len = dv.getUint16(o + 2);
-      if (len < 2) break;
-      o += 2 + len;
-    }
-  }
-  return null;
-}
-
-// Download the email's Retail Link data screenshots, store them in the public
-// weekly-report-attachments bucket (path <week>/<NN>-<name>, NN preserving
-// email order), and return their public URLs for the weekly_reports row.
-//
-// Filtering: keep only true attachments (skip inline/CID parts — signature
-// logos + promo banners), then drop any that sniff smaller than a real report
-// screenshot. Existing objects for the week are cleared first so re-processing
-// replaces them (no orphaned/filtered images linger). A single bad image is
-// skipped rather than failing the whole weekly ingest.
-async function storeWeeklyImages(
-  supabase: SupabaseClient,
-  accessToken: string,
-  messageId: string,
-  weekNumber: string,
-  attachments: ParsedAttachment[],
-): Promise<{
-  images: { name: string; url: string; mimeType: string; size: number }[];
-  skippedInline: number;
-  skippedSmall: number;
-}> {
-  const prefix = safeName(weekNumber);
-
-  // Clear previously-stored objects for this week (drops images filtered by the
-  // updated heuristics on re-process).
-  const { data: existing } = await supabase.storage.from(WEEKLY_IMAGE_BUCKET).list(prefix);
-  if (existing?.length) {
-    await supabase.storage
-      .from(WEEKLY_IMAGE_BUCKET)
-      .remove(existing.map((o) => `${prefix}/${o.name}`));
-  }
-
-  const imageAtts = attachments.filter(isImageAtt);
-  const skippedInline = imageAtts.filter((a) => a.inline).length;
-  const candidates = imageAtts.filter((a) => !a.inline);
-
-  const images: { name: string; url: string; mimeType: string; size: number }[] = [];
-  let skippedSmall = 0;
-  let n = 0;
-  for (const att of candidates) {
+  const XLSX = await import('xlsx');
+  const imported: { filename: string; uploadType: string; inserted: number; uploadId: string }[] = [];
+  const problems: string[] = [];
+  for (const att of files) {
     try {
-      const bytes = await getAttachment(accessToken, messageId, att.attachmentId);
-      const dim = imageMaxDim(bytes);
-      if (dim !== null && dim < MIN_DATA_IMAGE_DIM) {
-        skippedSmall++;
+      const blob = await attachmentBlob(accessToken, gm.gmail_message_id, att);
+      const wb = XLSX.read(await blob.arrayBuffer(), { type: 'array' });
+      const type = detectRetailLink(XLSX, wb);
+      const parser = type && RETAIL_LINK_PARSERS[type];
+      if (!parser) {
+        problems.push(`${att.filename}: not a recognised Retail Link report (sheets: ${wb.SheetNames.join(', ')})`);
         continue;
       }
-      n++;
-      const path = `${prefix}/${String(n).padStart(2, '0')}-${safeName(att.filename)}`;
-      const { error: upErr } = await supabase.storage
-        .from(WEEKLY_IMAGE_BUCKET)
-        .upload(path, bytes, { contentType: att.mimeType || 'image/png', upsert: true });
-      if (upErr) throw upErr;
-      const { data } = supabase.storage.from(WEEKLY_IMAGE_BUCKET).getPublicUrl(path);
-      images.push({
-        name: att.filename || `image${n}`,
-        url: data.publicUrl,
-        mimeType: att.mimeType || 'image/png',
-        size: att.size ?? bytes.length,
-      });
-    } catch (_e) {
-      // Skip this image; keep the rest.
+      const out = await parser.parseFile(blob);
+      if (!out.records?.length) {
+        problems.push(`${att.filename}: ${parser.type} parsed no rows (${out.errors?.[0]?.message ?? out.summary ?? 'no detail'})`);
+        continue;
+      }
+      const res = await runEmailImport(supabase, parser, out, { filename: att.filename, uploadType: parser.type });
+      imported.push({ filename: att.filename, uploadType: parser.type, inserted: res.inserted, uploadId: res.uploadId });
+    } catch (e) {
+      problems.push(`${att.filename}: ${String((e as Error)?.message ?? e)}`);
     }
   }
-  return { images, skippedInline, skippedSmall };
-}
-
-async function handleWeekly(supabase: SupabaseClient, accessToken: string, gm: any) {
-  const parsed = parseMessage(await getMessage(accessToken, gm.gmail_message_id));
-  const rep = await importWeekly(supabase, {
-    subject: parsed.subject,
-    from: parsed.from,
-    date: parsed.date,
-    body: parsed.body,
-    attachments: parsed.attachments,
-  });
-
-  // Pull the data screenshots into Storage and record their URLs on the row
-  // (always sync — an empty array clears stale images on re-process).
-  const { images, skippedInline, skippedSmall } = await storeWeeklyImages(
-    supabase,
-    accessToken,
-    gm.gmail_message_id,
-    rep.week_number,
-    parsed.attachments,
-  );
-  await supabase.from('weekly_reports').update({ image_attachments: images }).eq('id', rep.id);
 
   await supabase
     .from('gmail_messages')
     .update({
       processed: true,
-      error: null,
-      raw: { ...(gm.raw ?? {}), weekly_report_id: rep.id },
+      upload_log_id: imported[0]?.uploadId ?? null,
+      error: problems.length ? problems.join(' | ') : null,
+      raw: { ...(gm.raw ?? {}), retail_link_imports: imported },
     })
     .eq('id', gm.id);
 
-  return {
-    id: gm.id,
-    classification: gm.classification,
-    week_number: rep.week_number,
-    weeklyReportId: rep.id,
-    imagesStored: images.length,
-    imagesSkipped: skippedInline + skippedSmall,
-    skippedInline,
-    skippedSmall,
-  };
+  return { id: gm.id, classification: gm.classification, imported, problems };
 }

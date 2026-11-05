@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
-// Assemblers on-hand: raw_materials split into ingredients vs packaging,
-// plus the most recent upload timestamp.
-export function useAssemblersInventory() {
+// Raw materials and packaging Dirty Cookie holds at its co-packer: raw_materials
+// split into ingredients vs packaging, plus the most recent import timestamp.
+// Was useAssemblersInventory until Nov 5 2026: the Assemblers import is gone,
+// so the stock now moves only through Incoming (receive) and adjustments.
+export function useCoPackerInventory() {
   const [rawMaterials, setRawMaterials] = useState([]);
   const [packaging, setPackaging] = useState([]);
   const [lastUpload, setLastUpload] = useState(null);

@@ -2,7 +2,7 @@ import { useState, useMemo, Fragment } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Pill from './Pill';
 import { useDotInventory } from '../hooks/useDotInventory';
-import { useAssemblersInventory } from '../hooks/useAssemblersInventory';
+import { useCoPackerInventory } from '../hooks/useCoPackerInventory';
 import { useIncomingInventory } from '../hooks/useRawMaterialOrders';
 import { formatDateTime } from '../utils/dates';
 import { groupByIngredient, worstStatus } from '../utils/ingredientGrouping';
@@ -38,7 +38,7 @@ function SectionHeader({ open, onToggle, title, subtitle }) {
 export default function WarehouseView() {
   const navigate = useNavigate();
   const dot = useDotInventory();
-  const asm = useAssemblersInventory();
+  const asm = useCoPackerInventory();
   const incoming = useIncomingInventory();
   const [open, setOpen] = useState({ dot: true, asm: true });
   const toggle = (k) => setOpen((o) => ({ ...o, [k]: !o[k] }));
@@ -128,12 +128,12 @@ export default function WarehouseView() {
           </table>
         ))}
 
-      {/* ---- Assemblers Chicago ---- */}
+      {/* ---- Co-packer (raw materials + packaging we hold there) ---- */}
       <SectionHeader
         open={open.asm}
         onToggle={() => toggle('asm')}
-        title="Assemblers Chicago"
-        subtitle={`Internal inventory · Last upload: ${formatDateTime(asm.lastUpload)}`}
+        title="Co-packer"
+        subtitle={`Raw materials + packaging · Last import: ${formatDateTime(asm.lastUpload)}`}
       />
       {open.asm &&
         (asm.loading ? (
@@ -142,7 +142,7 @@ export default function WarehouseView() {
           <div className="px-4 py-3 text-xs text-red-600">{asm.error}</div>
         ) : asm.rawMaterials.length === 0 && asm.packaging.length === 0 ? (
           <div className="px-4 py-6 text-center text-sm text-gr">
-            No Assemblers inventory — upload an inventory report.
+            No co-packer inventory — receive an order under Incoming, or adjust under By Product.
           </div>
         ) : (
           <>

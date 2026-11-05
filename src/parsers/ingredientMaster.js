@@ -7,7 +7,7 @@ import { toNumber, pick } from '../utils/csvParser.js';
 //
 // Source: Assembler_Ingredient_Data.csv — one row per ingredient × distributor
 // × brand sourcing option. Normalizes into two DEDICATED catalog tables (kept
-// separate from the live Assemblers inventory in raw_materials):
+// separate from the co-packer inventory in raw_materials):
 //
 //   ingredient_catalog   — one row per normalized ingredient name (47).
 //   ingredient_suppliers — one row per source row (91), linked via ingredient_id.

@@ -296,7 +296,7 @@ function NewTransitionForm({ onClose, onSaved }) {
         <button onClick={onClose} className="text-[10px] text-gr hover:text-pk">Cancel</button>
       </div>
       <div className="mt-1.5 text-[7px] text-gr italic">
-        Standard 6-step checklist is added automatically (UPC, NetSuite, packaging, Assemblers, DOT, depletion plan).
+        Standard 6-step checklist is added automatically (UPC, NetSuite, packaging, co-packer, DOT, depletion plan).
       </div>
     </div>
   );

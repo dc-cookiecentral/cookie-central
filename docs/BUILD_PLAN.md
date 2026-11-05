@@ -213,6 +213,39 @@
   - **Review was by screenshot.** Claude in Chrome was open in the browser but not connected to this session: it only attaches at session start (`claude --chrome`).
   - Note for next time: the deploy-check loop gave a false "not yet live" (it grepped a large bundle held in a shell variable); `curl … | grep` on the asset directly confirmed it. Check that way.
 
+  **November 5 2026 — DOT "Customer Order Details" assessed; the Walmart orders email has stopped landing; email pipeline documented.** No code or data changes (docs only).
+
+  *Done*
+  - [x] Assessed DOT's **Customer Order Details** export (received by email Nov 5; one sheet "Details", 131 order lines + 64 lot lines, 127 Walmart POs to 79 DCs, all from Mt. Sterling; order dates Oct 5 – Nov 4). It is **all** order lines, not exception-filtered like the Order History, and adds what the Inventory Snapshot cannot: (1) orders by DOT stage per SKU: Open 1,486 cs (WC 525 · PBG 105 · CCF 168 · **BC 688**), Picking 159, Loaded 471, Delivered 321. The snapshot's "committed" is Loaded + Picked only, so Open orders still count as sellable there; (2) the lot and expiry picked per order: near-dated lots are shipping (CCF 147 cs expiring Dec 16–23, WC 21 cs Dec 24 + 124 cs Dec 31, PBG 33 cs Dec 23), about six weeks of life at ship; (3) DOT-side timing per PO (appointment, departure, DC arrival, reconciled). No cuts in this window; no stock levels — a complement to the snapshot, not a replacement — 2026-11-05
+  - [x] Found while matching it: **none of the 1,486 Open cases are in the app, and `purchase_orders` has not changed since 2026-10-28 11:00 UTC** (the daily job's time). POs DOT shows as Delivered are still `pending` in the app. So the Walmart orders email import has not landed for 8 days and the Demand Planner's NetSuite orders series is frozen at Oct 28 (POS, forecast, OTIF and DOT are manual uploads, unaffected). Cause not checked: `upload_log` / `gmail_sync_state` are not readable with the anon key. Caroline: "there might have been an issue with the email" — 2026-11-05
+  - [x] Email pipeline traced and documented in RUNBOOK §9.3 (the Walmart orders row was missing from its table) and new §9.6a (pause / resume, the 2-day look-back gap, how to tell if it is running) — 2026-11-05
+
+  *Decisions* (Caroline, Nov 5)
+  - **Pause pulling from email — documented, not done yet.** Caroline will run the SQL herself (RUNBOOK §9.6a). The "Check for new" button has no off switch; turning it off is a code change, not made.
+  - **Focus on the Demand Planner.** The row-cap review of `/orders` and `/payments` is on hold (see the ticket).
+
+  *To do*
+  - [ ] Caroline: pause the daily email job (RUNBOOK §9.6a), if still wanted
+  - [ ] Find why the Walmart orders import stopped after Oct 28 (email not sent? Gmail grant revoked by a systems@ password change, §9.2? stuck `processing`?). With an admin login: `upload_log where source='email'`, `gmail_sync_state`
+  - [ ] Decide: make Customer Order Details an upload (like the Inventory Snapshot) — would split DOT sellable into open-ordered vs free in the funnel, add a "near-dated lots shipping" check to the actions panel, and show orders as soon as DOT has them
+  - [ ] Ask Cortina: do Walmart DCs accept cases with ~6 weeks of shelf life left (the Dec 16–31 lots shipping now)?
+
+  *Email agent narrowed* (branch `feat/email-weekly-retail-link`; same day)
+  - [x] `gmail-poll` classifies **by rule only**: weekly Retail Link email (subject `Dirty Cookie | Weekly Reporting | WK##`, now from **caroline@bentonvillemerchants.com**) and Cortina's `Walmart_Orders_…`; everything else `other`. Haiku classifier removed, so no email content goes to Anthropic — 2026-11-05
+  - [x] `gmail-extract`: the weekly email's .xlsx attachments are **auto-imported through upload cards 1–4's parsers**, each routed by its contents (`_shared/retailLinkDetect.ts`), not its filename, because the reports may change. An unrecognised file is reported in `gmail_messages.error`, the rest still import. Walmart orders unchanged. **Removed:** Assemblers report handling (leaving that co-packer) and PO / BOL / supplier-confirmation extraction (later phase); both in git history before this branch. The weekly body scorecard / screenshots (`weekly_reports`) are no longer imported — 2026-11-05
+  - [x] Tests: `deno check` on both functions; routing test on the real OTIF 1-week and 3-week exports (both → OTIF, parsed in Deno: 96 POs / 3,157 cs / 185 unfilled for W37, matching the live figure; 299 POs for W34–37), synthetic WK## and Supply Plan layouts, and four real non-Retail-Link workbooks (Spec Sheet, product list, sales trend, DOT Customer Order Details → none). `vite build` clean — 2026-11-05
+  - [x] `/uploads` inbox card text and RUNBOOK §2.7 / §9 updated — 2026-11-05
+  - Decisions (Caroline, Nov 5): auto-import all four weekly files; reports may change, so route by contents. Remove everything Assemblers (screens and imports; data kept; raw materials stay under a generic co-packer). Remove the AI sorting step.
+  - Suggested to Caroline for the Retail Link pull (the reports may change): flat item × week extracts with stable headers, units stated, all four items incl. BC, rolling 52 weeks; first ask: POS + store / DC on-hand **as weekly history** + stores with sales; then dated store / DC forecasts, DC inventory by DC, store × item monthly, markdowns / claims
+  - [x] **AI sorting removed entirely**: `_shared/anthropic.ts` deleted (Caroline, Nov 5: "remove the AI sorting step") — 2026-11-05
+  - [x] **Everything Assemblers removed, data kept** (Caroline, Nov 5: "Remove anything related to assemblers"; Dirty Cookie still holds raw materials at its next co-packer, same flow). Deleted: `src/parsers/production.js` + `assemblers.js` (and their `/uploads` card), the production-run **Reorder Calculator** tab (`ReorderCalculator.jsx`, `useScenarios`, `useIngredientInventory`), and **Lot Trace** (`LotTrace.jsx`, `useLotTrace`, route, nav entry, the "Trace ↗" links on PO lots). Renamed to a generic co-packer: `useAssemblersInventory` → `useCoPackerInventory`, Inventory's "Assemblers Chicago" block → "Co-packer", the By Product location, the transition checklist step ("Co-packer adjusted"), empty-state texts (stock now moves only through Incoming and adjustments). Kept: `useProductionData` / `utils/bom` (Reference's raw-materials overview still reads the historical runs), all tables and data, the Supplies seed's "Assemblers LLC" vendor row (a real supplier record). DOT snapshot upload still refuses an Assemblers file, now saying it is no longer imported — 2026-11-05
+  - **Deviation:** reverses the README's "Hidden is not dead — do not delete these pages or their parsers" (Caroline, Aug 23 2026) for Lot Trace and the Assemblers parsers; README and RUNBOOK updated. **Earlier the same day** the Assemblers upload card was kept (a default taken while unanswered); superseded by this.
+  - [x] Checks: `deno check` both functions; DOT snapshot tests 12 pass / 0 fail (1 skipped: needs the real file); `smoke-render.mjs` 9/9; `vite build` clean; no remaining imports of deleted files — 2026-11-05
+  - [ ] Deploy `gmail-poll` + `gmail-extract` (`npx supabase functions deploy gmail-poll gmail-extract`) — nothing changes in the email pipeline until then
+  - [ ] First live weekly email after deploy: check four `source='email'` upload rows and `gmail_messages.error` empty
+  - [ ] Not tested on a real Supply Plan or Dirty Cookie WK## file (none on disk); the first email is that test
+  - Note: the daily job reads only the last 2 days. If Caroline's latest weekly email is older than that, it will not be picked up on deploy — reset `gmail_sync_state.last_polled_at` (RUNBOOK §9.6a) or upload by hand
+
   **October 28–29 2026 — Supplies & Vendors (`docs/SUPPLIES_SPEC.md`).** PRs #67 (V1), #68 (V1.1), #69 (V1.2), all merged and live. Full build notes in the spec's status log.
 
   *Done*
@@ -351,7 +384,8 @@ Two corrections to the "Impact" table below: **`usePayments` no longer reads `pa
 - New, not fixed: `useSupplies` reads nine tables/views unpaged. All are under 100 rows today; the script will flag them.
 
 *To do*
-- [ ] Merge to `main` and deploy; Caroline checks `/orders` and `/payments` by URL (both stay hidden)
+- [x] Committed `7e1ed72`, merged to `main` (fast-forward) and pushed; live bundle `index-zhO-AuBr.js` identical to a local build of that commit — 2026-11-05
+- [ ] Caroline checks `/orders` and `/payments` by URL (both stay hidden). **On hold (Caroline, Nov 5): Demand Planner first.**
 - [ ] Then close this ticket (move it out of the open section)
 
 ### The problem

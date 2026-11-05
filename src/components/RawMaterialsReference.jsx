@@ -29,7 +29,7 @@ export default function RawMaterialsReference() {
       <div className="bg-cd border border-lt rounded-xl p-8 text-center">
         <div className="text-sm font-semibold text-dk mb-1">No raw materials yet</div>
         <div className="text-xs text-md">
-          Import the Ingredient Master (Uploads → Reference Data) and an Assemblers inventory report.
+          Import the Ingredient Master (Uploads → Reference Data).
         </div>
       </div>
     );

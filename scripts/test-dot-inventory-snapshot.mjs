@@ -153,7 +153,7 @@ test('cross-tab mismatch is flagged', async () => {
   assert.match(msgs(out), /Aggregated Orders shows/);
 });
 
-test('the Assemblers "Inventory Snapshot Report" is refused with a pointer to its card', async () => {
+test('the Assemblers "Inventory Snapshot Report" is refused, saying it is no longer imported', async () => {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
     ['Item code', 'Item description', 'Lot code', 'Expiry date', 'Base quantity'],
@@ -162,7 +162,7 @@ test('the Assemblers "Inventory Snapshot Report" is refused with a pointer to it
   const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
   const out = await parser.parseFile({ arrayBuffer: async () => buf });
   assert.equal(out.records.length, 0);
-  assert.match(msgs(out), /Assemblers .*Upload it on the Assemblers card/);
+  assert.match(msgs(out), /Assemblers .*no longer imported/);
 });
 
 test('finds the Summary by its header even if the tab is renamed, and never mistakes WH Summary for it', async () => {

@@ -40,9 +40,9 @@ Operational dashboard for Dirty Cookie's white-label retail business (Walmart + 
 
 ⚠️ **Everything ships from one Vercel project and one Vite bundle.** Any merge to `main` redeploys Sample Central, which serves live Cortina traffic. Verify the deployed bundle after a merge, never the build log.
 
-**Five pages are currently hidden pending rework** — Weekly Report, Product Orders, Payments, EOM Snapshot and Lot Trace. They are marked `hidden: true` in `src/components/Sidebar.jsx`; their **routes still work by URL**, so a page can be reworked without shipping it to everyone. Removing the flag brings one back. Internal users land on `/inventory`.
+**Four pages are currently hidden pending rework** — Weekly Report, Product Orders, Payments and EOM Snapshot. (Lot Trace was the fifth; it was **deleted** Nov 5 2026 with the rest of the Assemblers code.) They are marked `hidden: true` in `src/components/Sidebar.jsx`; their **routes still work by URL**, so a page can be reworked without shipping it to everyone. Removing the flag brings one back. Internal users land on `/inventory`.
 
-⚠️ **Hidden is not dead — do not delete these pages or their parsers.** Product Orders and the BOL flow are expected back **around Oct 2026** with substantial changes, and the **`systems@` email reader that feeds them is being kept** (Caroline, Aug 23 2026). The daily `gmail-poll-daily` cron stays on, and `InboxCard` stays on `/uploads`.
+⚠️ **Hidden is not dead — do not delete these pages or their parsers.** *Exception (Caroline, Nov 5 2026): everything Assemblers-specific was removed, since Dirty Cookie is leaving that co-packer: the Assemblers upload card and parsers, Lot Trace, the production-run Reorder Calculator, and the email agent's Assemblers / PO / BOL / supplier handling. The data stays in the database.* Product Orders and the BOL flow are expected back **around Oct 2026** with substantial changes, and the **`systems@` email reader that feeds them is being kept** (Caroline, Aug 23 2026). The daily `gmail-poll-daily` cron stays on, and `InboxCard` stays on `/uploads`.
 
 **The one genuinely retired feed is the weekly Bentonville Retail Link email** — `weekly_reports` stopped at `2026-07-06`. Keeping its parsers turned out to be the right call: **the same Walmart reports now arrive as file uploads**, and `parsers/weeklyAttachments.js` supplied the column matching for `Sales Summary`, `Markdown`, `Item Data` and the OTIF `Receiver` sheet unchanged. Retiring the email cost the transport, not the parsing. The Demand Planner's feeds are built on top of them — see `docs/DEMAND_PLANNER_FORMULAS.md`.
 
@@ -128,7 +128,7 @@ cookie-central/
 │   ├── pages/                   # Routes (one file per sidebar nav item)
 │   ├── components/              # Reusable pieces (Pill, AlertsPanel, …)
 │   ├── hooks/                   # Data-fetch + mutation hooks
-│   ├── parsers/                 # File parsers (assemblers, netsuite, qbo, dot)
+│   ├── parsers/                 # File parsers (Retail Link, DOT, NetSuite / Walmart orders, qbo, …)
 │   ├── contexts/                # Auth, UOM, Retailer filter
 │   └── utils/                   # Date helpers, CSV/XLSX dispatch
 ├── prototype/
@@ -144,9 +144,8 @@ cookie-central/
 | `/orders` | Product Orders list + KPIs + Attention banner | `purchase_orders` + `po_line_items` |
 | `/orders/:po` | PO detail + Fulfillment Timeline + email thread + Delivery & Lots + **live AI Insight** (from `po_emails.extracted_data`) | + `po_emails`, `po_changes`, `po_lot_numbers` |
 | `/payments` + `/payments/:po` | Two-stage payment list + 3-stage timeline | `purchase_orders` + `invoices` + `payments` |
-| `/inventory` | Warehouse + Product views + Reorder + Landing | `dot_inventory` + `raw_materials` + lots + orders |
+| `/inventory` | Warehouse + Product views + Reorder + Landing. Raw materials and packaging held at the co-packer (was "Assemblers" until Nov 2026) | `dot_inventory` + `raw_materials` + lots + orders |
 | `/snapshot` | EOM Snapshot (month-pinned KPIs + deltas) | All of the above, month-scoped |
-| `/trace` | Lot Traceability — enter any lot (raw / FG / outbound), chain both directions + recall report | `raw_material_lots`, `production_runs`/`_subcomponents`/`_pallets`, `lot_shipments`, `po_lot_numbers` |
 | `/reference` | Products + Raw Materials + Transitions | Walmart item master + `raw_materials` + `transitions` |
 | `/audit` | Audit log viewer (admin/finance only) | `audit_log` |
 | `/uploads` | Drag-drop pipeline (**six weekly exports** first, legacy feeds collapsed — ADR-057) + upload history + **systems@ Inbox** | `upload_log`, `gmail_sync_state` |
@@ -154,7 +153,7 @@ cookie-central/
 
 ## Phase 2
 
-The **`systems@` AI email agent (a Phase 1 extension, Day 10) is live** — Gmail OAuth, daily poll + on-demand button, six-way classification, structured extraction into the PO tables, auto-import of emailed Assemblers/weekly reports, and parked-email back-fill (see `docs/RUNBOOK.md` §9 + ADR-021/022). Remaining Phase 2 items in `docs/BUILD_PLAN.md`: NetSuite API replacing CSV uploads, QBO API, production-plan allocation surface.
+The **`systems@` AI email agent (a Phase 1 extension, Day 10) is live** — Gmail OAuth, daily poll + on-demand button. **Narrowed Nov 5 2026** to two rule-matched emails: the weekly Retail Link report (auto-imported through upload cards 1–4) and Cortina's Walmart Orders. The AI classifier, PO / BOL / supplier extraction and Assemblers import were removed (see `docs/RUNBOOK.md` §9 + ADR-021/022). Remaining Phase 2 items in `docs/BUILD_PLAN.md`: NetSuite API replacing CSV uploads, QBO API, production-plan allocation surface.
 
 ## Key Links
 

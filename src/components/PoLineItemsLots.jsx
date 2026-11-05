@@ -1,5 +1,4 @@
 import { Fragment, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { usePoLots, addPoLot } from '../hooks/usePurchaseOrders';
 
 const TH = 'px-2 py-2 text-left text-[9px] font-bold text-gr uppercase tracking-wider';
@@ -120,14 +119,7 @@ export default function PoLineItemsLots({ poId, lines, revPerCase }) {
                     </td>
                     <td />
                     <td />
-                    <td className="px-2 py-1 text-right">
-                      <Link
-                        to={`/trace?lot=${encodeURIComponent(l.lot_number)}`}
-                        className="text-[9px] text-pk underline underline-offset-2 whitespace-nowrap"
-                      >
-                        Trace ↗
-                      </Link>
-                    </td>
+                    <td />
                   </tr>
                 ))}
 

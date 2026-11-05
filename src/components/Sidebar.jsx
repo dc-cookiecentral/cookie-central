@@ -33,7 +33,6 @@ const NAV = [
   { kind: 'divider' },
   { to: '/inventory',  label: 'Inventory' },
   { to: '/snapshot',   label: 'EOM Snapshot', hidden: true },
-  { to: '/trace',      label: 'Lot Trace', hidden: true },
   { kind: 'divider' },
   { to: '/spec-sheet',    label: 'Spec Sheet' },
   { to: '/supplies',      label: 'Supplies & Vendors' },

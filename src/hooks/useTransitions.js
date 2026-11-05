@@ -59,7 +59,7 @@ export async function createTransition(fields) {
     { task: 'New UPC assigned', done: false },
     { task: 'NetSuite product number', done: false },
     { task: 'Packaging ordered', done: false },
-    { task: 'Assemblers adjusted', done: false },
+    { task: 'Co-packer adjusted', done: false },
     { task: 'DOT informed', done: false },
     { task: 'Old SKU depletion plan', done: false },
   ];

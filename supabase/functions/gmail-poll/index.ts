@@ -1,6 +1,13 @@
-// gmail-poll — fetch new mail from systems@dirtycookie.com, classify each with
-// Haiku, persist to gmail_messages (idempotent on gmail_message_id), then
-// tail-call gmail-extract to act on the actionable ones.
+// gmail-poll — fetch new mail from systems@dirtycookie.com, classify each BY
+// RULE (sender + subject), persist to gmail_messages (idempotent on
+// gmail_message_id), then tail-call gmail-extract to act on the actionable ones.
+//
+// Only two emails are acted on (Nov 5 2026, Caroline): the Bentonville
+// Merchants weekly Retail Link email and Cortina's daily Walmart Orders export.
+// Everything else is 'other'. The Haiku classifier was removed with the
+// Assemblers / PO / BOL / supplier classes it served, so no email content is
+// sent to Anthropic. The classifier (_shared/anthropic.ts, deleted Nov 5 2026)
+// is in git history for the later PO/BOL phase.
 //
 // Invoked two ways, both satisfy verify_jwt:
 //   - the "Check for new" button (supabase.functions.invoke → user's admin JWT)
@@ -18,18 +25,18 @@ import {
   getMessage,
   parseMessage,
 } from '../_shared/gmail.ts';
-import { classifyEmail, type Classification } from '../_shared/anthropic.ts';
 
-// The Walmart weekly report is deterministic: subject "Dirty Cookie | Weekly
-// Reporting | WK##" from blayn@bentonvillemerchants.com. Match it directly and
-// skip the Haiku classification call — faster, cheaper, and more reliable than
-// AI for this fixed-format email.
+type Classification = 'weekly_report' | 'walmart_orders' | 'other';
+
+// The weekly Retail Link email: subject "Dirty Cookie | Weekly Reporting | WK##".
+// Sent by caroline@ at Bentonville Merchants as of Nov 2026 (it came from
+// blayn@ until Jul 2026), with the four spreadsheets of upload cards 1–4.
 const WEEKLY_SUBJECT_RE = /Dirty Cookie.*Weekly Reporting.*WK(\d+)/i;
-const WEEKLY_SENDER = 'blayn@bentonvillemerchants.com';
+const WEEKLY_SENDER = 'caroline@bentonvillemerchants.com';
 
 // The Cortina Walmart Orders export is likewise deterministic: subject
 // "Walmart_Orders_YYYY-MM-DD" from DMorales@CortinaFoods.com, daily at 10 PM ET.
-// Match it directly and skip the Haiku call (same pattern as the weekly report).
+// Matched by rule, like the weekly email.
 const WALMART_ORDERS_SUBJECT_RE = /Walmart_Orders_\d{4}-\d{2}-\d{2}/i;
 const WALMART_ORDERS_SENDER = 'dmorales@cortinafoods.com';
 
@@ -39,15 +46,13 @@ Deno.serve(async (req) => {
 
   const supabase = serviceClient();
   try {
-    const [clientId, clientSecret, refreshToken, apiKey] = await Promise.all([
+    const [clientId, clientSecret, refreshToken] = await Promise.all([
       getSecret(supabase, 'GMAIL_OAUTH_CLIENT_ID'),
       getSecret(supabase, 'GMAIL_OAUTH_CLIENT_SECRET'),
       getSecret(supabase, 'GMAIL_REFRESH_TOKEN'),
-      getSecret(supabase, 'ANTHROPIC_API_KEY'),
     ]);
     if (!refreshToken) return json({ error: 'Gmail not connected — click Connect Gmail first.' }, 400);
     if (!clientId || !clientSecret) return json({ error: 'Gmail OAuth client not in Vault.' }, 500);
-    if (!apiKey) return json({ error: 'ANTHROPIC_API_KEY not in Vault.' }, 500);
 
     const accessToken = await refreshAccessToken(clientId, clientSecret, refreshToken);
 
@@ -75,8 +80,6 @@ Deno.serve(async (req) => {
 
       const parsed = parseMessage(await getMessage(accessToken, m.id));
 
-      // Fast-path: the weekly report is identifiable by subject + sender alone,
-      // so classify it deterministically and skip the Haiku call.
       const wk = (parsed.subject ?? '').match(WEEKLY_SUBJECT_RE);
       const isWeekly =
         !!wk && (parsed.fromEmail ?? '').toLowerCase() === WEEKLY_SENDER;
@@ -86,20 +89,7 @@ Deno.serve(async (req) => {
         WALMART_ORDERS_SUBJECT_RE.test(parsed.subject ?? '') &&
         (parsed.fromEmail ?? '').toLowerCase() === WALMART_ORDERS_SENDER;
 
-      let label: Classification;
-      if (isWeekly) {
-        label = 'weekly_report';
-      } else if (isWalmartOrders) {
-        label = 'walmart_orders';
-      } else {
-        label = await classifyEmail(apiKey, {
-          from: parsed.from,
-          subject: parsed.subject,
-          snippet: parsed.snippet,
-          body: parsed.body,
-          attachments: parsed.attachments,
-        });
-      }
+      const label: Classification = isWeekly ? 'weekly_report' : isWalmartOrders ? 'walmart_orders' : 'other';
 
       const { error } = await supabase.from('gmail_messages').insert({
         gmail_message_id: parsed.id,

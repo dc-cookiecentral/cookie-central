@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 
 // Reusable upload pipeline (BUILD_PLAN 2.1): drag-drop → parse → preview →
 // confirm import. Driven by a parser config from src/parsers, so the same
-// component handles Assemblers / DOT / QBO and embeds in any page.
+// component handles every upload card and embeds in any page.
 //
 // Stages: idle → parsing → preview → importing → done | error
 export default function UploadPipeline({ parser, onComplete, title, note }) {

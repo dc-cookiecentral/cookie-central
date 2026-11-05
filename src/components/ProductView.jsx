@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useDotInventory } from '../hooks/useDotInventory';
-import { useAssemblersInventory } from '../hooks/useAssemblersInventory';
+import { useCoPackerInventory } from '../hooks/useCoPackerInventory';
 
 // Inventory > Product view (BUILD_PLAN 5.1). Three sections — Finished Goods
 // (dot_inventory) / Raw Materials / Packaging (both from raw_materials) —
@@ -59,7 +59,7 @@ function AdjustForm({ item, profile, onClose, onSaved }) {
       return;
     }
     if (item.kind !== 'rawOrPackaging') {
-      setErr('Adjustments are tracked against Assemblers (raw / packaging) items only in Phase 1.');
+      setErr('Adjustments are tracked against co-packer (raw / packaging) items only.');
       return;
     }
     setSaving(true);
@@ -276,7 +276,7 @@ function ItemDetail({ item, profile, onBack, onAdjusted }) {
 export default function ProductView() {
   const { profile } = useAuth();
   const dot = useDotInventory();
-  const asm = useAssemblersInventory();
+  const asm = useCoPackerInventory();
   const [sel, setSel] = useState(null);
   const [bump, setBump] = useState(0);
 
@@ -304,7 +304,7 @@ export default function ProductView() {
     unit: m.unit,
     total: m.quantity ?? 0,
     lots: m.lot_count ?? 0,
-    locations: [{ label: 'Assemblers', qty: m.quantity ?? 0 }],
+    locations: [{ label: 'Co-packer', qty: m.quantity ?? 0 }],
   }));
   const pack = asm.packaging.map((m) => ({
     kind: 'rawOrPackaging',
@@ -314,7 +314,7 @@ export default function ProductView() {
     unit: m.unit,
     total: m.quantity ?? 0,
     lots: m.lot_count ?? 0,
-    locations: [{ label: 'Assemblers', qty: m.quantity ?? 0 }],
+    locations: [{ label: 'Co-packer', qty: m.quantity ?? 0 }],
   }));
 
   if (sel) {

@@ -41,7 +41,6 @@ function VendorsRedirect() {
 import Payments from './pages/Payments';
 import PaymentDetail from './pages/PaymentDetail';
 import EomSnapshot from './pages/EomSnapshot';
-import LotTrace from './pages/LotTrace';
 import AuditLog from './pages/AuditLog';
 import PageStub from './pages/PageStub';
 import DemandPlanner from './pages/DemandPlanner';
@@ -89,7 +88,6 @@ export default function App() {
                   <Route path="spec-sheet" element={<SpecSheet />} />
                   <Route path="supplies" element={<Supplies />} />
                   <Route path="vendors" element={<VendorsRedirect />} />
-                  <Route path="trace" element={<LotTrace />} />
                   <Route path="audit" element={<AuditLog />} />
                   <Route path="uploads" element={<Uploads />} />
                 </Route>

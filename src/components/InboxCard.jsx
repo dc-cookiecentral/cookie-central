@@ -4,9 +4,9 @@ import { formatDate } from '../utils/dates';
 
 // systems@ inbox card on /uploads: connect Gmail (read-only OAuth) and pull new
 // mail on demand. The daily pg_cron job runs the same poll unattended. New mail
-// is classified (PO / BOL / supplier_confirmation / assemblers_report /
-// weekly_report / other) and acted on by the Edge functions — structured
-// extraction into po_emails, or auto-import of the Assemblers / weekly reports.
+// is classified by rule (weekly_report / walmart_orders / other) and the two
+// known emails are auto-imported by the Edge functions. The Assemblers and
+// PO / BOL / supplier classes were removed Nov 5 2026 (see gmail-extract).
 export default function InboxCard({ onPolled }) {
   const { status, loading, refresh } = useGmailStatus();
   const [polling, setPolling] = useState(false);
@@ -50,9 +50,9 @@ export default function InboxCard({ onPolled }) {
       <div className="mb-2">
         <div className="text-[11px] font-extrabold uppercase tracking-wider text-pk">systems@ Inbox</div>
         <div className="text-[10px] text-gr mt-0.5 max-w-2xl">
-          AI email agent — reads systems@dirtycookie.com (read-only), classifies each message, and files
-          POs, BOLs, supplier confirmations, the Assemblers report, and the weekly into their tables. Runs
-          daily; check on demand here.
+          Reads systems@dirtycookie.com and imports two emails: the weekly Retail Link report from
+          Bentonville Merchants (its spreadsheets go through cards 1–4) and Cortina's daily Walmart
+          Orders (card 6). Everything else is ignored. Runs daily; check on demand here.
         </div>
       </div>
 

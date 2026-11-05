@@ -13,7 +13,7 @@ import { walmartWeekOf } from './retailLinkSupplyPlan.js';
 // Writes `dot_on_hand`: ONE row per SKU per Walmart week. Feeds the Tracker's
 // "DOT actual OH (feed)" row, which the forward DOT cascade opens from.
 //
-// ⚠️ NOT the Assemblers "Inventory Snapshot Report" (src/parsers/assemblers.js).
+// ⚠️ NOT the Assemblers "Inventory Snapshot Report" (its parser was removed Nov 2026).
 // Near-identical name, different company and different file: that one has an
 // `Item code` column and describes Dirty Cookie's raw materials at Assemblers.
 // It is also NOT `dot_inventory` / src/parsers/dot.js, a speculative parser
@@ -132,7 +132,7 @@ async function parseFileImpl(file) {
     return {
       records: [], summary: 'nothing parsed',
       errors: [{ row: 0, message: assemblers
-        ? 'This is the Assemblers "Inventory Snapshot Report" (it has an "Item code" column), not DOT\'s. Upload it on the Assemblers card instead.'
+        ? 'This is the Assemblers "Inventory Snapshot Report" (it has an "Item code" column), not DOT\'s. Assemblers reports are no longer imported.'
         : 'No "Inventory Summary" sheet with GTIN/UPC and Product Status columns — is this DOT\'s Inventory Snapshot export?' }],
     };
   }
