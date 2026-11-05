@@ -21,6 +21,22 @@
 // retailLink.js for the full reasoning.
 // ─────────────────────────────────────────────────────────────────────────
 
+// Eaches per case by Walmart prime item number, for the upload summary only.
+// The three frozen doughs are 12; Black Currant (686669913) is 10 pouches a
+// case — the same packs as SKU_PACK in pages/DemandPlanner.jsx, which is keyed
+// by short code; useDemandFeeds.js ITEM_TO_SKU maps item numbers to those
+// codes. Change all three together.
+// ⚠️ Pack changes keep the item number: the three doughs are moving from a
+// 12- to an 8-count case (new case GTIN; the Walmart sell-unit item number and
+// the sell unit itself stay the same; cutover date not yet known, Nov 5 2026). Once it
+// lands, this needs a pack by date, not by item. Eaches are unaffected — they are
+// what Walmart sends and what this table stores; only this summary's "cs" changes.
+// An item not listed is still counted at 12 but named in the upload warnings,
+// so a new item can't be mis-converted silently.
+const EACHES_PER_CASE = { 679640563: 12, 679640564: 12, 683581675: 12, 686669913: 10 };
+const DEFAULT_EACHES_PER_CASE = 12;
+const eachesPerCase = (item) => EACHES_PER_CASE[item] ?? DEFAULT_EACHES_PER_CASE;
+
 // Excel serial → 'YYYY-MM-DD'. Read as raw serials rather than with SheetJS's
 // `cellDates`, which returned values like `2026-08-15T23:00:21Z` for this file —
 // a fractional serial rendered in local time, which lands on the WRONG DAY west
@@ -131,6 +147,11 @@ async function parseFileImpl(file) {
 
   const weeks = deduped.map((r) => r.order_place_week).filter(Boolean);
   const eaches = deduped.reduce((a, r) => a + (r.order_each_quantity || 0), 0);
+  const cases = deduped.reduce((a, r) => a + (r.order_each_quantity || 0) / eachesPerCase(r.item_number), 0);
+  const unknownPack = [...new Set(deduped.map((r) => r.item_number))].filter((i) => !(i in EACHES_PER_CASE));
+  if (unknownPack.length) {
+    errors.push({ row: 0, message: `No case pack on file for item(s) ${unknownPack.join(', ')} — counted at ${DEFAULT_EACHES_PER_CASE}/case in this summary. Add them to EACHES_PER_CASE in retailLinkSupplyPlan.js.` });
+  }
   return {
     records: deduped,
     errors,
@@ -138,7 +159,7 @@ async function parseFileImpl(file) {
       `plan of ${deduped[0]?.snapshot_date ?? '?'} · ${deduped.length} rows, ` +
       `${new Set(deduped.map((r) => r.item_number)).size} items, ` +
       `weeks ${weeks.length ? Math.min(...weeks) + '–' + Math.max(...weeks) : 'none'} · ` +
-      `${eaches.toLocaleString()} eaches (${Math.round(eaches / 12).toLocaleString()} cs)`,
+      `${eaches.toLocaleString()} eaches (${Math.round(cases).toLocaleString()} cs)`,
   };
 }
 

@@ -67,7 +67,7 @@ const EMPTY_SHAPE = {
 // None depends on today's date except "Retail Link POS is", which the live
 // shapes' week-202628 POS trips on any date after mid-August 2026.
 const EXPECT_SUMMARY = {
-  live: ['This week’s actions', 'Retail Link POS is', 'No DOT Inventory Snapshot uploaded'],
+  live: ['This week’s actions', 'Retail Link POS is', 'No DOT Inventory Snapshot uploaded', 'Case pack is changing'],
   dot: ['Decide what to do with 246 expired cases at DOT (WC 246)',
         'WC: 229 good cases expire within 60 days (15% of good stock, first Dec 23)'],
   empty: ['This week’s actions', 'No live Retail Link POS', 'No DOT Inventory Snapshot uploaded'],
