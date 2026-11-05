@@ -60,6 +60,8 @@ const DEFAULT_PARAMS = {
 // and 96 cases a pallet (Item 360 + Caroline, Oct 22 2026). Before this every
 // SKU was divided by 12, which understated BC's shopper-side cases by a sixth.
 // BC's MOQ is unknown, so it still uses the default.
+// The same pack is repeated by Walmart item number in EACHES_PER_CASE
+// (parsers/retailLinkSupplyPlan.js, upload summary); change both together.
 const SKU_PACK = { BC: { unitsPerCase: 10, casesPerPallet: 96 } };
 const packOf = sku => ({
   unitsPerCase: DEFAULT_PARAMS.unitsPerCase, casesPerPallet: DEFAULT_PARAMS.casesPerPallet, ...(SKU_PACK[sku] || {}),
@@ -1160,6 +1162,28 @@ function PlaceholderNotice() {
   );
 }
 
+// Status of the 12 → 8 case-pack change (raised Nov 5 2026). Static on
+// purpose: remove or update it when the cutover date, the 8-count GTIN, or the
+// Cases / Sell units switch lands. Detail: docs/BUILD_PLAN.md ("Doughs 12 → 8").
+function PackChangeNotice() {
+  return (
+    <div className="rounded-xl px-4 py-3 text-[12px]"
+      style={{ background: "#FDF3D8", border: "1px solid #E8D9A8", color: "#5C4A1F" }}>
+      <div className="font-semibold mb-0.5">
+        Case pack is changing: WC, PBG and CCF go from 12 to 8 per case. This page does not reflect it yet.
+      </div>
+      <ul className="mt-1 space-y-0.5 list-disc pl-4">
+        <li><b>Today:</b> every case figure is Walmart's sell units ÷ 12 (÷ 10 for Black Currant), and MOQ (756 cs) and pallets (189 cs) assume the 12-count case.</li>
+        <li><b>Not changing:</b> the sell unit and the Walmart item numbers. POS, the Walmart forecast and the Supply Plan arrive in sell units and stay correct.</li>
+        <li><b>Still unknown:</b> the cutover date, the new case GTIN (not yet issued), and the 8-count MOQ and cases per pallet.</li>
+        <li><b>After the cutover</b>, until this page is updated: Walmart demand shown in cases will read about a third low against 8-count orders and production (÷ 12 instead of ÷ 8). Plan the changeover in sell units.</li>
+        <li><b>Planned, on hold:</b> a Cases / Sell units switch on this page.</li>
+      </ul>
+      <div className="mt-1 opacity-70">Detail: docs/BUILD_PLAN.md, "Doughs 12 → 8"</div>
+    </div>
+  );
+}
+
 function UnmappedItemsNotice({ items }) {
   if (!items?.length) return null;
   const cases = items.reduce((a, r) => a + r.cases, 0);
@@ -1765,7 +1789,7 @@ export default function DemandPlanner() {
         )}
       </div>
       <main className="p-5 cc-sans">
-        {tab === "summary" && (<><UnmappedItemsNotice items={feeds.unmappedOrderItems} /><ActionPanel series={series} metrics={metrics} feeds={feeds} /><div className="mt-4" /><PlaceholderNotice /><div className="mt-4" /><ServiceHealth series={series} otif={feeds.otif} /><div className="mt-4" /><Summary series={series} metrics={metrics} feeds={feeds} /><DotServicePanel svc={svc} latestDataWk={latestDataWk} /></>)}
+        {tab === "summary" && (<><UnmappedItemsNotice items={feeds.unmappedOrderItems} /><ActionPanel series={series} metrics={metrics} feeds={feeds} /><div className="mt-4" /><PlaceholderNotice /><div className="mt-4" /><PackChangeNotice /><div className="mt-4" /><ServiceHealth series={series} otif={feeds.otif} /><div className="mt-4" /><Summary series={series} metrics={metrics} feeds={feeds} /><DotServicePanel svc={svc} latestDataWk={latestDataWk} /></>)}
         {tab === "tracker" && <Tracker series={series} onEdit={onEdit} />}
         {tab === "sources" && <Sources feeds={feeds} series={series} />}
       </main>
