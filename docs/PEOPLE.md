@@ -53,7 +53,7 @@ decision — nobody has made it.**
 
 **Seat owners that are not people:** `HIRE #1`, `HIRE #2`, `HIRE #3` and `OPEN` are unfilled seats on the accountability chart, not names.
 
-Named inside issues but not owners: Susie and Becky (Walmart CAPA / Bentonville requirements), Franz (Walmart system setup), Amit and Tim (Assemblers visit), John Lidestri. **Mark Cuban** appears in an issue title and is correctly spelled — unrelated to Marc Bouthillette.
+Named inside issues but not owners: Susie and Becky (Walmart CAPA / Bentonville requirements; Becky has since been replaced by Caroline Collins, see Partners), Franz (Walmart system setup), Amit and Tim (Assemblers visit), John Lidestri. **Mark Cuban** appears in an issue title and is correctly spelled — unrelated to Marc Bouthillette.
 
 ## Cortina Foods (EDI Conduit / Financier)
 
@@ -114,6 +114,7 @@ internal `ops` and seeding afterwards does not correct it.
 | Summit (Chicago) | Overflow freezer storage | TBD | Near Assemblers |
 | DOT Foods | Redistributor | TBD | Flow-through to Walmart/Kroger DCs |
 | Bentonville Merchants | Broker (Walmart) | Blayn (blayn@bentonvillemerchants.com) | Weekly Retail Link reports |
+| Bentonville Merchants | Replenishment manager | Caroline Collins (email TBD) | New as of Nov 2026, replacing Becky. Owner, with David, of the Demand Planner's Walmart actions (forecast gap, service) |
 | St Charles | Raw material distributor | TBD | Ardent Mills, Domino, REESE'S, Monila |
 | Dawn | Raw material distributor | TBD | Gold Medal, C&H, Barry Callebaut, Michael Foods, Smucker's |
 

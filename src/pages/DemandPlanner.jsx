@@ -63,29 +63,51 @@ const DEFAULT_PARAMS = {
 // The same pack is repeated by Walmart item number in EACHES_PER_CASE
 // (parsers/retailLinkSupplyPlan.js, upload summary); change both together.
 const SKU_PACK = { BC: { unitsPerCase: 10, casesPerPallet: 96 } };
+// Flip to true when `production` reads a real feed instead of SEED. While it is
+// false, figures built on production (DOT days on hand, the DOT buffer chip)
+// are not shown on the Summary tab, and the freshness strip marks Production
+// as not live. See KNOWN_ISSUES §1.
+const PRODUCTION_LIVE = false;
 const packOf = sku => ({
   unitsPerCase: DEFAULT_PARAMS.unitsPerCase, casesPerPallet: DEFAULT_PARAMS.casesPerPallet, ...(SKU_PACK[sku] || {}),
 });
 // Walmart weeks run Sat–Fri; the page labels a week by the Sunday after it
-// ends (the prototype's convention), with W## beside it in lighter type.
-// Week 202605 starts Sat 2026-02-28 — the same anchor as walmartWeekOf.
-function weekEndingSunday(wk) {
+// ends (the prototype's convention). Week 202605 starts Sat 2026-02-28 — the
+// same anchor as walmartWeekOf.
+//
+// WEEK LABELS (Caroline, Nov 5 2026): the Walmart week number appears ONCE, in
+// the header ("Walmart week 40"). Everywhere else a week is named by its
+// calendar date, "wk ending Nov 1" — never W39 or 202639. Use the helpers
+// below rather than slicing `wk` so the rule holds in one place.
+function weekEndingDate(wk) {
   if (!wk) return null;
   const n = (Math.floor(wk / 100) - 2026) * 52 + (wk % 100) - 5;
-  const d = new Date(Date.UTC(2026, 1, 28 + n * 7 + 8));
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  return new Date(Date.UTC(2026, 1, 28 + n * 7 + 8));
 }
+function weekEndingSunday(wk) {
+  const d = weekEndingDate(wk);
+  return d ? d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) : null;
+}
+// "11/1" — for tight axis and column labels.
+const weekEndingNumeric = wk => {
+  const d = weekEndingDate(wk);
+  return d ? `${d.getUTCMonth() + 1}/${d.getUTCDate()}` : "—";
+};
+// "wk ending Nov 1" — for prose and tooltips.
+const wkEnding = wk => (wk ? "wk ending " + weekEndingSunday(wk) : "—");
 // Store counts on the bar labels (Caroline, Oct 29): 2,609 → "2.6K". The hover
 // keeps the full ###,### figure.
 const abbrK = v => (v == null ? "" : v >= 1000 ? (v / 1000).toFixed(1) + "K" : String(Math.round(v)));
 function WeekLabel({ wk }) {
   if (!wk) return <>—</>;
-  return <>Sun {weekEndingSunday(wk)} <span style={{ opacity: 0.55 }}>W{String(wk).slice(4)}</span></>;
+  return <>{weekEndingSunday(wk)}</>;
 }
 const todayIso = () => {
   const t = new Date();
   return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
 };
+// "Thu, Nov 5"
+const todayLong = () => new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 
 const ceilTo = (v, moq) => (v <= 0 ? 0 : Math.ceil(v / moq) * moq);
 
@@ -265,22 +287,19 @@ function sopSummary(s, casesPerPallet = 189) {
 
 
 
-/* ---------------- fiscal calendar (4-5-4, per Walmart calendar) ---------------- */
-const FISCAL_CUM = [4, 9, 13, 17, 22, 26, 30, 35, 39, 43, 48, 52];
-const FISCAL_MONTHS = ["Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec","Jan"];
-const QTR_TINT = { 1: "#D9EFE4", 2: "#FADBE0", 3: "#DCE4F2", 4: "#FBEBD8" }; // matches her calendar
-const fiscalOf = wm => {
-  const ww = wm % 100;
-  // Week 53 exists (live POS carries 202653) but the table stops at 52, so
-  // findIndex returned -1 and the axis printed "undefined". It belongs to Jan.
-  const found = FISCAL_CUM.findIndex(c => ww <= c);
-  const i = found === -1 ? FISCAL_MONTHS.length - 1 : found;
-  return { month: FISCAL_MONTHS[i], quarter: Math.floor(i / 3) + 1 };
-};
+/* ---------------- calendar month bands ---------------- */
+// Walmart's 4-5-4 fiscal months were removed on Nov 5 2026 (calendar weeks
+// everywhere but the header); see git history for `fiscalOf`.
+const QTR_TINT = { 1: "#D9EFE4", 2: "#FADBE0", 3: "#DCE4F2", 4: "#FBEBD8" };
+// Calendar months of each week-ending date (Nov 5 2026: the page uses calendar
+// weeks, not Walmart's 4-5-4 fiscal months). `quarter` is the calendar quarter
+// and only picks the band tint.
 const monthBands = cells => {
   const bands = [];
   for (const c of cells) {
-    const f = fiscalOf(c.wk);
+    const d = weekEndingDate(c.wk);
+    const f = { month: d.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" }) + " " + String(d.getUTCFullYear()).slice(2),
+                quarter: Math.floor(d.getUTCMonth() / 3) + 1 };
     const last = bands[bands.length - 1];
     if (last && last.month === f.month) last.span++;
     else bands.push({ month: f.month, quarter: f.quarter, span: 1 });
@@ -322,21 +341,27 @@ const gapColor = g => {
 // mode for this page is somebody sizing a co-bakery run off one of them. So a
 // placeholder is greyed, struck through, and carries the word — it should be
 // impossible to read as a measurement at a glance. See ADR-062.
+//
+// Nov 5 2026: a struck-through number was still a number, and big numbers get
+// copied into plans. A placeholder Stat now shows NO value — a dash in a dashed
+// box — and `src` says what it is waiting for. The modelled figure is still in
+// the Tracker for anyone inspecting the cascade.
 function Stat({ label, value, tone, src, placeholder }) {
-  const color = placeholder ? "#B0A3AC"
-    : tone === "bad" ? "#C2185B" : tone === "warn" ? "#B87514" : "#2D2235";
+  const color = tone === "bad" ? "#C2185B" : tone === "warn" ? "#B87514" : "#2D2235";
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-widest opacity-60">{label}</div>
-      <div className="cc-serif text-xl flex items-baseline gap-1.5"
-        style={{ color, textDecoration: placeholder ? "line-through" : undefined }}>
-        {value}
-        {placeholder && (
-          <span className="cc-sans text-[8px] uppercase tracking-widest px-1 py-0.5 rounded no-underline"
-            style={{ background: "#EFE4E9", color: "#8E1039", textDecoration: "none" }}>placeholder</span>
-        )}
-      </div>
-      {src && <div className="text-[9px] mt-0.5" style={{ opacity: placeholder ? 0.8 : 0.5, color: placeholder ? "#8E1039" : undefined }}>{src}</div>}
+      <div className="text-[11px] uppercase tracking-wider opacity-60">{label}</div>
+      {placeholder ? (
+        <div className="cc-serif text-xl inline-flex items-baseline gap-2 mt-0.5 px-2 rounded-md"
+          style={{ color: "#B0A3AC", border: "1px dashed #D9C9D1" }}
+          title="Not shown: this figure is modelled on frozen production data, not measured.">
+          —
+          <span className="cc-sans text-[11px]" style={{ color: "#8E1039" }}>not yet available</span>
+        </div>
+      ) : (
+        <div className="cc-serif text-xl" style={{ color }}>{value}</div>
+      )}
+      {src && <div className="text-[11px] mt-0.5" style={{ opacity: placeholder ? 0.85 : 0.55, color: placeholder ? "#8E1039" : undefined }}>{src}</div>}
     </div>
   );
 }
@@ -345,13 +370,14 @@ function Stat({ label, value, tone, src, placeholder }) {
 // store base beneath it (Caroline, Oct 29 2026). The DC → DOT and DOT → depot
 // supply lines were removed from it; the funnel beside the chart now carries
 // where stock sits.
-const FLOW_COLORS = { pos: "#2D2235", fcst: "#C2185B", stores: "#B7A6C4" };
+const FLOW_COLORS = { pos: "#2D2235", fcst: "#C2185B", stores: "#D6CAE0", vel: "#6B3F8C" };
 function buildFlow(s) {
   const UNITS_PER_CASE = packOf(s.sku).unitsPerCase;
   return s.cells.map((c) => ({
     wl: String(c.wk).slice(4),
     wk: c.wk,
-    month: fiscalOf(c.wk).month,
+    // Calendar month of the week-ending date, not Walmart's 4-5-4 fiscal month.
+    month: weekEndingDate(c.wk).toLocaleDateString("en-US", { month: "short", timeZone: "UTC" }),
     pos: c.pos != null ? Math.round(c.pos / UNITS_PER_CASE) : null,
     fcst: c.wmtStoreFcst != null ? Math.round(c.wmtStoreFcst / UNITS_PER_CASE) : null,
     // Store base for the bar panel: Retail Link TRAITED stores (set up to
@@ -382,7 +408,7 @@ function FlowLegend({ latestWk }) {
         {item(FLOW_COLORS.fcst, "Walmart sales forecast · source: Retail Link fcst pull", true)}
         <span className="flex items-center gap-1.5">
           <span className="inline-block rounded-sm" style={{ width: 8, height: 12, background: FLOW_COLORS.stores }} />
-          Traited stores (bars, under the chart) · label: units/store/week over store count (2.6K) · source: Retail Link
+          Store base panel: traited stores (bars, left axis) and units/store/week (line, right axis) · source: Retail Link
         </span>
         <span className="flex items-center gap-1.5">
           {/* Was hardcoded "today W28" (Aug 13 snapshot) until Oct 29 2026. */}
@@ -425,13 +451,37 @@ function chainChips(s) {
     } else { text = "building +" + F.int(net) + " cs"; bg = "#DCE4F2"; fg = "#2D3B66"; }
     chips.push({ label, text, bg, fg });
   };
-  link("DOT buffer (in − thru)", inSum - thruSum, outSum);
+  // `inSum` is production into DOT — still the frozen seed, so the DOT buffer
+  // and the "0 cs shipped" alarm were computed from a made-up input (every SKU
+  // read "draining" and "0 cs shipped"). They come back with a production feed;
+  // until then the chip says what it is waiting for instead of showing a figure.
+  if (PRODUCTION_LIVE) {
+    link("DOT buffer (in − thru)", inSum - thruSum, outSum);
+    if (inSum === 0 && outSum > 0) chips.push({ label: "Production", text: "0 cs shipped", bg: "#F8CBCB", fg: "#8E1039" });
+  } else {
+    chips.push({ label: "DOT buffer", text: "needs a production feed", bg: "#F4EEF1", fg: "#7A6B75", placeholder: true });
+  }
   link("Depot buffer (thru − POS)", thruSum - outSum, outSum);
-  if (inSum === 0 && outSum > 0) chips.push({ label: "Production", text: "0 cs shipped L4W", bg: "#F8CBCB", fg: "#8E1039" });
   return chips;
 }
 
-function FlowCard({ s, m, f }) {
+// DOT days on hand from MEASURED inputs only (Nov 5 2026): sellable cases in
+// the newest DOT Inventory Snapshot ÷ the last 4 weeks' POS per day. Not the
+// engine's c.dotDoh, which models DOT stock forward on frozen production and
+// stays a placeholder in the Tracker. Shopper takeaway is the pull DOT
+// ultimately has to cover; the date says which snapshot it is.
+function dotDaysOnHand(m, f, pack) {
+  if (!f.dot || m.l4wPos == null || !(m.l4wPos > 0)) return null;
+  const sellable = f.dot.cases - (f.dot.committed ?? 0);
+  return sellable / (m.l4wPos / pack / 7);
+}
+
+// Shared geometry so the demand panel and the store panel line up exactly:
+// same left and right axis widths, same x categories.
+const AXIS_L = 46, AXIS_R = 46;
+const tickStyle = { fontSize: 10, fontFamily: "IBM Plex Mono, monospace", fill: "#2D2235", opacity: 0.7 };
+
+function FlowCard({ s, m, f, feeds }) {
   const data = buildFlow(s);
   const ticks = data.filter((d, i) => i === 0 || d.month !== data[i - 1].month).map(d => d.wl);
   const todayWl = s.lastActualIdx >= 0 ? data[s.lastActualIdx].wl : null;
@@ -439,6 +489,7 @@ function FlowCard({ s, m, f }) {
   const UNITS_PER_CASE = packOf(s.sku).unitsPerCase;
   const g = m.n4wGap;
   const gTone = g != null && Math.abs(g) > 0.15 ? (Math.abs(g) > 0.4 ? "#C2185B" : "#B87514") : "#3E8E5A";
+  const doh = dotDaysOnHand(m, f, UNITS_PER_CASE);
   const fmtTip = (v, name) => {
     const cs = Math.round(v).toLocaleString() + " cs";
     if (name === "POS" || name === "Walmart fcst") {
@@ -446,12 +497,15 @@ function FlowCard({ s, m, f }) {
     }
     return [cs, name];
   };
+  const wkLabelOf = (wl) => { const d = data.find(x => x.wl === wl); return d ? wkEnding(d.wk) : wl; };
+  const tipStyle = { fontSize: 12, fontFamily: "Inter, sans-serif", borderRadius: 10, borderColor: "#E5D9DE" };
+  const panelTitle = "text-[11px] uppercase tracking-wider opacity-60";
   return (
     <section className="bg-white rounded-2xl border p-5" style={{ borderColor: "#E5D9DE" }}>
       <header className="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-3">
         <span className="text-[11px] tracking-widest uppercase font-semibold" style={{ color: "#C2185B" }}>{s.sku}</span>
         <h2 className="cc-serif text-lg leading-tight">{SKU_NAMES[s.sku]}</h2>
-        <span className="text-xs opacity-60">Retail Link data thru wk ending <WeekLabel wk={m.latestWk} /></span>
+        <span className="text-xs opacity-60">Retail Link data thru {wkEnding(m.latestWk)}</span>
         <span className="ml-auto text-sm" title="Walmart = latest Retail Link store forecast · us = DC internal forecast (trailing-4-wk true velocity × stores)">
           Walmart fcst vs our fcst, next 4 wks: <b style={{ color: gTone }}>{F.spct(g)}</b>
           {g != null && Math.abs(g) > 0.15 && <span className="ml-2 text-[11px] font-medium" style={{ color: "#C2185B" }}>raise with Walmart</span>}
@@ -467,210 +521,228 @@ function FlowCard({ s, m, f }) {
             src="Retail Link · share of stores" />
           <Stat label="Fill rate, last 4 wks" value={F.pct(m.l4wFill)}
             src="NetSuite (Cortina) deliveries" />
-          <Stat label="DOT days on hand" value={F.d1(m.dotDoh)} placeholder
-            src="NOT REAL — modelled forward from the last DOT snapshot on frozen production" />
+          <Stat label="DOT days on hand" value={doh == null ? "—" : F.d1(doh)}
+            tone={doh != null && doh < 7 ? "bad" : doh != null && doh > 60 ? "warn" : undefined}
+            src={f.dot ? "Sellable at DOT " + f.dot.label + " ÷ last-4-wk POS" : "No DOT Inventory Snapshot yet"} />
       </div>
-      <div className="grid gap-5 md:grid-cols-[1fr_250px] items-stretch">
-        {/* Stretches to the funnel's height (Caroline, Oct 29): the line chart
-            takes two thirds of it, the store panel one third. */}
+      <div className="grid gap-6 lg:grid-cols-[3fr_2fr] items-stretch">
+        {/* Demand and store base, each panel with its OWN y-axis (Nov 5 2026).
+            The store bars used to carry two-line text labels and no scale;
+            now stores read off a left axis and velocity is a line on a right
+            axis, and both panels share the x axis geometry so weeks line up. */}
         <div className="min-w-0 flex flex-col">
-          <div style={{ flex: "2 1 0", minHeight: 170 }}>
+          <div className="flex items-baseline justify-between" style={{ paddingLeft: AXIS_L, paddingRight: AXIS_R }}>
+            <span className={panelTitle}>Shopper demand · cases / wk</span>
+            <span className="flex gap-3 text-[11px] opacity-80">
+              <span className="flex items-center gap-1"><span className="inline-block" style={{ width: 14, borderTop: "3px solid " + FLOW_COLORS.pos }} />POS</span>
+              <span className="flex items-center gap-1"><span className="inline-block" style={{ width: 14, borderTop: "2px dashed " + FLOW_COLORS.fcst }} />Walmart fcst</span>
+            </span>
+          </div>
+          <div style={{ height: 200 }}>
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={data} syncId={"flow-" + s.sku} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}>
-                {todayWl && (
-                  <ReferenceArea x1={todayWl} x2={data[data.length - 1].wl} fill="#FDF6FA" fillOpacity={0.7} />
-                )}
-                {/* Month ticks live on the store panel below, which shares this axis. */}
-                <XAxis dataKey="wl" hide />
-                <YAxis width={42} tickLine={false} axisLine={false} tickFormatter={(v) => Number(v).toLocaleString("en-US")}
-                  tick={{ fontSize: 10, fontFamily: "IBM Plex Mono, monospace", fill: "#2D2235", opacity: 0.7 }} />
-                <Tooltip formatter={fmtTip}
-                  labelFormatter={(wl) => { const d = data.find(x => x.wl === wl); return d ? "W" + wl + " \u00b7 " + d.month + " (wk " + d.wk + ")" : wl; }}
-                  contentStyle={{ fontSize: 11, fontFamily: "Inter, sans-serif", borderRadius: 10, borderColor: "#E5D9DE" }} />
-                {todayWl && <ReferenceLine x={todayWl} stroke="#C2185B" strokeWidth={2} />}
-                <Line dataKey="pos" name="POS" stroke={FLOW_COLORS.pos} strokeWidth={2.6} dot={false} />
-                <Line dataKey="fcst" name="Walmart fcst" stroke={FLOW_COLORS.fcst} strokeWidth={2} strokeDasharray="6 4" dot={false} connectNulls />
+              <ComposedChart data={data} syncId={"flow-" + s.sku} margin={{ top: 8, right: 0, bottom: 0, left: 0 }}>
+                {todayWl && <ReferenceArea yAxisId="cs" x1={todayWl} x2={data[data.length - 1].wl} fill="#FDF6FA" fillOpacity={0.8} />}
+                <XAxis dataKey="wl" ticks={ticks} tickLine={false} axisLine={{ stroke: "#E5D9DE" }} tick={false} height={4} />
+                <YAxis yAxisId="cs" width={AXIS_L} tickLine={false} axisLine={false} tick={tickStyle}
+                  tickFormatter={(v) => Number(v).toLocaleString("en-US")} />
+                {/* Empty right axis: keeps this plot area the same width as the store panel's. */}
+                <YAxis yAxisId="pad" orientation="right" width={AXIS_R} tick={false} axisLine={false} tickLine={false} />
+                <Tooltip formatter={fmtTip} labelFormatter={wkLabelOf} contentStyle={tipStyle} />
+                {todayWl && <ReferenceLine yAxisId="cs" x={todayWl} stroke="#C2185B" strokeWidth={1.5}
+                  label={{ value: "today", position: "insideTopLeft", fontSize: 10, fill: "#C2185B" }} />}
+                <Line yAxisId="cs" dataKey="pos" name="POS" stroke={FLOW_COLORS.pos} strokeWidth={2.4} dot={false} isAnimationActive={false} />
+                <Line yAxisId="cs" dataKey="fcst" name="Walmart fcst" stroke={FLOW_COLORS.fcst} strokeWidth={2} strokeDasharray="6 4" dot={false} connectNulls isAnimationActive={false} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
-          {/* Store base under the demand chart, on the SAME week axis (syncId
-              links the hover). A separate panel, not a second y-axis: ~2,600
-              stores and ~400 cases on one chart would need two scales. Each bar
-              is labelled vertically "stores · units/store/week". */}
-          <div className="text-[9px] uppercase tracking-widest opacity-55 mt-1 pl-[42px]">
-            Traited stores <span className="normal-case tracking-normal">(label: units/store/wk over store count)</span>
+          <div className="flex items-baseline justify-between mt-3" style={{ paddingLeft: AXIS_L, paddingRight: AXIS_R }}>
+            <span className={panelTitle}>Store base</span>
+            <span className="flex gap-3 text-[11px] opacity-80">
+              <span className="flex items-center gap-1"><span className="inline-block rounded-sm" style={{ width: 9, height: 9, background: FLOW_COLORS.stores }} />traited stores (left)</span>
+              <span className="flex items-center gap-1"><span className="inline-block" style={{ width: 14, borderTop: "2px solid " + FLOW_COLORS.vel }} />units / store / wk (right)</span>
+            </span>
           </div>
-          <div style={{ flex: "1 1 0", minHeight: 110 }}>
+          <div style={{ height: 130 }}>
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={data} syncId={"flow-" + s.sku} margin={{ top: 26, right: 8, bottom: 0, left: 0 }}>
-                {todayWl && (
-                  <ReferenceArea x1={todayWl} x2={data[data.length - 1].wl} fill="#FDF6FA" fillOpacity={0.7} />
-                )}
-                <XAxis dataKey="wl" ticks={ticks} tickLine={false} axisLine={{ stroke: "#E5D9DE" }}
-                  tick={{ fontSize: 10, fontFamily: "IBM Plex Mono, monospace", fill: "#2D2235", opacity: 0.7 }}
+              <ComposedChart data={data} syncId={"flow-" + s.sku} margin={{ top: 8, right: 0, bottom: 0, left: 0 }}>
+                {todayWl && <ReferenceArea yAxisId="st" x1={todayWl} x2={data[data.length - 1].wl} fill="#FDF6FA" fillOpacity={0.8} />}
+                <XAxis dataKey="wl" ticks={ticks} tickLine={false} axisLine={{ stroke: "#E5D9DE" }} tick={tickStyle}
                   tickFormatter={(wl) => { const d = data.find(x => x.wl === wl); return d ? d.month : wl; }} />
-                {/* Same width as the chart above so the plot areas line up. The
-                    26px top margin holds the two-line labels over the tallest bar. */}
-                <YAxis width={42} hide={false} tick={false} axisLine={false} tickLine={false}
-                  domain={[0, (max) => Math.max(1, max) * 1.1]} />
-                <Tooltip
-                  formatter={(v, name, item) => name === "Traited stores"
-                    ? [F.int(v) + " stores · " + (item.payload.velocity != null ? item.payload.velocity.toFixed(2) : "—") + " units/store/wk", "Traited stores"]
-                    : [v, name]}
-                  labelFormatter={(wl) => { const d = data.find(x => x.wl === wl); return d ? "W" + wl + " \u00b7 wk ending Sun " + weekEndingSunday(d.wk) : wl; }}
-                  contentStyle={{ fontSize: 11, fontFamily: "Inter, sans-serif", borderRadius: 10, borderColor: "#E5D9DE" }} />
-                {todayWl && <ReferenceLine x={todayWl} stroke="#C2185B" strokeWidth={2} />}
-                <Bar dataKey="stores" name="Traited stores" fill={FLOW_COLORS.stores} radius={[2, 2, 0, 0]} isAnimationActive={false}>
-                  <LabelList dataKey="stores" content={({ x, y, width, index }) => {
-                    const d = data[index];
-                    if (!d || d.stores == null) return null;
-                    // Too narrow for a 4-character label (small screens): every other bar.
-                    if (width < 17 && index % 2) return null;
-                    const cx = x + width / 2;
-                    const st = { fontSize: 8, fontFamily: "IBM Plex Mono, monospace", fill: "#2D2235" };
-                    return (
-                      <g>
-                        <text x={cx} y={y - 13} textAnchor="middle" style={{ ...st, opacity: 0.55 }}>{d.velocity.toFixed(2)}</text>
-                        <text x={cx} y={y - 3} textAnchor="middle" style={{ ...st, opacity: 0.85 }}>{abbrK(d.stores)}</text>
-                      </g>
-                    );
-                  }} />
-                </Bar>
+                <YAxis yAxisId="st" width={AXIS_L} tickLine={false} axisLine={false} tick={tickStyle}
+                  tickFormatter={abbrK} domain={[0, "auto"]} tickCount={4} />
+                <YAxis yAxisId="vel" orientation="right" width={AXIS_R} tickLine={false} axisLine={false}
+                  tick={{ ...tickStyle, fill: FLOW_COLORS.vel }} tickFormatter={(v) => Number(v).toFixed(1)}
+                  domain={[0, "auto"]} tickCount={4} />
+                <Tooltip contentStyle={tipStyle} labelFormatter={wkLabelOf}
+                  formatter={(v, name) => name === "Traited stores" ? [F.int(v) + " stores", name] : [Number(v).toFixed(2) + " units/store/wk", name]} />
+                {todayWl && <ReferenceLine yAxisId="st" x={todayWl} stroke="#C2185B" strokeWidth={1.5} />}
+                <Bar yAxisId="st" dataKey="stores" name="Traited stores" fill={FLOW_COLORS.stores} radius={[2, 2, 0, 0]} isAnimationActive={false} />
+                <Line yAxisId="vel" dataKey="velocity" name="Velocity" stroke={FLOW_COLORS.vel} strokeWidth={2} dot={false} isAnimationActive={false} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
-          <div className="flex flex-wrap gap-2 mt-2">
+          <div className="flex flex-wrap gap-2 mt-3">
             {chips.map((c, i) => (
-              <span key={i} className="text-[11px] px-2.5 py-1 rounded-full" style={{ background: c.bg, color: c.fg }}>
-                <b>{c.label}:</b> {c.text} <span className="opacity-70">/ L4W</span>
+              <span key={i} className="text-[11px] px-2.5 py-1 rounded-full"
+                style={{ background: c.bg, color: c.fg, border: c.placeholder ? "1px dashed #D9C9D1" : undefined }}>
+                <b>{c.label}:</b> {c.text}{!c.placeholder && <span className="opacity-70"> / last 4 wks</span>}
               </span>
             ))}
           </div>
         </div>
-        <Funnel s={s} f={f} />
+        <InventoryByWeek s={s} feeds={feeds} />
       </div>
     </section>
   );
 }
 
-/* ---------------- inventory funnel ---------------- */
-// "Where every case sits" — one SKU's cases along the chain, upstream → shopper.
-// Folded in from the standalone prototype (B1, Oct 29 2026) with three changes:
-//   · "At Walmart DCs" is MEASURED (Retail Link "Curr Whse On Hand" ÷ pack),
-//     not the prototype's implied deliveries − POS − shelves, which on live
-//     data read 4,000–7,000 cs against Walmart's own ~20–42 (a year of shrink,
-//     markdowns and data gaps, not stock).
-//   · A row with no source says "no feed" rather than drawing a zero — BC is
-//     not yet in the Retail Link WK## pull.
-//   · No "cases accounted for" total: stock and a sales flow do not add up.
-//     The header is stock in the chain; expired is shown beside it, not in it.
-// Colour is by STAGE GROUP only (rows are named in text, so identity never
-// rests on colour): DOT green, Walmart-network amber, shopper plum — validated
-// with the dataviz palette script (all checks pass; amber's sub-3:1 contrast is
-// relieved by the label + value on every row). Expired is a STATE, not a
-// colour: a ⚠ note in critical ink under the DOT group.
-const FUNNEL_GROUPS = {
-  dot:  { label: "With DOT (3PL)",  color: "#3E8E5A" },
-  wm:   { label: "Walmart network", color: "#E8A33D" },
-  shop: { label: "Shopper",         color: "#6B3F8C" },
-};
+/* ---------------- inventory by week ---------------- */
+// Replaced the single-week "Where every case sits" funnel (Nov 5 2026): the
+// same stages, one stacked bar per week on a date axis, so the breakout AND
+// its week-to-week change read at once. Shopper takeaway (POS) is a line on
+// the same cases scale — it is a flow, not stock, so it is never stacked.
+//
+// Every segment is a MEASUREMENT for that week or absent:
+//   · Sellable at DOT / In transit / Expired — DOT Inventory Snapshot for the
+//     week (newest snapshot if two land in one week). Sellable = RG lots −
+//     Loaded − Picked; In transit = Loaded + Picked; Expired = EX lots.
+//   · At Walmart DCs — Retail Link Curr Whse On Hand ÷ pack.
+//   · On store shelves — Retail Link Curr Str On Hand ÷ pack.
+// Retail Link's on-hand is current-week only, so history exists only from
+// the first upload that carried it and grows one week per upload. Weeks
+// without a reading draw no segment rather than a zero; the tooltip says
+// "no reading".
+const INV_SERIES = [
+  { k: "dotSellable", label: "Sellable at DOT", color: "#3E8E5A", src: "DOT Inventory Snapshot" },
+  { k: "transit",     label: "In transit to Walmart", color: "#9CCB9F", src: "DOT Inventory Snapshot · Loaded + Picked" },
+  { k: "dc",          label: "At Walmart DCs", color: "#E8A33D", src: "Retail Link Curr Whse On Hand" },
+  { k: "shelves",     label: "On store shelves", color: "#F3CF8E", src: "Retail Link Curr Str On Hand" },
+  { k: "expired",     label: "Expired at DOT (not sellable)", color: "#C2185B", src: "DOT Inventory Snapshot · EX lots" },
+];
+const INV_WEEKS = 8;
 
-function funnelRows(s, f, mode) {
+function inventoryHistory(s, feeds) {
   const pack = packOf(s.sku).unitsPerCase;
-  const hasPos = s.cells.some(c => c.pos != null);
-  const last = s.lastActualIdx >= 0 ? s.cells[s.lastActualIdx] : null;
-  let store = null;
-  for (const c of s.cells) if (c.storeOh != null) store = { cs: c.storeOh / pack, wk: c.wk };
-  const d = f.dot;
-  const sold = !hasPos ? null
-    : mode === "week" ? (last?.pos != null ? last.pos / pack : null)
-    : s.cells.reduce((a, c) => a + (c.pos || 0), 0) / pack;
-  return [
-    { grp: "dot", k: "Sellable at DOT", v: d ? d.cases - d.committed : null,
-      src: "DOT Inventory Snapshot · RG lots − Loaded − Picked" },
-    { grp: "wm", k: "In transit to Walmart", v: d ? d.committed : null,
-      src: "DOT Inventory Snapshot · Loaded + Picked" },
-    { grp: "wm", k: "At Walmart DCs", v: f.wh ? f.wh.units / pack : null,
-      formula: `= Whse On Hand ÷ ${pack} · Walmart's warehouses, not DOT`,
-      src: `Retail Link Curr Whse On Hand ÷ ${pack} units/cs · Walmart's own warehouses, not DOT` },
-    { grp: "wm", k: "On store shelves", v: store ? store.cs : null,
-      src: `Retail Link Curr Str On Hand ÷ ${pack} units/cs` },
-    { grp: "shop", k: mode === "week" ? "Sold this week" : "Sold to shoppers", v: sold,
-      src: `Retail Link POS ÷ ${pack} units/cs${hasPos && mode === "week" && last ? " · wk ending Sun " + weekEndingSunday(last.wk) : ""}` },
-  ];
+  const dotByWk = new Map();
+  for (const r of (feeds.dotOnHand ?? [])) {
+    if (r.sku !== s.sku) continue;
+    const prev = dotByWk.get(r.wk);
+    if (!prev || r.snapshotDate > prev.snapshotDate) dotByWk.set(r.wk, r);
+  }
+  const whByWk = new Map();
+  for (const p of (feeds.pos ?? [])) if (p.sku === s.sku && p.whOh != null) whByWk.set(p.wk, p.whOh);
+  const rows = s.cells.map(c => {
+    const d = dotByWk.get(c.wk);
+    return {
+      wk: c.wk, label: weekEndingNumeric(c.wk),
+      dotSellable: d ? d.cases - (d.committed ?? 0) : null,
+      transit: d ? (d.committed ?? 0) : null,
+      expired: d ? (d.expired ?? 0) : null,
+      dotDate: d ? d.snapshotDate : null,
+      dc: whByWk.has(c.wk) ? whByWk.get(c.wk) / pack : null,
+      shelves: c.storeOh != null && c.storeOh > 0 ? c.storeOh / pack : null,
+      sold: c.pos != null ? c.pos / pack : null,
+    };
+  });
+  // Window: the INV_WEEKS weeks ending at the newest week with any stock reading.
+  const has = r => INV_SERIES.some(x => x.k !== "expired" && r[x.k] != null);
+  let end = -1;
+  rows.forEach((r, i) => { if (has(r)) end = i; });
+  if (end < 0) return { rows: [], any: false };
+  // A week is PARTIAL when some sources reported and others did not — DOT
+  // snapshots land mid-week, Retail Link a week behind — so its stack is
+  // short by the missing stages and must not read as a drop in stock.
+  const win = rows.slice(Math.max(0, end - INV_WEEKS + 1), end + 1).map(r => {
+    const hasDot = r.dotSellable != null, hasWm = r.dc != null || r.shelves != null;
+    const partial = (hasDot || hasWm) && !(hasDot && hasWm);
+    return { ...r, partial, label: r.label + (partial ? "*" : "") };
+  });
+  return { rows: win, any: true };
 }
 
-// A ranked bar list (Caroline, Oct 29 2026: the prototype's centred trapezoids
-// read as confusing). Label and value on one line, a left-aligned bar under it,
-// all bars on one scale. Sources live in the hover; only the DC row keeps its
-// formula on the face. Expired is a note under the DOT group, not a bar —
-// it is not sellable stock.
-function Funnel({ s, f }) {
-  const [mode, setMode] = useState("week");
-  const rows = funnelRows(s, f, mode);
-  const maxV = Math.max(1, ...rows.map(r => r.v ?? 0));
-  const stock = rows.filter(r => r.grp !== "shop" && r.v != null).reduce((a, r) => a + r.v, 0);
-  const expired = f.dot ? f.dot.expired : null;
-  const pack = packOf(s.sku).unitsPerCase;
+function InventoryTooltip({ active, payload }) {
+  if (!active || !payload?.length) return null;
+  const r = payload[0].payload;
+  const stock = INV_SERIES.filter(x => x.k !== "expired").reduce((a, x) => a + (r[x.k] ?? 0), 0);
   return (
-    <div className="flex flex-col rounded-xl border p-3 h-full" style={{ borderColor: "#EFE4E9", background: "#FBF8F6" }}>
-      <div className="flex items-center gap-2">
-        <div className="text-[10px] uppercase tracking-widest opacity-60 flex-1">Where every case sits</div>
-        <div className="flex gap-0.5 rounded-full border p-0.5" style={{ borderColor: "#E5D9DE", background: "#fff" }}
-          role="group" aria-label="Sold row period">
-          {[["week", "This wk"], ["all", "All time"]].map(([k, label]) => (
-            <button key={k} onClick={() => setMode(k)} aria-pressed={mode === k}
-              className="px-2 py-0.5 rounded-full text-[10px]"
-              style={mode === k ? { background: "#2D2235", color: "#fff" } : {}}>{label}</button>
-          ))}
+    <div className="bg-white rounded-lg border px-3 py-2 text-[12px] shadow-sm" style={{ borderColor: "#E5D9DE" }}>
+      <div className="font-semibold mb-1">{wkEnding(r.wk)}</div>
+      {r.partial && <div className="text-[11px] mb-1" style={{ color: "#8A5A10" }}>Partial week: not every source has reported</div>}
+      {INV_SERIES.map(x => (
+        <div key={x.k} className="flex items-center gap-2">
+          <span className="inline-block w-2 h-2 rounded-sm" style={{ background: x.color }} />
+          <span className="flex-1">{x.label}</span>
+          <span className="cc-mono">{r[x.k] == null ? <span className="opacity-50">no reading</span> : F.int(r[x.k])}</span>
         </div>
+      ))}
+      <div className="flex gap-2 mt-1 pt-1 border-t" style={{ borderColor: "#EFE4E9" }}>
+        <span className="flex-1">Stock in the chain</span><span className="cc-mono font-semibold">{F.int(stock)} cs</span>
       </div>
-      <div className="cc-serif text-lg leading-none mt-1">{F.int(stock)} cs
-        <span className="text-[10px] cc-sans opacity-60"> in the chain</span>
+      <div className="flex gap-2">
+        <span className="flex-1">Sold to shoppers</span><span className="cc-mono">{r.sold == null ? "—" : F.int(r.sold) + " cs"}</span>
       </div>
-      <div className="text-[9.5px] opacity-60 mt-0.5">
-        {f.dot
-          ? <>DOT {f.dot.label} <span style={{ opacity: 0.6 }}>W{String(f.dot.wk).slice(4)}</span></>
-          : "No DOT snapshot yet"}
-        {" · "}
-        {f.rlWk ? <>Walmart wk ending <WeekLabel wk={f.rlWk} /></> : "no Retail Link feed"}
+      {r.dotDate && <div className="text-[11px] opacity-60 mt-1">DOT snapshot {r.dotDate}</div>}
+    </div>
+  );
+}
+
+function InventoryByWeek({ s, feeds }) {
+  const { rows, any } = inventoryHistory(s, feeds);
+  // Newest reading of each segment and its change from the reading before.
+  const latest = INV_SERIES.map(x => {
+    const pts = rows.filter(r => r[x.k] != null);
+    const last = pts.at(-1), prev = pts.at(-2);
+    const delta = last && prev ? Math.round(last[x.k] - prev[x.k]) : null;
+    return { ...x, v: last ? last[x.k] : null, wk: last?.wk, delta: delta === 0 ? 0 : delta };
+  });
+  return (
+    <div className="flex flex-col rounded-xl border p-3 min-w-0" style={{ borderColor: "#EFE4E9", background: "#FBF8F6" }}>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-[11px] uppercase tracking-wider opacity-60">Where every case sits, by week</span>
+        <span className="text-[11px] opacity-60">cases</span>
       </div>
-      {["dot", "wm", "shop"].map(grp => {
-        const g = FUNNEL_GROUPS[grp];
-        return (
-          <div key={grp} className="mt-2.5">
-            <div className="flex items-center gap-1.5 text-[9px] uppercase tracking-widest font-semibold opacity-70 mb-1">
-              <span className="inline-block rounded-sm" style={{ width: 8, height: 8, background: g.color }} />{g.label}
-            </div>
-            {rows.filter(r => r.grp === grp).map(r => {
-              const has = r.v != null;
-              return (
-                <div key={r.k} className="mb-1.5"
-                  title={has ? `${r.k}: ${F.int(r.v)} cs · ${F.int(r.v * pack)} units — ${r.src}` : `${r.k}: no feed — ${r.src}`}>
-                  <div className="flex items-baseline gap-2 text-[11px]">
-                    <span className="flex-1">{r.k}</span>
-                    <span className="cc-mono font-semibold">
-                      {has ? F.int(r.v) : <span className="font-normal opacity-60">no feed</span>}
-                    </span>
-                  </div>
-                  <div className="rounded-sm mt-0.5" style={{ height: 6, background: "#EFE4E9" }}>
-                    {has && r.v > 0 && (
-                      <div className="rounded-sm" style={{ height: 6, width: `${Math.max(1.5, (r.v / maxV) * 100)}%`, background: g.color }} />
-                    )}
-                  </div>
-                  {r.formula && <div className="text-[9px] opacity-55 mt-0.5">{r.formula}</div>}
-                </div>
-              );
-            })}
-            {grp === "dot" && expired > 0 && (
-              <div className="text-[10.5px] font-medium" style={{ color: "#8E1039" }}
-                title="DOT Inventory Snapshot · EX (expired) lots — not sellable, not in the chain total">
-                ⚠ {F.int(expired)} expired at DOT (not sellable)
-              </div>
-            )}
+      {!any ? (
+        <div className="text-[12px] opacity-60 py-8 text-center">No inventory readings yet — upload a DOT Inventory Snapshot or Retail Link weekly.</div>
+      ) : (
+        <>
+          <div style={{ height: 200 }} className="mt-1">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={rows} margin={{ top: 8, right: 4, bottom: 0, left: 0 }}>
+                <XAxis dataKey="label" tickLine={false} axisLine={{ stroke: "#E5D9DE" }} tick={tickStyle} interval={0} />
+                <YAxis width={44} tickLine={false} axisLine={false} tick={tickStyle} tickFormatter={abbrK} />
+                <Tooltip content={<InventoryTooltip />} cursor={{ fill: "rgba(45,34,53,0.05)" }} />
+                {INV_SERIES.map(x => (
+                  <Bar key={x.k} dataKey={x.k} name={x.label} stackId="inv" fill={x.color} isAnimationActive={false} maxBarSize={36} />
+                ))}
+                <Line dataKey="sold" name="Sold to shoppers" stroke="#6B3F8C" strokeWidth={2} dot={{ r: 2.5 }} connectNulls isAnimationActive={false} />
+              </ComposedChart>
+            </ResponsiveContainer>
           </div>
-        );
-      })}
+          <div className="mt-2 flex flex-col gap-1">
+            {latest.map(x => (
+              <div key={x.k} className="flex items-center gap-2 text-[12px]" title={x.src}>
+                <span className="inline-block w-2.5 h-2.5 rounded-sm flex-none" style={{ background: x.color }} />
+                <span className="flex-1 truncate">{x.label}</span>
+                <span className="cc-mono font-semibold">{x.v == null ? <span className="font-normal opacity-50">no reading</span> : F.int(x.v)}</span>
+                <span className="cc-mono text-[11px] w-14 text-right"
+                  style={{ color: x.delta == null ? undefined : x.k === "expired" ? (x.delta > 0 ? "#8E1039" : "#245B33") : "#2D2235", opacity: x.delta == null ? 0.4 : 0.8 }}>
+                  {x.delta == null ? "—" : x.delta === 0 ? "0" : (x.delta > 0 ? "+" : "") + F.int(x.delta)}
+                </span>
+              </div>
+            ))}
+            <div className="flex items-center gap-2 text-[12px]">
+              <span className="inline-block flex-none" style={{ width: 10, borderTop: "2px solid #6B3F8C" }} />
+              <span className="flex-1">Sold to shoppers (line)</span>
+            </div>
+          </div>
+          <div className="text-[11px] opacity-60 mt-2 leading-snug">
+            Right column = change vs the previous reading. Bars are week ending (month/day);
+            * = partial week, not every source has reported yet (DOT snapshots land mid-week, Retail Link a week behind).
+            On-hand history starts with the first upload that carried it and grows one week per upload;
+            weeks with no reading are left empty, not zero.
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -715,13 +787,13 @@ const barColor = (v, bad, warn) =>
 // scaled to the data: these are service levels, and stretching 92%–98% to fill
 // the box would make a good week look like a crisis.
 function ServiceBars({ rows, bad, warn, fmt }) {
-  if (!rows.length) return <div className="text-[11px] opacity-50">No weekly history yet.</div>;
+  if (!rows.length) return <div className="text-[11px] opacity-60">No weekly history yet.</div>;
   return (
     <div>
       <div className="flex items-end gap-1" style={{ height: 56 }}>
         {rows.map((r) => (
           <div key={r.wk} className="flex-1 min-w-0 flex flex-col justify-end" style={{ height: 56 }}
-            title={"Wk " + r.wk + ": " + fmt(r.v) + (r.note ? " \u00b7 " + r.note : "")}>
+            title={wkEnding(r.wk) + ": " + fmt(r.v) + (r.note ? " \u00b7 " + r.note : "")}>
             <div className="w-full rounded-t"
               style={{ height: Math.max(2, (r.v ?? 0) * 56), background: barColor(r.v, bad, warn) }} />
           </div>
@@ -735,7 +807,7 @@ function ServiceBars({ rows, bad, warn, fmt }) {
           rather than repeated 14 times, which is what makes the column fit. */}
       <div className="flex gap-1 mt-1">
         {rows.map((r) => (
-          <div key={r.wk} className="flex-1 min-w-0 text-center text-[9px] cc-mono font-bold tabular-nums"
+          <div key={r.wk} className="flex-1 min-w-0 text-center text-[11px] cc-mono font-bold tabular-nums tracking-tighter"
             style={{ color: barColor(r.v, bad, warn) }}>
             {r.v == null ? "—" : (r.v * 100).toFixed(1)}
           </div>
@@ -743,12 +815,12 @@ function ServiceBars({ rows, bad, warn, fmt }) {
       </div>
       <div className="flex gap-1">
         {rows.map((r) => (
-          <div key={r.wk} className="flex-1 min-w-0 text-center text-[9px] cc-mono opacity-50 tabular-nums">
-            {String(r.wk).slice(4)}
+          <div key={r.wk} className="flex-1 min-w-0 text-center text-[10px] cc-mono opacity-60 tabular-nums tracking-tighter">
+            {weekEndingNumeric(r.wk)}
           </div>
         ))}
       </div>
-      <div className="text-[9px] opacity-40 mt-0.5">values are %, labels are Walmart week</div>
+      <div className="text-[11px] opacity-50 mt-0.5">values are %, labels are week ending (month/day)</div>
     </div>
   );
 }
@@ -822,7 +894,7 @@ function ServiceHealth({ series, otif }) {
         <div>
           <div className="flex items-baseline gap-3 mb-1">
             <Stat label="In-store fill rate" value={F.pct(isNow?.v)} tone={tone(isNow?.v, 0.65, 0.8)}
-              src={isNow ? "Repl in-stock % \u00b7 wk " + isNow.wk : "awaiting a Retail Link upload"} />
+              src={isNow ? "Repl in-stock % \u00b7 " + wkEnding(isNow.wk) : "awaiting a Retail Link upload"} />
             {isDelta != null && (
               <span className="text-[11px] px-2 py-0.5 rounded-full"
                 style={{ background: isDelta < 0 ? "#FDF6FA" : "#EAF4EC", color: isDelta < 0 ? "#8E1039" : "#245B33" }}>
@@ -845,7 +917,7 @@ function ServiceHealth({ series, otif }) {
             </div>
           )}
           <ServiceBars rows={isRows} bad={0.65} warn={0.8} fmt={F.pct} />
-          <p className="text-[10px] opacity-60 mt-1.5">
+          <p className="text-[11px] opacity-60 mt-1.5">
             Share of traited stores holding stock, averaged across SKUs. Suppressed POS in a low
             week is corrected into true demand by the engine — it is not lost sales you can plan on.
           </p>
@@ -855,7 +927,7 @@ function ServiceHealth({ series, otif }) {
         <div>
           <div className="flex items-baseline gap-3 mb-1">
             <Stat label="OTIF — In Time and In Full" value={F.pct(otifNow?.v)} tone={tone(otifNow?.v, 0.9, 0.98)}
-              src={otifNow ? "cases in time / cases ordered \u00b7 wk " + otifNow.wk : "awaiting an OTIF upload"} />
+              src={otifNow ? "cases in time / cases ordered \u00b7 " + wkEnding(otifNow.wk) : "awaiting an OTIF upload"} />
             {otifAll != null && (
               <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ background: "#F7F1F4", color: "#2D2235" }}>
                 {F.pct(otifAll)} across {F.int(otifOrdered)} cs loaded
@@ -865,12 +937,12 @@ function ServiceHealth({ series, otif }) {
           <ServiceBars rows={otifRows} bad={0.9} warn={0.98} fmt={F.pct} />
           {worst && worst.v < 0.9 && (
             <p className="text-[11px] mt-2 rounded-lg px-3 py-2" style={{ background: "#FDF6FA", color: "#8E1039" }}>
-              Worst week loaded is <b>wk {worst.wk}</b> at {F.pct(worst.v)} — {worst.note}. OTIF is
+              Worst week loaded is <b>{wkEnding(worst.wk)}</b> at {F.pct(worst.v)} — {worst.note}. OTIF is
               measured per PO against MABD and carries no item number, so it cannot be split by SKU.
             </p>
           )}
           {!otifRows.length && (
-            <p className="text-[10px] opacity-60 mt-1.5">
+            <p className="text-[11px] opacity-60 mt-1.5">
               Upload an "OTIF STORE Performance PO DETAILS" export at Uploads &rarr; Retail Link OTIF.
             </p>
           )}
@@ -980,8 +1052,8 @@ function Sources({ feeds, series }) {
       title: "Walmart has restated POS since the seed snapshot",
       body: n === 0
         ? "No week differs from the " + SEED.asOf + " seed by more than 2%."
-        : n + " week×SKU cells differ from the " + SEED.asOf + " seed by more than 2%. Largest: wk " +
-          worst.wk + " " + worst.sku + " — seed " + F.int(worst.seed) + " vs file " + F.int(worst.units) +
+        : n + " week×SKU cells differ from the " + SEED.asOf + " seed by more than 2%. Largest: " +
+          wkEnding(worst.wk) + " " + worst.sku + " — seed " + F.int(worst.seed) + " vs file " + F.int(worst.units) +
           " units (" + (worst.rel * 100).toFixed(0) + "%).",
       note: "The file is the later reading and wins. This is why every feed upserts, and why matching the seed is NOT the acceptance test for POS.",
       tone: n > 0 ? "warn" : "ok",
@@ -1004,7 +1076,7 @@ function Sources({ feeds, series }) {
       title: "Walmart's second forecast column is malformed — not used",
       body: "All Item Detail carries a \"Forecast\" row, but it is not a weekly series: it holds a " +
         "few real weeks, then a grand total dropped into a week column, then zeros. Largest value loaded is " +
-        F.int(max._wmtFcstDetail) + " at wk " + max.wk + " for " + max.sku +
+        F.int(max._wmtFcstDetail) + " at " + wkEnding(max.wk) + " for " + max.sku +
         (sheetAt ? " — the Forecast sheet says " + F.int(sheetAt.units) + " for the same week." : "."),
       note: "The planner uses the FORECAST SHEET'S RAW ROWS exclusively — one row per item × week, with a snapshot week, which accuracy scoring needs. This column is ingested but drives nothing and is not charted.",
       tone: "warn",
@@ -1031,7 +1103,7 @@ function Sources({ feeds, series }) {
     const latestPos = Math.max(0, ...series.flatMap((s) => s.cells.filter((c) => c.pos != null).map((c) => c.wk)));
     disc.push({
       title: "DOT cut recovery is not on the same clock as POS",
-      body: "DOT data ends at week " + newest + "; POS runs to week " + latestPos + ".",
+      body: "DOT data ends at " + wkEnding(newest) + "; POS runs to " + wkEnding(latestPos) + ".",
       note: "A DOT report arrives weekly, so a gap of two weeks or more means an upload was MISSED, not that none was due. Cut recovery describes the window it covers, not the current one.",
       tone: latestPos - newest >= 2 ? "warn" : "ok",
     });
@@ -1049,7 +1121,7 @@ function Sources({ feeds, series }) {
         <div className="overflow-x-auto">
           <table className="w-full text-[12px]">
             <thead>
-              <tr className="text-[10px] uppercase tracking-widest opacity-50 text-left">
+              <tr className="text-[11px] uppercase tracking-wider opacity-60 text-left">
                 <th className="pb-1 pr-3">Status</th><th className="pb-1 pr-3">Figure</th>
                 <th className="pb-1 pr-3">File</th><th className="pb-1 pr-3">Sheet</th><th className="pb-1">Column / derivation</th>
               </tr>
@@ -1097,8 +1169,8 @@ function Sources({ feeds, series }) {
           <div className="overflow-x-auto">
             <table className="w-full text-[12px] cc-mono">
               <thead>
-                <tr className="text-[10px] uppercase tracking-widest opacity-50 text-left cc-sans">
-                  <th className="pb-1 pr-3">Wk</th><th className="pb-1 pr-3">SKU</th>
+                <tr className="text-[11px] uppercase tracking-wider opacity-60 text-left cc-sans">
+                  <th className="pb-1 pr-3">Wk ending</th><th className="pb-1 pr-3">SKU</th>
                   <th className="pb-1 pr-3 text-right" title="Forecast sheet — carries a snapshot week">WMT (Forecast sheet)</th>
                   <th className="pb-1 pr-3 text-right" title="base velocity × stores × seasonality">DC internal</th>
                   <th className="pb-1 pr-3 text-right">Consensus</th>
@@ -1110,7 +1182,7 @@ function Sources({ feeds, series }) {
                   const gap = r.wmtSheet != null && r.internal ? r.wmtSheet / r.internal - 1 : null;
                   return (
                     <tr key={i} style={{ borderTop: "1px solid #F1E7EC" }}>
-                      <td className="py-1 pr-3">{String(r.wk).slice(4)}</td>
+                      <td className="py-1 pr-3">{weekEndingSunday(r.wk)}</td>
                       <td className="py-1 pr-3 font-bold">{r.sku}</td>
                       <td className="py-1 pr-3 text-right">{F.int(r.wmtSheet)}</td>
                       <td className="py-1 pr-3 text-right">{F.int(r.internal)}</td>
@@ -1126,7 +1198,7 @@ function Sources({ feeds, series }) {
             </table>
           </div>
         )}
-        <p className="text-[10px] opacity-60 mt-2">
+        <p className="text-[11px] opacity-60 mt-2">
           A fifth forward number exists and is deliberately NOT in this table: the <b>Supply Plan</b> is Walmart's
           plan for what it will ORDER FROM US, not what shoppers will buy. It is ingested but not wired into the
           engine, and adding it to these would double-count demand.
@@ -1136,29 +1208,40 @@ function Sources({ feeds, series }) {
   );
 }
 
-// Sits above the S&OP cards, on the tab people land on. The greying and the
-// "placeholder" badges do the work at the point of reading a number; this says
-// it once, in plain language, for someone scanning the page for the first time.
-// Deliberately not dismissible — it stops being true when `production` gets a
-// real feed, not when somebody clicks.
+// Sits above the S&OP cards, on the tab people land on. Since Nov 5 2026 the
+// two standing caveats are one line each: the headline always shows (still
+// not dismissible — it stops being true when `production` gets a real feed,
+// not when somebody clicks), the detail opens on click. The full text was two
+// long amber paragraphs that pushed every number below the fold.
+function Caveat({ title, children }) {
+  return (
+    <details className="group rounded-lg text-[12px]"
+      style={{ background: "#FDF3D8", border: "1px solid #E8D9A8", color: "#5C4A1F" }}>
+      <summary className="flex items-center gap-2 px-3 py-2 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
+        <span aria-hidden="true">⚠</span>
+        <span className="font-semibold flex-1">{title}</span>
+        <span className="text-[11px] opacity-70 group-open:hidden">Details</span>
+        <span className="text-[11px] opacity-70 hidden group-open:inline">Hide</span>
+      </summary>
+      <div className="px-3 pb-3 pt-0.5 border-t" style={{ borderColor: "#E8D9A8" }}>{children}</div>
+    </details>
+  );
+}
+
 function PlaceholderNotice() {
   return (
-    <div className="rounded-xl px-4 py-3 text-[12px]"
-      style={{ background: "#FDF3D8", border: "1px solid #E8D9A8", color: "#5C4A1F" }}>
-      <div className="font-semibold mb-0.5">Do not plan production from this page yet.</div>
-      <div>
+    <Caveat title="Do not plan production from this page yet. The supply side is not live.">
+      <div className="mt-1.5">
         Everything on the <b>demand</b> side is live and reconciles to Walmart's own totals — POS,
         in-store fill rate, OTIF, the Walmart forecast, orders and cut recovery.
         The <b>supply</b> side does not: production volumes are a frozen 2026-08-13 snapshot, and
         DOT on-hand is <b>measured only in weeks with a DOT Inventory Snapshot upload</b> — every
-        other DOT figure is modelled from that reading. Anything marked{" "}
-        <span className="text-[8px] uppercase tracking-widest px-1 py-0.5 rounded align-middle"
-          style={{ background: "#EFE4E9", color: "#8E1039" }}>placeholder</span>{" "}
-        — days on hand, recommended production, DOT opening and closing — is real demand divided by
-        an assumption. Size co-bakery runs the way you did before this page existed.
+        other DOT figure is modelled from that reading. Figures built on those assumptions — the DOT
+        buffer, forward days on hand, recommended production — are left blank on this tab and greyed in
+        the Tracker. (DOT days on hand on each card is measured: the latest snapshot ÷ recent POS.) Size co-bakery runs the way you did before this page existed.
         {" "}<span className="opacity-70">Detail: docs/DEMAND_PLANNER_KNOWN_ISSUES.md</span>
       </div>
-    </div>
+    </Caveat>
   );
 }
 
@@ -1167,12 +1250,8 @@ function PlaceholderNotice() {
 // Cases / Sell units switch lands. Detail: docs/BUILD_PLAN.md ("Doughs 12 → 8").
 function PackChangeNotice() {
   return (
-    <div className="rounded-xl px-4 py-3 text-[12px]"
-      style={{ background: "#FDF3D8", border: "1px solid #E8D9A8", color: "#5C4A1F" }}>
-      <div className="font-semibold mb-0.5">
-        Case pack is changing: WC, PBG and CCF go from 12 to 8 per case. This page does not reflect it yet.
-      </div>
-      <ul className="mt-1 space-y-0.5 list-disc pl-4">
+    <Caveat title="Case pack is changing: WC, PBG and CCF go from 12 to 8 per case. This page does not reflect it yet.">
+      <ul className="mt-1.5 space-y-0.5 list-disc pl-4">
         <li><b>Today:</b> every case figure is Walmart's sell units ÷ 12 (÷ 10 for Black Currant), and MOQ (756 cs) and pallets (189 cs) assume the 12-count case.</li>
         <li><b>Not changing:</b> the sell unit and the Walmart item numbers. POS, the Walmart forecast and the Supply Plan arrive in sell units and stay correct.</li>
         <li><b>Still unknown:</b> the cutover date, the new case GTIN (not yet issued), and the 8-count MOQ and cases per pallet.</li>
@@ -1180,7 +1259,7 @@ function PackChangeNotice() {
         <li><b>Planned, on hold:</b> a Cases / Sell units switch on this page.</li>
       </ul>
       <div className="mt-1 opacity-70">Detail: docs/BUILD_PLAN.md, "Doughs 12 → 8"</div>
-    </div>
+    </Caveat>
   );
 }
 
@@ -1206,7 +1285,7 @@ function UnmappedItemsNotice({ items }) {
           {items.map((r) => (
             <li key={r.item} className="cc-mono text-[11px]">
               item {r.item} · {F.int(r.cases)} cs · {F.money(r.value)} · {r.lines} lines ·
-              {r.firstWk ? ` wk ${String(r.firstWk).slice(4)}\u2013${String(r.lastWk).slice(4)}` : " no ship date"}
+              {r.firstWk ? ` wks ending ${weekEndingSunday(r.firstWk)}\u2013${weekEndingSunday(r.lastWk)}` : " no ship date"}
               {r.sku ? ` · ${r.sku}` : ""}
             </li>
           ))}
@@ -1247,7 +1326,7 @@ function funnelInputs(sku, s, feeds) {
 // adjacent expressions with comments, which would hide them from the smoke test.
 const ACTION_OWNERS = {
   dot: "Harshita · Cortina/DOT",
-  walmart: "Becky / David · Walmart",
+  walmart: "Caroline Collins / David · Walmart",
   ops: "Dirty Cookie ops",
 };
 const EXPIRING_RED_SHARE = 0.3;   // the prototype's threshold, now the amber → red line
@@ -1256,7 +1335,7 @@ const INSTOCK_BAD = 0.65, OTIF_BAD = 0.9; // Service health's red lines
 const STALE_WEEKS = 2;
 // Weeks apart, across the fiscal year end (52 weeks; live POS also carries 53).
 const wkIndex = wk => (Math.floor(wk / 100) - 2026) * 52 + (wk % 100);
-const wkTag = wk => "W" + String(wk).slice(4);
+const wkTag = wkEnding;
 const sortSkus = obj => Object.entries(obj).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
 
 function buildActions({ series, metrics, feeds, todayWk }) {
@@ -1266,7 +1345,7 @@ function buildActions({ series, metrics, feeds, todayWk }) {
   // ── DOT stock: the newest reading per SKU ──
   const dots = series.map(s => funnelInputs(s.sku, s, feeds).dot).filter(Boolean);
   const newestDot = dots.length ? dots.reduce((a, d) => (d.wk > a.wk || (d.wk === a.wk && d.snapshotDate > a.snapshotDate) ? d : a)) : null;
-  const dotSrc = d => "DOT Inventory Snapshot · " + d.label + " · " + wkTag(d.wk);
+  const dotSrc = d => "DOT Inventory Snapshot · " + d.label;
 
   const expired = Object.fromEntries(dots.map(d => [d.sku, d.expired ?? 0]));
   const expiredTotal = Object.values(expired).reduce((a, b) => a + b, 0);
@@ -1333,7 +1412,7 @@ function ActionPanel({ series, metrics, feeds }) {
   const todayWk = walmartWeekOf(todayIso());
   const acts = buildActions({ series, metrics, feeds, todayWk });
   const shown = acts.length ? acts
-    : [{ tone: "good", who: null, text: "No flags this week", src: "checked " + wkTag(todayWk) }];
+    : [{ tone: "good", who: null, text: "No flags this week", src: "checked " + todayLong() }];
   return (
     <section className="bg-white rounded-2xl border p-5" style={{ borderColor: "#E5D9DE" }}>
       <header className="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-3">
@@ -1348,10 +1427,10 @@ function ActionPanel({ series, metrics, feeds }) {
             <span className="flex-none mt-1.5 inline-block w-2 h-2 rounded-full" style={{ background: ACTION_TONE[a.tone].fg }} />
             <div className="flex-1 min-w-0">
               <div>{a.text}</div>
-              <div className="text-[10px] opacity-50">{a.src}</div>
+              <div className="text-[11px] opacity-55">{a.src}</div>
             </div>
             {a.who && (
-              <span className="flex-none text-[10px] px-2 py-0.5 rounded-full ml-5 sm:ml-0"
+              <span className="flex-none text-[11px] px-2 py-0.5 rounded-full ml-5 sm:ml-0"
                 style={{ background: ACTION_TONE[a.tone].bg, color: ACTION_TONE[a.tone].fg }}>{a.who}</span>
             )}
           </div>
@@ -1365,7 +1444,7 @@ function Summary({ series, metrics, feeds }) {
   return (
     <div className="flex flex-col gap-4">
       <FlowLegend latestWk={Math.max(0, ...metrics.map(m => m.latestWk ?? 0)) || null} />
-      {series.map((s, i) => <FlowCard key={s.sku} s={s} m={metrics[i]} f={funnelInputs(s.sku, s, feeds)} />)}
+      {series.map((s, i) => <FlowCard key={s.sku} s={s} m={metrics[i]} f={funnelInputs(s.sku, s, feeds)} feeds={feeds} />)}
     </div>
   );
 }
@@ -1395,7 +1474,7 @@ function DotServicePanel({ svc, latestDataWk }) {
         {stale && (
           <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold"
             style={{ background: "#FDF3D8", color: "#8E1039" }}>
-            DOT data ends wk {newestDot} — {weeksBehind} weeks behind POS
+            DOT data ends {wkEnding(newestDot)} — {weeksBehind} weeks behind POS
           </span>
         )}
       </header>
@@ -1410,16 +1489,16 @@ function DotServicePanel({ svc, latestDataWk }) {
           <div className="flex items-end gap-2" style={{ height: 84 }}>
             {svc.rows.map(r => (
               <div key={r.wk} className="flex flex-col items-center gap-1 flex-1 min-w-0"
-                title={"Wk " + r.wk + ": true order book " + F.int(r.trueOrdered) + " cs · cut " + F.int(r.cut) + " · NS delivered " + F.int(r.nsDlv)}>
+                title={wkEnding(r.wk) + ": true order book " + F.int(r.trueOrdered) + " cs · cut " + F.int(r.cut) + " · NS delivered " + F.int(r.nsDlv)}>
                 <div className="w-full flex flex-col justify-end rounded-t overflow-hidden" style={{ height: 64 }}>
                   <div style={{ height: (r.cut / max) * 64, background: "#C2185B" }} />
                   <div style={{ height: (Math.max(0, r.trueOrdered - r.cut) / max) * 64, background: "#9BC49B" }} />
                 </div>
-                <div className="text-[10px] cc-mono opacity-60">{String(r.wk).slice(4)}</div>
+                <div className="text-[10px] cc-mono opacity-60">{weekEndingNumeric(r.wk)}</div>
               </div>
             ))}
           </div>
-          <div className="flex gap-4 mt-1 text-[10px] opacity-70">
+          <div className="flex gap-4 mt-1 text-[11px] opacity-70">
             <span><span className="inline-block w-2 h-2 rounded-sm mr-1" style={{ background: "#C2185B" }} />cut</span>
             <span><span className="inline-block w-2 h-2 rounded-sm mr-1" style={{ background: "#9BC49B" }} />filled</span>
             <span className="ml-auto">true order book = NetSuite requested + DOT-recovered cuts</span>
@@ -1429,7 +1508,7 @@ function DotServicePanel({ svc, latestDataWk }) {
       {stale && (
         <p className="text-[11px] mt-3 rounded-lg px-3 py-2"
           style={{ background: "#FDF3D8", border: "1px solid #E8D9A8", color: "#5C4A1F" }}>
-          <b>This panel is not current.</b> The loaded DOT Order History ends at week {newestDot},
+          <b>This panel is not current.</b> The loaded DOT Order History ends {wkEnding(newestDot)},
           {weeksBehind} weeks behind the POS data above. A DOT report arrives <b>weekly</b>, so this
           means {weeksBehind === 1 ? "an upload is due" : "uploads have been missed"} — not that none
           was available. Cut recovery here describes that window, not today.
@@ -1447,6 +1526,57 @@ function DotServicePanel({ svc, latestDataWk }) {
             can come back — as a computed breakdown over the loaded window, never as a sentence. */}
         <span className="opacity-70">Cut reasons are ingested per line but not yet summarised here.</span>
       </p>
+    </section>
+  );
+}
+
+/* ---------------- data freshness strip ---------------- */
+// Replaced the green "Live Retail Link data through…" paragraph (Nov 5 2026).
+// One tile per feed, each saying how far its data runs and how that compares
+// with today, laid out on a grid so the dates line up and can be compared at
+// a glance. The page is only as current as the last file someone uploaded, so
+// staleness is computed from the data, never asserted.
+//
+// `lag` counts weeks behind the last COMPLETE Walmart week: data through last
+// week is current. Thresholds match the actions panel (STALE_WEEKS).
+const FRESH_TONE = {
+  ok:   { dot: "#3E8E5A", fg: "#245B33" },
+  warn: { dot: "#E8A33D", fg: "#8A5A10" },
+  bad:  { dot: "#C2185B", fg: "#8E1039" },
+};
+function freshnessOf({ wk, live, todayWk }) {
+  if (!live) return { tone: "bad", text: "not live · seed data" };
+  if (!wk) return { tone: "bad", text: "nothing uploaded" };
+  const lag = wkIndex(todayWk) - wkIndex(wk) - 1;
+  if (lag <= 0) return { tone: "ok", text: "current" };
+  if (lag < STALE_WEEKS) return { tone: "ok", text: lag + " wk behind" };
+  return { tone: lag >= 8 ? "bad" : "warn", text: lag + " wks behind — upload due" };
+}
+
+function DataFreshness({ items }) {
+  return (
+    <section aria-label="Data freshness" className="px-6 py-3 border-b cc-sans"
+      style={{ borderColor: "#E5D9DE", background: "#FFFFFF" }}>
+      <div className="text-[11px] uppercase tracking-wider font-semibold opacity-60 mb-2">Data through</div>
+      <div className="grid gap-px rounded-lg overflow-hidden grid-cols-2 sm:grid-cols-4 xl:grid-cols-7"
+        style={{ background: "#EFE4E9", border: "1px solid #EFE4E9" }}>
+        {items.map(it => {
+          const t = FRESH_TONE[it.status.tone];
+          return (
+            <div key={it.label} className="bg-white px-3 py-2" title={it.title}>
+              <div className="text-[11px] opacity-60 truncate">{it.label}</div>
+              <div className="text-[14px] mt-0.5 whitespace-nowrap">
+                {it.prefix && <span className="text-[12px] opacity-60">{it.prefix} </span>}
+                <span className="font-semibold">{it.date ?? "—"}</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-[11px] mt-0.5" style={{ color: t.fg }}>
+                <span className="inline-block w-2 h-2 rounded-full flex-none" style={{ background: t.dot }} />
+                {it.status.text}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </section>
   );
 }
@@ -1509,20 +1639,20 @@ function Tracker({ series, onEdit }) {
                     <th className="sticky left-0 bg-white z-10" />
                     {monthBands(s.cells).map((b, bi) => (
                       <th key={bi} colSpan={b.span}
-                        className="cc-sans text-[10px] font-semibold uppercase tracking-widest py-1"
+                        className="cc-sans text-[11px] font-semibold uppercase tracking-wider py-1"
                         style={{ background: QTR_TINT[b.quarter], color: "#2D2235" }}>
-                        {b.month} · Q{b.quarter}
+                        {b.month}
                       </th>
                     ))}
                   </tr>
                   <tr>
-                    <th className="sticky left-0 bg-white z-10 text-left cc-sans font-semibold px-3 py-1.5 border-b min-w-[185px]" style={{ borderColor: "#E5D9DE" }}>Week →</th>
+                    <th className="sticky left-0 bg-white z-10 text-left cc-sans font-semibold px-3 py-1.5 border-b min-w-[185px]" style={{ borderColor: "#E5D9DE" }}>Week ending →</th>
                     {s.cells.map((c, i) => (
                       <th key={c.wk} className="px-2 py-1.5 border-b font-normal text-right"
                         style={{ borderColor: "#E5D9DE",
                           borderRight: i === s.lastActualIdx ? "2px solid #C2185B" : undefined,
                           background: i > s.lastActualIdx ? "#FDF6FA" : undefined }}>
-                        <div className="font-semibold">{String(c.wk).slice(4)}</div>
+                        <div className="font-semibold" title={wkEnding(c.wk)}>{weekEndingNumeric(c.wk)}</div>
                       </th>
                     ))}
                   </tr>
@@ -1532,7 +1662,7 @@ function Tracker({ series, onEdit }) {
                     <Fragment key={row.k}>
                       {row.sec && (
                         <tr><td colSpan={s.cells.length + 1}
-                          className="sticky left-0 cc-sans font-semibold text-[10px] uppercase tracking-widest px-3 py-1"
+                          className="sticky left-0 cc-sans font-semibold text-[11px] uppercase tracking-wider px-3 py-1"
                           style={{ background: "#EFE4E9" }}>{row.sec}</td></tr>
                       )}
                       <tr>
@@ -1541,7 +1671,7 @@ function Tracker({ series, onEdit }) {
                           title={row.placeholder ? "Placeholder — computed from frozen production data; DOT on-hand is measured only in weeks with an Inventory Snapshot upload. Do not plan from this row." : undefined}>
                           {row.l}
                           {row.placeholder && (
-                            <span className="ml-1.5 text-[8px] uppercase tracking-widest px-1 py-0.5 rounded"
+                            <span className="ml-1.5 text-[11px] uppercase tracking-wider px-1 py-0.5 rounded"
                               style={{ background: "#EFE4E9", color: "#8E1039" }}>placeholder</span>
                           )}
                         </td>
@@ -1567,7 +1697,7 @@ function Tracker({ series, onEdit }) {
                                     onEdit(row.edit, c.wk, s.sku, raw === "" ? null : Number(raw));
                                   }}
                                   className="w-14 bg-transparent text-right cc-mono outline-none rounded px-0.5"
-                                  style={{ color: "#1D4ED8" }} aria-label={row.l + " week " + c.wk} />
+                                  style={{ color: "#1D4ED8" }} aria-label={row.l + ", " + wkEnding(c.wk)} />
                               ) : F[row.f](row.g(c))}
                             </td>
                           );
@@ -1584,7 +1714,8 @@ function Tracker({ series, onEdit }) {
       <p className="text-xs opacity-60 max-w-3xl">
         Units vs cases: rows labeled (units) are shopper-facing feeds; everything in (cs) is cases — 1 case = 12 units (10 for Black Currant), and the Demand row converts exactly once. Pink rule = last week with POS actuals; tinted columns are forecast. Blue cells are
         editable — change a seasonality multiplier or key a consensus override and the whole
-        cascade (demand, DC/DOT inventory, production recs) recomputes instantly.
+        cascade (demand, DC/DOT inventory, production recs) recomputes instantly. <b>Edits are kept for this
+        session only and are lost on reload.</b> Columns are weeks, labelled by week-ending date (month/day).
       </p>
     </div>
   );
@@ -1645,14 +1776,7 @@ export default function DemandPlanner() {
     };
   }, [overrides, prodEdits, feeds.pos, feeds.forecasts, feeds.orders, feeds.dotDeliveries, feeds.dotOnHand]);
 
-  // Which series actually came from the database this load — drives the banner.
-  const LABELS = { pos: 'POS', forecasts: 'Walmart forecast', otif: 'OTIF',
-                   dotService: 'DOT cut recovery', dotDeliveries: 'DOT deliveries',
-                   orders: 'NetSuite orders' };
-  const liveSeries = Object.keys(LABELS).filter(k => feeds.sources[k] === 'live').map(k => LABELS[k]);
-  const seedSeries = Object.keys(LABELS).filter(k => feeds.sources[k] !== 'live').map(k => LABELS[k]);
-  const anyLive = liveSeries.length > 0;
-  // The newest DOT on-hand reading, for the banner. snapshotDate is a bare date:
+  // The newest DOT on-hand reading, for the freshness strip. snapshotDate is a bare date:
   // build it at UTC noon so no timezone moves it a day.
   const dotReading = useMemo(() => {
     const rows = feeds.dotOnHand ?? [];
@@ -1693,6 +1817,39 @@ export default function DemandPlanner() {
     return { rows, ordered, cut, recovered: cut, trueFill: trueBook > 0 ? dlv / trueBook : null };
   }, [dotSvcRows, feeds.orders]);
 
+  // ── Data freshness strip: one tile per feed. Below `series`/`latestDataWk`
+  // for the TDZ reason above. Each feed reports its newest week WITH DATA.
+  const todayWk = walmartWeekOf(todayIso());
+  const freshness = (() => {
+    const src = feeds.sources ?? {};
+    const maxWk = (rows, pick = () => true) => {
+      const w = (rows ?? []).filter(pick).map(r => r.wk);
+      return w.length ? Math.max(...w) : null;
+    };
+    const fcstRows = feeds.forecasts ?? SEED.forecasts;
+    const fcstSnap = fcstRows.length ? Math.max(...fcstRows.map(f => f.snap)) : null;
+    const item = (label, wk, live, extra = {}) => ({
+      label, date: weekEndingSunday(wk), prefix: "wk ending", status: freshnessOf({ wk, live, todayWk }), ...extra,
+    });
+    return [
+      item("Retail Link POS", feeds.asOf ?? (latestDataWk || null), src.pos === "live"),
+      item("Walmart forecast", fcstSnap, src.forecasts === "live", { prefix: "pulled wk ending" }),
+      item("OTIF", maxWk(feeds.otif, r => r.otif != null), src.otif === "live"),
+      // Orders carry future SCHEDULED weeks, so freshness is the newest week
+      // with deliveries, not the newest week in the table.
+      item("NetSuite deliveries", maxWk(feeds.orders ?? SEED.orders, r => r.dlv > 0), src.orders === "live"),
+      dotReading
+        ? { label: "DOT on-hand", prefix: "snapshot", date: dotReading.label,
+            status: freshnessOf({ wk: dotReading.wk, live: true, todayWk }) }
+        : { label: "DOT on-hand", date: null, status: { tone: "bad", text: "no snapshot uploaded" } },
+      item("DOT cut recovery", maxWk(dotSvcRows), src.dotService === "live",
+        { title: "DOT Order History export — drives the cut-recovery panel" }),
+      { label: "Production", prefix: "frozen", date: new Date(`${SEED.asOf}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }),
+        status: PRODUCTION_LIVE ? { tone: "ok", text: "live" } : { tone: "bad", text: "not live · no feed yet" },
+        title: "Production is still the " + SEED.asOf + " seed — every supply-side figure built on it is a placeholder" },
+    ];
+  })();
+
   const onEdit = (kind, wk, sku, v) => {
     if (kind === "actual") {
       setProdEdits(p => [...p.filter(e => !(e.wk === wk && e.sku === sku)), { wk, sku, cases: v }]);
@@ -1718,30 +1875,33 @@ export default function DemandPlanner() {
         @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
         button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid #C2185B; outline-offset: 2px; }
       `}</style>
-      <header className="border-b px-6 py-4 flex flex-wrap items-center gap-4"
+      {/* Header (Nov 5 2026): title, today, and the ONE place on the page that
+          names the Walmart week — every other label is a calendar date. The
+          pack chip (1 cs = 12 units…) was removed; the pack lives in the chart
+          legend, the Tracker note and the case-pack caveat. */}
+      <header className="border-b px-6 pt-4 pb-3 flex flex-wrap items-end gap-x-6 gap-y-3"
         style={{ borderColor: "#E5D9DE", background: "rgba(255,255,255,0.75)" }}>
         <div>
           <div className="text-[11px] tracking-widest uppercase font-semibold" style={{ color: "#C2185B" }}>
             Cookie Central
           </div>
           <h1 className="cc-serif text-2xl leading-tight">Walmart Demand Planner</h1>
-        </div>
-        <div className="text-xs opacity-60">
-          <span className="px-2 py-0.5 rounded-full mr-2 font-semibold" style={{ background: "#D9EFE4", color: "#2D2235" }}>
-            Today · wk ending <WeekLabel wk={walmartWeekOf(todayIso())} />
-          </span>
-          <span className="px-2 py-0.5 rounded-full mr-2 cc-mono" style={{ background: "#EFE4E9", color: "#2D2235" }}>
-            1 cs = 12 units · 21 cs/layer · 189 cs/pallet · BC: 10 units, 96 cs/pallet
-          </span>
-          {/* Was hardcoded to the Aug 13 snapshot ("WM Week 28", "data thru wk
-              202627", "NetSuite batch 8/13") until Oct 29 2026. Now read off
-              the loaded data: newest week with POS, and the newest DOT reading. */}
-          Retail Link thru wk ending <WeekLabel wk={feeds.asOf ?? (latestDataWk || null)} />
-          {dotReading && <> · DOT on-hand {dotReading.label} <span style={{ opacity: 0.55 }}>W{String(dotReading.wk).slice(4)}</span></>}
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] cc-sans">
+            <span><span className="opacity-60">Today</span> <b>{todayLong()}</b></span>
+            {todayWk && (
+              <>
+                <span aria-hidden="true" className="opacity-25">|</span>
+                <span className="px-2.5 py-0.5 rounded-full font-semibold" style={{ background: "#D9EFE4", color: "#245B33" }}>
+                  Walmart week {Number(String(todayWk).slice(4))}
+                </span>
+                <span className="opacity-60">{wkEnding(todayWk)}</span>
+              </>
+            )}
+          </div>
         </div>
         <nav className="ml-auto flex gap-1 cc-sans" aria-label="Views">
           {["summary", "tracker", "sources"].map(t => (
-            <button key={t} onClick={() => setTab(t)}
+            <button key={t} onClick={() => setTab(t)} aria-pressed={tab === t}
               className="px-4 py-2 rounded-full text-sm capitalize"
               style={tab === t ? { background: "#2D2235", color: "#fff" } : {}}>
               {t === "summary" ? "S&OP summary" : t}
@@ -1749,47 +1909,26 @@ export default function DemandPlanner() {
           ))}
         </nav>
       </header>
-      {/* The page looks live — real SKUs, real weeks, editable cells — so it
-          has to say plainly how live it actually is. The demand side (POS,
-          Walmart forecast, DC service) comes from uploaded Retail Link files;
-          the supply side (production, DOT on-hand, NetSuite orders) is still
-          the frozen seed. Saying "live" or "static" flatly would be wrong in
-          both directions, so the banner names the split.
-
-          `asOf` is the newest week WITH DATA, not the time of the fetch: this
-          page is only as current as the last file someone uploaded. */}
-      <div className="px-6 py-2 text-[12px] cc-sans flex flex-wrap gap-x-2 gap-y-1 items-baseline"
-        style={anyLive
-          ? { background: "#EAF4EC", borderBottom: "1px solid #C3E0CB", color: "#245B33" }
-          : { background: "#FDF3D8", borderBottom: "1px solid #E8D9A8", color: "#5C4A1F" }}>
-        {anyLive ? (
+      {/* `asOf` and every other date here is the newest week WITH DATA, not the
+          time of the fetch: this page is only as current as the last file
+          someone uploaded. */}
+      <DataFreshness items={freshness} />
+      <main className="p-5 cc-sans">
+        {tab === "summary" && (
           <>
-            <span className="font-semibold">
-              Live Retail Link data through wk ending <WeekLabel wk={feeds.asOf} />.
-            </span>
-            <span>
-              Demand side ({liveSeries.join(', ')}) from uploaded Retail Link files.
-              {seedSeries.length > 0 && ` Still on the ${SEED.asOf} seed: ${seedSeries.join(', ')}.`}
-              {' '}Production is still seed data.
-              {dotReading
-                ? <>{' '}DOT on-hand measured as of {dotReading.label}{' '}<span style={{ opacity: 0.6 }}>W{String(dotReading.wk).slice(4)} closing</span>; later weeks are modelled from it.</>
-                : ' No DOT Inventory Snapshot uploaded yet — the DOT cascade runs on its opening anchor.'}
-              {' '}Tracker edits live in the page for this session and are lost on reload.
-            </span>
-          </>
-        ) : (
-          <>
-            <span className="font-semibold">Static snapshot — data frozen at {SEED.asOf}.</span>
-            <span>
-              No Retail Link uploads yet — add one at <span className="font-semibold">Uploads → Retail Link Weekly</span> and
-              this page switches to live POS and forecast automatically. Tracker edits live in the page for
-              this session and are lost on reload.
-            </span>
+            <UnmappedItemsNotice items={feeds.unmappedOrderItems} />
+            <div className="flex flex-col gap-2 mb-4">
+              <PlaceholderNotice />
+              <PackChangeNotice />
+            </div>
+            <ActionPanel series={series} metrics={metrics} feeds={feeds} />
+            <div className="mt-4" />
+            <ServiceHealth series={series} otif={feeds.otif} />
+            <div className="mt-4" />
+            <Summary series={series} metrics={metrics} feeds={feeds} />
+            <DotServicePanel svc={svc} latestDataWk={latestDataWk} />
           </>
         )}
-      </div>
-      <main className="p-5 cc-sans">
-        {tab === "summary" && (<><UnmappedItemsNotice items={feeds.unmappedOrderItems} /><ActionPanel series={series} metrics={metrics} feeds={feeds} /><div className="mt-4" /><PlaceholderNotice /><div className="mt-4" /><PackChangeNotice /><div className="mt-4" /><ServiceHealth series={series} otif={feeds.otif} /><div className="mt-4" /><Summary series={series} metrics={metrics} feeds={feeds} /><DotServicePanel svc={svc} latestDataWk={latestDataWk} /></>)}
         {tab === "tracker" && <Tracker series={series} onEdit={onEdit} />}
         {tab === "sources" && <Sources feeds={feeds} series={series} />}
       </main>
