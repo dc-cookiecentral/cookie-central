@@ -57,6 +57,8 @@ const LIVE_DOT_SHAPE = {
   consignment: [
     { po: '0112957696', sku: 'WC', wk: 202639, shipDate: '2026-10-28', ordered: 42, received: 42, lines: 2, cut: 0, replaced: true },
     { po: '0120830468', sku: 'BC', wk: 202639, shipDate: '2026-10-29', ordered: 84, received: 54, lines: 1, cut: 30, replaced: false },
+    // Cut before it reached DOT — OTIF-only (useDemandFeeds.shapePreDotCuts).
+    { po: '0116160311', sku: 'CCF', wk: 202636, shipDate: '2026-10-06', ordered: 21, received: 0, lines: 0, cut: 21, replaced: false, source: 'otif' },
   ],
   dotService: [{ wk: 202625, ordered: 84, cut: 42, pos: 2, source: 'order_history' },
                { wk: 202639, ordered: 126, cut: 30, pos: 2, source: 'consignment' }],
@@ -94,7 +96,8 @@ const EXPECT_SUMMARY = {
         'BC: DOT cut 30 of 84 cs Walmart ordered (36%), last 4 ship weeks',
         'By SKU · Consignment Sales History',
         'BC: 1,100 cs on open DOT orders not yet picked vs 1,029 sellable at DOT — 71 cs short, cut risk',
-        'DOT open orders — what ships next'],
+        'DOT open orders — what ships next',
+        'Includes 1 PO (21 cs) Walmart ordered that never reached DOT'],
   empty: ['This week’s actions', 'No live Retail Link POS', 'No DOT Inventory Snapshot uploaded'],
 };
 
