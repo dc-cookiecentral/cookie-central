@@ -31,7 +31,7 @@ by a made-up one.
 | Figure | Where it appears |
 |---|---|
 | DC days on hand | Summary cards, Tracker |
-| DOT days on hand | Summary cards, Tracker |
+| DOT days on hand (forward, modelled) | Tracker only — *since Nov 5 2026 the Summary cards show a MEASURED DOT days on hand instead: sellable cases in the newest DOT Inventory Snapshot ÷ last-4-week POS per day, which is trustworthy* |
 | Recommended production / pallets | Summary cards, Tracker |
 | DOT closing / DOT opening | Tracker |
 
@@ -132,7 +132,14 @@ upload (card 5), which covers orders and cuts. And it is not the Assemblers
 
 ---
 
-## 🟠 4. The DOT data on screen is months behind — and that is a missed upload, not a limitation
+## ✅ 4. The DOT data on screen is months behind — resolved Nov 5 2026
+
+> **Resolved.** DOT's **Consignment Sales History** (upload card 8) now drives
+> cut recovery: every shipment by item, backfilled Mar 16 – Nov 4 2026. Order
+> History (card 5, below) is **retired** — it was exception-filtered after all —
+> and its June–July weeks are used only where card 8 has no data. POs cut before
+> they reach DOT are added from OTIF. The history below is kept for context.
+
 
 **A DOT report arrives every week** (confirmed Aug 24 2026), so it belongs in the
 weekly upload routine alongside the Retail Link files — it is card 5 at
