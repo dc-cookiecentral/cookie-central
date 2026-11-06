@@ -98,7 +98,7 @@
   *To do*
   - [x] Inventory Snapshot parser + upload card → a real DOT on-hand feed — built 2026-10-28/29 on `feat/dot-on-hand` (see below). §1 still needs the production feed
   - [ ] Re-upload older WK## Retail Link files — now non-destructive — to restore the erased store on-hand history
-  - [ ] Ask Becky to add item 686669913 (BC) to the WK## Retail Link pull so it gets POS
+  - [ ] Ask Caroline Collins (Bentonville Merchants) to add item 686669913 (BC) to the WK## Retail Link pull so it gets POS
   - [ ] Harshita: disposition decision on the 1,086 expired cases at DOT
   - [x] Decided: fold the prototype's UX into `/demand-planner` as part B, one planned piece at a time (Caroline, Oct 28). B1 funnel shipped Oct 29 — see below — 2026-10-29
 
@@ -159,8 +159,8 @@
   *To do*
   - [x] Pushed to `main` after each of Caroline's two screenshot reviews (`6c0e65f`, `7311dd9`, plus the chart rework in `ee1505c`/`c09ae6c`). Live bundle checked each time for a string only the new version contains — 2026-10-29
   - [ ] Caroline: final look at the redrawn funnel, the full-height chart and the two-line store labels on the live page (not yet seen drawn; offscreen renders can't draw Recharts)
-  - [ ] Confirm with Becky that *Curr Whse On Hand* is units, not cases
-  - [ ] Ask Becky whether Retail Link can add a stores-with-sales count to the WK## pull (the bars would switch to it)
+  - [ ] Confirm with Caroline Collins that *Curr Whse On Hand* is units, not cases
+  - [ ] Ask Caroline Collins whether Retail Link can add a stores-with-sales count to the WK## pull (the bars would switch to it)
   - [x] B2 plan: "This week's actions" panel — planned 2026-11-02, see below
 
   *Session notes (Oct 28–29), for the next session*
@@ -177,8 +177,8 @@
   - Flags, all from measured figures:
     1. **Expired at DOT** (red, Harshita · Cortina/DOT): latest `dot_on_hand` reading, expired cases across SKUs, with the per-SKU split. Today: 1,086 (PBG 458).
     2. **Expiring ≤60 days** (amber per SKU; red above 30% of that SKU's good stock; Harshita · Cortina/DOT): `expiring60`, with `earliestExpiry`. Today: WC 229, PBG 182, CCF 440 — all amber (CCF 28%).
-    3. **Forecast gap** (amber >15%, red >40%; Becky / David · Walmart): `n4wGap`, Walmart store forecast vs our internal forecast, next 4 weeks. Thresholds as the prototype.
-    4. **Service** (red only; Becky / David · Walmart): latest in-store fill rate below 65% or OTIF below 90%, the Service health panel's red lines.
+    3. **Forecast gap** (amber >15%, red >40%; Caroline Collins / David · Walmart): `n4wGap`, Walmart store forecast vs our internal forecast, next 4 weeks. Thresholds as the prototype.
+    4. **Service** (red only; Caroline Collins / David · Walmart): latest in-store fill rate below 65% or OTIF below 90%, the Service health panel's red lines.
     5. **Stale data** (amber; Dirty Cookie ops): newest DOT reading or newest Retail Link POS week more than 2 Walmart weeks behind today's week. Upload card named.
   - Nothing fires → one green line, "No flags this week", still dated.
   - Copy the prototype's `ActionPanel` shape (`~/Projects/dirty-cookie/demand-planner/src/DemandPlanner.jsx:368`), rewritten on `funnelInputs` / `metrics` / `feeds`; a pure `buildActions()` so `smoke-render.mjs` can assert on it.
@@ -248,7 +248,7 @@
   - Note: the daily job reads only the last 2 days. If Caroline's latest weekly email is older than that, it will not be picked up on deploy — reset `gmail_sync_state.last_polled_at` (RUNBOOK §9.6a) or upload by hand
 
   *Raised at the end of the session (Nov 5)*
-  - [ ] **Demand Planner UI and charts review.** Caroline: "the UI and graphs still kinda suck on the demand planner". Not started: Claude in Chrome was open but not connected to this session, and the dev auth-bypass route was declined. Next session: launch `claude --chrome` from `cookie-central`, open `/demand-planner` (live), review every section (actions panel, Service health, the product cards' chart + store bars + funnel, cut recovery, Tracker) at desktop and phone width, and come back with a prioritised list and mock-ups before changing code
+  - [x] **Demand Planner UI and charts review** — 2026-11-05 (`feat/dp-ui-header-freshness`). Header cleaned (pack chip removed; the Walmart week is named only there, every other label is "wk ending <date>", calendar months on axes and Tracker bands); a **Data through** strip, one tile per feed with computed staleness, replaced the green status paragraph; the two amber caveats collapse to one line each; nothing under 11px except chart ticks; modelled figures hidden on the Summary tab behind `PRODUCTION_LIVE = false` (DOT buffer chip). **DOT days on hand is now measured** (sellable at DOT in the newest snapshot ÷ last-4-wk POS per day). Product card chart split into a demand panel and a store-base panel with their own axes (stores left, units/store/wk right); the single-week funnel became **Where every case sits, by week** (stacked by stage on a date axis, POS as a line, partial weeks starred). Verified with the render smoke test and a headless render on live data, not yet at phone width. Remaining review items: OTIF chart drops missing weeks without a gap; forecast-gap actions not consolidated; BC +2049% shown as a % on a tiny base; sidebar text still 8px
   - [ ] Caroline's second look at B2's amber rows (still open from Nov 2) — fold into the UI review
   - [ ] Inventory's DOT block (`WarehouseView` / `ProductView` via `useDotInventory`) reads `dot_inventory`, which has always been empty; the real DOT stock is `dot_on_hand`. Point it there (ties into "retire `dot_inventory`", Oct 28–29)
   - [ ] Recommended next build after the UI review: Customer Order Details as an upload (see to-do above)
