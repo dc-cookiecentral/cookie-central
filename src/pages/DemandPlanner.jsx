@@ -994,6 +994,8 @@ const PROVENANCE = [
     detail: 'Quantity Ordered vs Quantity Received per DOT order × Walmart item, by Detail Establish Date (ship) week. Grouped per Walmart PO × SKU before the cut is taken, so a PO DOT re-placed and later shipped counts as filled. Every shipment, not just cut ones — supersedes Order History for the weeks it covers' },
   { series: 'openOrders', field: 'DOT open orders', file: 'DOT Customer Order Details', sheet: 'Details',
     detail: '"Item Detail" lines with Order Status Open / Picking / Loaded, by Requested Delivery Date week — minus any DOT order × SKU that Consignment Sales History already shows as shipped (the report is a snapshot, so a stored status can be stale). Lines requested more than 7 days ago are shown apart as past due. "Not yet picked" = Open status only' },
+  { series: 'otif', field: 'Cuts that never reached DOT', file: 'OTIF Store Performance + NetSuite', sheet: 'Receiver',
+    detail: 'POs OTIF shows 100% unfilled that appear in no DOT report and hold 0 cs in NetSuite, within the Consignment Sales History window. Added to cut recovery in their OTIF week; SKU from the PO\'s NetSuite item (unknown if none or several)' },
   { series: 'dotService', field: 'DOT ordered / cut (older weeks)', file: 'DOT Report (Order History)', sheet: 'Outbound Orders',
     detail: 'by Delivery Date week. Per PO — the export carries no item column, and lists only orders with a cut. Used only for weeks before Consignment Sales History begins' },
   { series: 'production', field: 'Cases produced', derived: false, file: '— none —',
@@ -1519,6 +1521,11 @@ function DotServicePanel({ svc, latestDataWk, consignment }) {
   const l4From = csNewest ? s4Back(csNewest) : null;
   const skuL4 = consignmentBySku(consignment, l4From);
   const skuAll = consignmentBySku(consignment, null);
+  // POs Walmart cut before they reached DOT — found only in OTIF (see
+  // useDemandFeeds.shapePreDotCuts). Already inside the totals above; listed
+  // so the reader can see which cuts no DOT report shows.
+  const preDot = (consignment ?? []).filter(r => r.source === "otif");
+  const preDotCases = preDot.reduce((a, r) => a + r.cut, 0);
   const max = Math.max(...svc.rows.map(r => r.trueOrdered));
   // A DOT report now arrives WEEKLY (Caroline, Aug 24 2026), so this gap is a
   // missed-upload signal rather than an inherent property of the feed — which
@@ -1628,6 +1635,17 @@ function DotServicePanel({ svc, latestDataWk, consignment }) {
             ({skuAll.reduce((n, a) => n + a.replaced, 0)} such PO{skuAll.reduce((n, a) => n + a.replaced, 0) === 1 ? "" : "s"} in the loaded window).
             Weeks are the ship week (Detail Establish Date).
           </p>
+          {preDot.length > 0 && (
+            <p className="text-[11px] mt-2 rounded-lg px-3 py-2 cc-sans" style={{ background: "#FDF6FA", color: "#8E1039" }}>
+              {/* One string: SSR splits adjacent expressions with comments (smoke test). */}
+              <b>{"Includes " + preDot.length + " PO" + (preDot.length === 1 ? "" : "s") + " (" + F.int(preDotCases) + " cs) Walmart ordered that never reached DOT"}</b> —
+              100% unfilled in OTIF, 0 cs in NetSuite, absent from every DOT report:{" "}
+              {Object.entries(preDot.reduce((m, r) => ((m[r.sku ?? "SKU unknown"] = (m[r.sku ?? "SKU unknown"] || 0) + r.cut), m), {}))
+                .map(([k, v]) => k + " " + F.int(v)).join(" · ")}
+              {" "}({[...new Set(preDot.map(r => wkEnding(r.wk)))].join(", ")}).
+              <span className="opacity-80"> Cut upstream of DOT — ask Cortina why these POs were zeroed.</span>
+            </p>
+          )}
         </div>
       )}
       <p className="text-[11px] mt-3 rounded-lg px-3 py-2" style={{ background: "#FDF6FA", color: "#8E1039" }}>
@@ -1849,7 +1867,7 @@ const ROWS = [
     hint: "DOT Consignment Sales History: cases received against each Walmart PO, by ship week. Italic weeks predate it and come from DOT Order History, which lists only orders that had a cut." },
   { k: "dotcut", l: "DOT cut (cs)", g: c => c.dotCut, f: "int", partial: c => c.dotSrc === "order_history",
     flag: c => (c.dotCut > 0 && c.dotDelivered != null && c.dotCut / (c.dotCut + c.dotDelivered) > 0.1 ? "bad" : c.dotCut > 0 ? "warn" : null),
-    hint: "Ordered − received per Walmart PO × SKU. A PO DOT re-placed and later shipped counts as filled, not cut." },
+    hint: "Ordered − received per Walmart PO × SKU. A PO DOT re-placed and later shipped counts as filled, not cut. Includes POs Walmart ordered that never reached DOT (OTIF 100% unfilled, 0 cs in NetSuite), in their OTIF week." },
   // A measured reading (DOT Inventory Snapshot, good cases), not a model — so
   // no placeholder flag. Blank in weeks without an upload.
   { k: "dotact", l: "DOT actual OH (feed)", g: c => c.dotActual, f: "int" },

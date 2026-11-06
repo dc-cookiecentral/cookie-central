@@ -77,6 +77,28 @@ try {
   const once = tot({ consignment }), twice = tot(re);
   console.log('overlap test', { overlapLines, tableRows: table.size, once, afterOverlaps: twice });
   if (table.size !== recs.length || JSON.stringify(once) !== JSON.stringify(twice)) bad.push(['overlapping uploads changed the totals', JSON.stringify(twice)]);
+
+  // ── OTIF-only cuts (shapePreDotCuts): each rule on synthetic POs ──
+  const { shapePreDotCuts } = await import(join(dir, 'h.mjs'));
+  const firstWk = Math.min(...recs.map((r) => r.ship_week));
+  const inCs = recs[0].customer_po;
+  const otif = [
+    { host_po: '9000000001', walmart_week: 202636, mabd: '2026-10-06', cases_ordered: 21, cases_unfilled: 21 }, // counts (NetSuite 0)
+    { host_po: '9000000002', walmart_week: 202636, mabd: '2026-10-06', cases_ordered: 21, cases_unfilled: 21 }, // NetSuite 21 → unsettled, not a cut
+    { host_po: inCs,         walmart_week: 202636, mabd: '2026-10-06', cases_ordered: 21, cases_unfilled: 21 }, // DOT has it
+    { host_po: '9000000004', walmart_week: 202636, mabd: '2026-10-06', cases_ordered: 21, cases_unfilled: 10 }, // partly filled
+    { host_po: '9000000005', walmart_week: firstWk - 1, mabd: '2026-03-01', cases_ordered: 21, cases_unfilled: 21 }, // before the window
+    { host_po: '9000000006', walmart_week: 202636, mabd: '2026-10-06', cases_ordered: 42, cases_unfilled: 42 }, // in Customer Order Details
+    { host_po: '9000000007', walmart_week: 202636, mabd: '2026-10-06', cases_ordered: 21, cases_unfilled: 21 }, // not in NetSuite → counts, SKU unknown
+  ];
+  const ns = [
+    { cortina_item_number: '1287', quantity_cases: 0, purchase_orders: { walmart_po_number: '9000000001' } },
+    { cortina_item_number: '1287', quantity_cases: 21, purchase_orders: { walmart_po_number: '9000000002' } },
+  ];
+  const pre = shapePreDotCuts(otif, recs, [{ customer_po: '9000000006' }], ns);
+  const got = pre.map((r) => `${r.po}:${r.sku ?? 'null'}:${r.cut}`).join(' ');
+  console.log('OTIF-only cuts (synthetic):', got);
+  if (got !== '9000000001:CCF:21 9000000007:null:21') bad.push(['OTIF-only cut rules', got]);
 } finally { rmSync(dir, { recursive: true, force: true }); }
 
 console.log(bad.length ? '\n❌ ' + bad.map(([k, v]) => `${k}: got ${v}`).join(' · ') : '\n✅ matches the first real file');

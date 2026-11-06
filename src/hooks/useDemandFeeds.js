@@ -89,7 +89,10 @@ const CORTINA_ITEM_TO_SKU = { 1252: 'WC', 1251: 'PBG', 1287: 'CCF', 1324: 'BC' }
 // PO × SKU: ordered = the largest single ask (the PO quantity, not the sum of
 // re-asks), received = everything that shipped against it, and the week is
 // the ship week of the newest line.
-export function shapeConsignment(csRows) {
+//
+// `extra` = PO × SKU rows already in this shape that no DOT report carries
+// (see shapePreDotCuts); they join the cut totals but have no ship line.
+export function shapeConsignment(csRows, extra = []) {
   if (!csRows) return { consignment: null, consignmentWeekly: null };
   const byPo = new Map();
   for (const r of csRows) {
@@ -102,9 +105,13 @@ export function shapeConsignment(csRows) {
     if ((r.ship_date || '') > a.shipDate) { a.shipDate = r.ship_date; a.wk = r.ship_week; }
     byPo.set(k, a);
   }
-  const consignment = [...byPo.values()].map((a) => ({ ...a, cut: Math.max(0, a.ordered - a.received), replaced: a.lines > 1 }));
-  // Per week × SKU, the engine-facing shape (same as dotDeliveries).
-  const consignmentWeekly = [...consignment.reduce((m, r) => {
+  const consignment = [
+    ...[...byPo.values()].map((a) => ({ ...a, cut: Math.max(0, a.ordered - a.received), replaced: a.lines > 1, source: 'consignment' })),
+    ...extra,
+  ];
+  // Per week × SKU, the engine-facing shape (same as dotDeliveries). Rows with
+  // no SKU count in the weekly service totals but not here.
+  const consignmentWeekly = [...consignment.filter((r) => r.sku).reduce((m, r) => {
     const k = `${r.wk}|${r.sku}`;
     const a = m.get(k) || { wk: r.wk, sku: r.sku, delivered: 0, ordered: 0, cut: 0, pos: 0, source: 'consignment' };
     a.delivered += r.received; a.ordered += r.ordered; a.cut += r.cut; a.pos += 1;
@@ -131,6 +138,56 @@ export function shapeConsignment(csRows) {
 // Snapshot's sellable already excludes Picking + Loaded).
 const OPEN_STATUSES = new Set(['open', 'released', 'picking', 'picked', 'loaded']);
 const PAST_DUE_DAYS = 7;
+// ── Cuts no DOT report can show: OTIF-only (Nov 5 2026) ──────────────────
+// Pure, exported for scripts/test-dot-consignment-sales.mjs.
+//
+// Some Walmart POs are cut to zero BEFORE they reach DOT — first case: 7 CCF
+// POs, MABD Oct 6–9 2026, 21 cs each. OTIF says Walmart ordered 147 cs and
+// received none; NetSuite holds them at 0 cs with no cut reason; DOT never
+// lists them. Cut recovery read only DOT, so it missed them.
+//
+// A PO counts here only if ALL hold:
+//   · OTIF: fully unfilled (unfilled ≥ ordered > 0);
+//   · in no DOT report — not in Consignment Sales History, not in Customer
+//     Order Details (an open or unsettled DOT order is not a cut);
+//   · NetSuite holds 0 cases for it (or has no line) — a positive NetSuite
+//     quantity means something shipped and DOT simply has not settled it;
+//   · its OTIF week is inside the consignment history, where DOT's absence
+//     means something (before it, the PO may just predate the data).
+// SKU = the PO's NetSuite item when it has exactly one; else null (counted in
+// weekly totals, not per SKU). OTIF carries no item number.
+export function shapePreDotCuts(otifRows, csRows, coRows, orderRows) {
+  if (!otifRows || !csRows?.length) return [];
+  const norm = (p) => String(p ?? '').replace(/^0+/, '');
+  const firstWk = Math.min(...csRows.map((r) => r.ship_week).filter(Boolean));
+  const atDot = new Set([...csRows.map((r) => norm(r.customer_po)), ...(coRows ?? []).map((r) => norm(r.customer_po))]);
+  const ns = new Map();
+  for (const r of orderRows ?? []) {
+    const k = norm(r.purchase_orders?.walmart_po_number);
+    const a = ns.get(k) || { qty: 0, skus: new Set() };
+    a.qty += Number(r.quantity_cases) || 0;
+    const sku = CORTINA_ITEM_TO_SKU[r.cortina_item_number];
+    if (sku) a.skus.add(sku);
+    ns.set(k, a);
+  }
+  const out = [];
+  for (const r of otifRows) {
+    const ordered = Number(r.cases_ordered) || 0;
+    const unfilled = Number(r.cases_unfilled) || 0;
+    if (!(ordered > 0) || unfilled < ordered) continue;
+    if (!r.walmart_week || r.walmart_week < firstWk) continue;
+    const po = norm(r.host_po);
+    if (atDot.has(po)) continue;
+    const n = ns.get(po);
+    if (n && n.qty > 0) continue;
+    out.push({
+      po: r.host_po, sku: n && n.skus.size === 1 ? [...n.skus][0] : null, wk: r.walmart_week,
+      shipDate: r.mabd ?? '', ordered, received: 0, cut: ordered, lines: 0, replaced: false, source: 'otif',
+    });
+  }
+  return out;
+}
+
 export function shapeOpenOrders(rows, csRows, today) {
   if (!rows) return null;
   const shipped = new Set((csRows ?? []).map((r) => `${r.dot_order_number}|${r.sku}`));
@@ -193,7 +250,7 @@ export function useDemandFeeds() {
           .order('target_week')),
         fetchAll(() => supabase
           .from('retail_link_otif')
-          .select('walmart_week, host_po, cases_ordered, cases_on_time, cases_unfilled')
+          .select('walmart_week, host_po, mabd, cases_ordered, cases_on_time, cases_unfilled')
           .order('walmart_week')),
         fetchAll(() => supabase
           .from('dot_order_history')
@@ -251,7 +308,9 @@ export function useDemandFeeds() {
       // PO × SKU: ordered = the largest single ask (the PO quantity, not the
       // sum of re-asks), received = everything that shipped against it, and
       // the week is the ship week of the newest line.
-      const { consignment, consignmentWeekly } = shapeConsignment(csRows);
+      // Plus POs Walmart cut before they ever reached DOT (OTIF-only).
+      const preDotCuts = shapePreDotCuts(otifRows, csRows, coRows, orderRows);
+      const { consignment, consignmentWeekly } = shapeConsignment(csRows, preDotCuts);
       const todayIso = (() => { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; })();
       const openOrders = shapeOpenOrders(coRows, csRows, todayIso);
       const consignmentWeeks = new Set((consignmentWeekly ?? []).map((r) => r.wk));
@@ -343,10 +402,11 @@ export function useDemandFeeds() {
             }, new Map())
             .values()].map((r) => ({ ...r, source: 'order_history' }))
         : null;
-      const consignmentService = consignmentWeekly
-        ? [...consignmentWeekly.reduce((m, r) => {
+      // From every PO × SKU row, so OTIF-only cuts with no known SKU still count.
+      const consignmentService = consignment
+        ? [...consignment.reduce((m, r) => {
             const a = m.get(r.wk) || { wk: r.wk, ordered: 0, cut: 0, pos: 0, source: 'consignment' };
-            a.ordered += r.ordered; a.cut += r.cut; a.pos += r.pos;
+            a.ordered += r.ordered; a.cut += r.cut; a.pos += 1;
             m.set(r.wk, a);
             return m;
           }, new Map()).values()]
