@@ -4,7 +4,7 @@ import Pill from './Pill';
 import { useDotInventory } from '../hooks/useDotInventory';
 import { useCoPackerInventory } from '../hooks/useCoPackerInventory';
 import { useIncomingInventory } from '../hooks/useRawMaterialOrders';
-import { formatDateTime } from '../utils/dates';
+import { formatDate, formatDateTime } from '../utils/dates';
 import { groupByIngredient, worstStatus } from '../utils/ingredientGrouping';
 
 const TH = 'px-2 py-2 text-left text-[9px] font-bold text-gr uppercase tracking-wider';
@@ -62,7 +62,7 @@ export default function WarehouseView() {
         open={open.dot}
         onToggle={() => toggle('dot')}
         title="DOT Foods"
-        subtitle={`Redistributor · Last upload: ${formatDateTime(dot.lastSnapshot)}`}
+        subtitle={`Redistributor · Inventory Snapshot of ${formatDate(dot.lastSnapshot)} · cases`}
       />
       {open.dot &&
         (dot.loading ? (
@@ -71,7 +71,7 @@ export default function WarehouseView() {
           <div className="px-4 py-3 text-xs text-red-600">{dot.error}</div>
         ) : dot.rows.length === 0 ? (
           <div className="px-4 py-6 text-center text-sm text-gr">
-            No DOT inventory — upload a DOT report.
+            No DOT stock yet — upload DOT's Inventory Snapshot on /uploads.
           </div>
         ) : (
           <table className="w-full border-collapse text-[11px]">
@@ -79,11 +79,11 @@ export default function WarehouseView() {
               <tr className="bg-pc">
                 <th className={TH}>Product</th>
                 <th className={THR}>On-Hand</th>
-                <th className={THR + ' text-emerald-600'}>In</th>
-                <th className={THR + ' text-violet-700'}>To Ret</th>
-                <th className={THR + ' text-amber-600'}>Alloc</th>
+                <th className={THR + ' text-amber-600'} title="Committed: Loaded + Picked">Alloc</th>
                 <th className={THR + ' font-extrabold'}>Avail</th>
-                <th className={THC}>Wks</th>
+                <th className={THC} title="Available ÷ Walmart POS, last 4 weeks">Wks</th>
+                <th className={THR + ' text-amber-600'} title="Good cases expiring within 60 days">≤60d</th>
+                <th className={THR + ' text-red-600'}>Expired</th>
               </tr>
             </thead>
             <tbody>
@@ -94,16 +94,9 @@ export default function WarehouseView() {
                 return (
                   <tr key={d.sku} className={`border-b border-bg ${low ? 'bg-amber-50' : ''}`}>
                     <td className="px-2 py-1.5 font-semibold">
-                      {d.products?.full_name || d.products?.short_name || d.sku}
-                      <div className="text-[8px] text-gr">{d.sku}</div>
+                      {d.sku}
                     </td>
                     <td className="px-2 py-1.5 text-right font-bold">{(d.on_hand ?? 0).toLocaleString()}</td>
-                    <td className={`px-2 py-1.5 text-right ${d.incoming ? 'text-emerald-600' : 'text-lt'}`}>
-                      {d.incoming ? `+${d.incoming.toLocaleString()}` : '--'}
-                    </td>
-                    <td className="px-2 py-1.5 text-right text-violet-700">
-                      {d.in_transit_to_retailer ? `-${d.in_transit_to_retailer.toLocaleString()}` : '--'}
-                    </td>
                     <td className="px-2 py-1.5 text-right text-amber-600">
                       {d.allocated ? `-${d.allocated.toLocaleString()}` : '--'}
                     </td>
@@ -120,6 +113,13 @@ export default function WarehouseView() {
                       ) : (
                         <span className="text-gr text-[9px]">--</span>
                       )}
+                    </td>
+                    <td className={`px-2 py-1.5 text-right ${d.expiring60 ? 'text-amber-600' : 'text-lt'}`}
+                      title={d.earliest_expiry ? `First good expiry ${formatDate(d.earliest_expiry)}` : undefined}>
+                      {d.expiring60 ? d.expiring60.toLocaleString() : '--'}
+                    </td>
+                    <td className={`px-2 py-1.5 text-right ${d.expired ? 'text-red-600 font-bold' : 'text-lt'}`}>
+                      {d.expired ? d.expired.toLocaleString() : '--'}
                     </td>
                   </tr>
                 );

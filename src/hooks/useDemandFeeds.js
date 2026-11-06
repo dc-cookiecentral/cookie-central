@@ -51,7 +51,7 @@ import { walmartWeekOf } from '../parsers/retailLinkSupplyPlan';
 // item(s) with no sales and no traited stores in any week" on the WK35 and WK36
 // uploads). It therefore reaches this page through the FORECAST feed only. That
 // is correct and expected until it is traited — not a missing upload.
-const ITEM_TO_SKU = { 679640563: 'WC', 679640564: 'PBG', 683581675: 'CCF', 686669913: 'BC' };
+export const ITEM_TO_SKU = { 679640563: 'WC', 679640564: 'PBG', 683581675: 'CCF', 686669913: 'BC' };
 
 // Cortina/NetSuite item numbers → the same short codes. A DIFFERENT numbering
 // from the Walmart prime item numbers above; both appear in this file and
@@ -250,7 +250,7 @@ export function useDemandFeeds() {
           .order('target_week')),
         fetchAll(() => supabase
           .from('retail_link_otif')
-          .select('walmart_week, host_po, mabd, cases_ordered, cases_on_time, cases_unfilled')
+          .select('walmart_week, host_po, mabd, cases_ordered, cases_early, cases_on_time, cases_late, cases_unfilled')
           .order('walmart_week')),
         fetchAll(() => supabase
           .from('dot_order_history')
@@ -491,9 +491,11 @@ export function useDemandFeeds() {
       const otif = otifRows
         ? [...otifRows
             .reduce((m, r) => {
-              const a = m.get(r.walmart_week) || { wk: r.walmart_week, ordered: 0, onTime: 0, unfilled: 0, pos: 0 };
+              const a = m.get(r.walmart_week) || { wk: r.walmart_week, ordered: 0, early: 0, onTime: 0, late: 0, unfilled: 0, pos: 0 };
               a.ordered += r.cases_ordered || 0;
+              a.early += r.cases_early || 0;
               a.onTime += r.cases_on_time || 0;
+              a.late += r.cases_late || 0;
               a.unfilled += r.cases_unfilled || 0;
               a.pos += 1;
               m.set(r.walmart_week, a);

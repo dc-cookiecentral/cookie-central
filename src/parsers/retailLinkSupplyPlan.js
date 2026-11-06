@@ -33,8 +33,8 @@
 // what Walmart sends and what this table stores; only this summary's "cs" changes.
 // An item not listed is still counted at 12 but named in the upload warnings,
 // so a new item can't be mis-converted silently.
-const EACHES_PER_CASE = { 679640563: 12, 679640564: 12, 683581675: 12, 686669913: 10 };
-const DEFAULT_EACHES_PER_CASE = 12;
+export const EACHES_PER_CASE = { 679640563: 12, 679640564: 12, 683581675: 12, 686669913: 10 };
+export const DEFAULT_EACHES_PER_CASE = 12;
 const eachesPerCase = (item) => EACHES_PER_CASE[item] ?? DEFAULT_EACHES_PER_CASE;
 
 // Excel serial → 'YYYY-MM-DD'. Read as raw serials rather than with SheetJS's

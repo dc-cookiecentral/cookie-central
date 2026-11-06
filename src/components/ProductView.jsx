@@ -5,7 +5,7 @@ import { useDotInventory } from '../hooks/useDotInventory';
 import { useCoPackerInventory } from '../hooks/useCoPackerInventory';
 
 // Inventory > Product view (BUILD_PLAN 5.1). Three sections — Finished Goods
-// (dot_inventory) / Raw Materials / Packaging (both from raw_materials) —
+// (dot_on_hand, via useDotInventory) / Raw Materials / Packaging (both from raw_materials) —
 // listed flat; click a row → detail with location breakdown + inline
 // Adjust Inventory form (5.2).
 
@@ -193,7 +193,7 @@ function ItemDetail({ item, profile, onBack, onAdjusted }) {
         {item.velocity != null ? (
           <div className="bg-bg border border-lt rounded-lg p-2.5">
             <div className="text-[8px] font-semibold uppercase text-gr">Weekly Velocity</div>
-            <div className="text-lg font-extrabold mt-0.5">{Number(item.velocity).toLocaleString()}</div>
+            <div className="text-lg font-extrabold mt-0.5">{Math.round(Number(item.velocity)).toLocaleString()}<span className="text-xs text-gr ml-1">cs/wk POS</span></div>
           </div>
         ) : (
           <div className="bg-bg border border-lt rounded-lg p-2.5">
@@ -203,7 +203,7 @@ function ItemDetail({ item, profile, onBack, onAdjusted }) {
         )}
         {item.allocated ? (
           <div className="bg-amber-50 border border-lt rounded-lg p-2.5">
-            <div className="text-[8px] font-semibold uppercase text-gr">Allocated to POs</div>
+            <div className="text-[8px] font-semibold uppercase text-gr">Committed (loaded + picked)</div>
             <div className="text-lg font-extrabold mt-0.5 text-amber-700">
               {Number(item.allocated).toLocaleString()}
             </div>
@@ -290,7 +290,8 @@ export default function ProductView() {
   const fg = dot.rows.map((d) => ({
     kind: 'finished',
     code: d.sku,
-    name: d.products?.full_name || d.products?.short_name || d.sku,
+    name: d.sku,
+    unit: 'cs',
     total: d.on_hand ?? 0,
     velocity: d.weekly_velocity,
     allocated: d.allocated ?? 0,

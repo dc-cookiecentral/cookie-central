@@ -492,8 +492,8 @@ function FlowCard({ s, m, f, feeds }) {
   const todayWl = s.lastActualIdx >= 0 ? data[s.lastActualIdx].wl : null;
   const chips = chainChips(s);
   const UNITS_PER_CASE = packOf(s.sku).unitsPerCase;
-  const g = m.n4wGap;
-  const gTone = g != null && Math.abs(g) > 0.15 ? (Math.abs(g) > 0.4 ? "#C2185B" : "#B87514") : "#3E8E5A";
+  const g = fcstGap(m);
+  const gTone = g?.tone === "bad" ? "#C2185B" : g?.tone === "warn" ? "#B87514" : "#3E8E5A";
   const doh = dotDaysOnHand(m, f, UNITS_PER_CASE);
   const fmtTip = (v, name) => {
     const cs = Math.round(v).toLocaleString() + " cs";
@@ -512,8 +512,8 @@ function FlowCard({ s, m, f, feeds }) {
         <h2 className="cc-serif text-lg leading-tight">{SKU_NAMES[s.sku]}</h2>
         <span className="text-xs opacity-60">Retail Link data thru {wkEnding(m.latestWk)}</span>
         <span className="ml-auto text-sm" title="Walmart = latest Retail Link store forecast · us = DC internal forecast (trailing-4-wk true velocity × stores)">
-          Walmart fcst vs our fcst, next 4 wks: <b style={{ color: gTone }}>{F.spct(g)}</b>
-          {g != null && Math.abs(g) > 0.15 && <span className="ml-2 text-[11px] font-medium" style={{ color: "#C2185B" }}>raise with Walmart</span>}
+          Walmart fcst vs our fcst, next 4 wks: <b style={{ color: gTone }}>{g ? g.text : "—"}</b>
+          {g?.tone && <span className="ml-2 text-[11px] font-medium" style={{ color: "#C2185B" }}>raise with Walmart</span>}
         </span>
       </header>
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
@@ -522,7 +522,7 @@ function FlowCard({ s, m, f, feeds }) {
           <Stat label="True demand (cs/wk)" value={F.int(m.l4wTrue / UNITS_PER_CASE)}
             src="derived: POS ÷ in-stock %" />
           <Stat label="In-stock" value={F.pct(m.instock)}
-            tone={m.instock != null && m.instock < 0.65 ? "bad" : m.instock != null && m.instock < 0.8 ? "warn" : undefined}
+            tone={tone(m.instock, WMT_INSTOCK.bad, WMT_INSTOCK.warn)}
             src="Retail Link · share of stores" />
           <Stat label="Fill rate, last 4 wks" value={F.pct(m.l4wFill)}
             src="NetSuite (Cortina) deliveries" />
@@ -778,11 +778,9 @@ function InventoryByWeek({ s, feeds }) {
 // SKU. That asymmetry is why the two sides of this panel are shaped
 // differently rather than forced into one table.
 
-// Thresholds mirror the Tracker's, deliberately: the same metric flagged at
-// two different cut-offs on one page is a bug, not a nuance. In-stock uses the
-// Tracker's in-stock row (< 65% bad, < 80% warn); OTIF uses its service/fill
-// row (< 90% bad, < 98% warn). Neither is a Walmart-published target — they
-// are this page's display thresholds.
+// Thresholds: Service health, the actions panel and the Tracker's in-stock
+// row all read WMT_OTIF / WMT_INSTOCK (below), deliberately — the same metric
+// flagged at two different cut-offs on one page is a bug, not a nuance.
 const tone = (v, bad, warn) => (v == null ? undefined : v < bad ? "bad" : v < warn ? "warn" : undefined);
 const barColor = (v, bad, warn) =>
   v == null ? "#EFE4E9" : v < bad ? "#C2185B" : v < warn ? "#E8A33D" : "#3E8E5A";
@@ -791,16 +789,40 @@ const barColor = (v, bad, warn) =>
 // read on the same visual scale. Bars are drawn on a 0–100% axis rather than
 // scaled to the data: these are service levels, and stretching 92%–98% to fill
 // the box would make a good week look like a crisis.
-function ServiceBars({ rows, bad, warn, fmt }) {
-  if (!rows.length) return <div className="text-[11px] opacity-60">No weekly history yet.</div>;
+// A week with no reading keeps its slot, drawn as an empty dashed box (Nov 6
+// 2026): dropping it made the bars on either side look like consecutive weeks.
+const WEEK_MS = 7 * 86400000;
+function withMissingWeeks(rows) {
+  const out = [];
+  rows.forEach((r, i) => {
+    if (i > 0) {
+      const prev = weekEndingDate(rows[i - 1].wk);
+      const missing = Math.round((weekEndingDate(r.wk) - prev) / WEEK_MS) - 1;
+      for (let k = 1; k <= missing; k++) {
+        const d = new Date(prev.getTime() + k * WEEK_MS);
+        out.push({ key: r.wk + "-gap-" + k, missing: true, v: null,
+          label: (d.getUTCMonth() + 1) + "/" + d.getUTCDate(),
+          title: "wk ending " + d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) + ": no data loaded" });
+      }
+    }
+    out.push({ ...r, key: String(r.wk), label: weekEndingNumeric(r.wk) });
+  });
+  return out.slice(-14);
+}
+
+function ServiceBars({ rows: data, bad, warn, fmt }) {
+  if (!data.length) return <div className="text-[11px] opacity-60">No weekly history yet.</div>;
+  const rows = withMissingWeeks(data);
   return (
     <div>
       <div className="flex items-end gap-1" style={{ height: 56 }}>
         {rows.map((r) => (
-          <div key={r.wk} className="flex-1 min-w-0 flex flex-col justify-end" style={{ height: 56 }}
-            title={wkEnding(r.wk) + ": " + fmt(r.v) + (r.note ? " \u00b7 " + r.note : "")}>
-            <div className="w-full rounded-t"
-              style={{ height: Math.max(2, (r.v ?? 0) * 56), background: barColor(r.v, bad, warn) }} />
+          <div key={r.key} className="flex-1 min-w-0 flex flex-col justify-end" style={{ height: 56 }}
+            title={r.missing ? r.title : wkEnding(r.wk) + ": " + fmt(r.v) + (r.note ? " \u00b7 " + r.note : "")}>
+            {r.missing
+              ? <div className="w-full rounded-t" style={{ height: 56, border: "1px dashed #D9C7D0" }} />
+              : <div className="w-full rounded-t"
+                  style={{ height: Math.max(2, (r.v ?? 0) * 56), background: barColor(r.v, bad, warn) }} />}
           </div>
         ))}
       </div>
@@ -812,98 +834,234 @@ function ServiceBars({ rows, bad, warn, fmt }) {
           rather than repeated 14 times, which is what makes the column fit. */}
       <div className="flex gap-1 mt-1">
         {rows.map((r) => (
-          <div key={r.wk} className="flex-1 min-w-0 text-center text-[11px] cc-mono font-bold tabular-nums tracking-tighter"
-            style={{ color: barColor(r.v, bad, warn) }}>
+          <div key={r.key} className="flex-1 min-w-0 text-center text-[11px] cc-mono font-bold tabular-nums tracking-tighter"
+            style={{ color: r.missing ? "#B9A9B1" : barColor(r.v, bad, warn) }}>
             {r.v == null ? "—" : (r.v * 100).toFixed(1)}
           </div>
         ))}
       </div>
       <div className="flex gap-1">
         {rows.map((r) => (
-          <div key={r.wk} className="flex-1 min-w-0 text-center text-[10px] cc-mono opacity-60 tabular-nums tracking-tighter">
-            {weekEndingNumeric(r.wk)}
+          <div key={r.key} className="flex-1 min-w-0 text-center text-[10px] cc-mono opacity-60 tabular-nums tracking-tighter">
+            {r.label}
           </div>
         ))}
       </div>
-      <div className="text-[11px] opacity-50 mt-0.5">values are %, labels are week ending (month/day)</div>
+      <div className="text-[11px] opacity-50 mt-0.5">values are %, labels are week ending (month/day){rows.some(r => r.missing) ? "; dashed = no data that week" : ""}</div>
     </div>
   );
 }
 
-// In-store fill rate per week, averaged across SKUs. Shared with the actions
-// panel so the two read the same number.
-function instockRows(series) {
-  // Walmart restates in-stock along with POS, so read it off the series rather
-  // than caching a headline number anywhere.
-  const instockByWk = new Map();
-  for (const s of series) {
-    for (const c of s.cells) {
-      // Require actual sales in the week. Pre-launch weeks carry instock = 0
-      // against a handful of test stores (SEED has traited 1–3 back to 202601,
-      // and All Item Detail runs the same way), and averaging those genuine
-      // zeros into a shelf-availability headline would read as a catastrophic
-      // outage in weeks the product simply was not on sale yet.
-      if (c.instock == null || !(c.pos > 0)) continue;
-      const a = instockByWk.get(c.wk) || { wk: c.wk, vals: [], bySku: {} };
-      a.vals.push(c.instock);
-      a.bySku[s.sku] = c.instock;
-      instockByWk.set(c.wk, a);
-    }
-  }
-  return [...instockByWk.values()]
-    .filter((a) => a.vals.length)
-    .sort((a, b) => a.wk - b.wk)
-    .map((a) => ({ wk: a.wk, v: a.vals.reduce((x, y) => x + y, 0) / a.vals.length, bySku: a.bySku }))
-    .slice(-14);
+// ── How Walmart grades a supplier (Nov 6 2026) ──────────────────────────────
+// OTIF is graded on CASES, in two parts, each against its own target:
+//   On-Time  = cases that arrived inside the PO's delivery window (MABD) ÷
+//              cases that arrived. Early and late both miss (prepaid freight).
+//   In-Full  = cases received ÷ cases ordered. Unfilled = cut.
+//   OTIF     = cases on time ÷ cases ordered — the export's own "OTIF %".
+// Every non-compliant case (early + late + unfilled) is fined 3% of its cost
+// of goods; Walmart scores by month and bills by fiscal quarter.
+// The OTIF export's four buckets (early, on time, late, unfilled) add up to
+// cases ordered exactly (WK 22–38 file: 108 + 21,377 + 2,798 + 7,883 = 32,166).
+//
+// ✅ Verified against Walmart's Supplier One scorecard (Caroline, Nov 6 2026):
+// week 202638 (Sat 10/17 – Fri 10/23) reads In full (store) 62.63% and On time
+// (store) 84.83% there, and these formulas give 62.63% / 84.83% on the same
+// OTIF export. Targets are the scorecard's: In full 95%, On time 90%. Its
+// "On time collect ready" (98%) and eCom cards read 0% with no volume — our
+// freight is prepaid to stores via DOT — so they are not shown here.
+const WMT_OTIF = { onTime: 0.9, inFull: 0.95, fineRate: 0.03, nearPts: 0.02 };
+// In-Stock % is Retail Link's own "Instock" measure (share of traited stores
+// with stock), rolled up across items weighted by traited stores. It is not on
+// the Supplier One scorecard, so these are page thresholds, not Walmart's.
+const WMT_INSTOCK = { warn: 0.97, bad: 0.95 };
+
+// Red below target, amber within nearPts above it, green otherwise.
+const toneVsTarget = (v, target) =>
+  v == null ? undefined : v < target ? "bad" : v < target + WMT_OTIF.nearPts ? "warn" : undefined;
+
+// Walmart fiscal quarter of a week: 13 weeks each, week 53 in Q4.
+const fiscalQuarter = wk => ({ fy: Math.floor(wk / 100), q: Math.min(4, Math.ceil((wk % 100) / 13)) });
+
+// Sum OTIF buckets over a set of weekly rows and grade them.
+function gradeOtif(rows) {
+  const t = rows.reduce((a, r) => ({
+    ordered: a.ordered + (r.ordered || 0), early: a.early + (r.early || 0), onTime: a.onTime + (r.onTime || 0),
+    late: a.late + (r.late || 0), unfilled: a.unfilled + (r.unfilled || 0), pos: a.pos + (r.pos || 0),
+  }), { ordered: 0, early: 0, onTime: 0, late: 0, unfilled: 0, pos: 0 });
+  const received = t.ordered - t.unfilled;
+  return {
+    ...t, received,
+    onTimePct: received > 0 ? t.onTime / received : null,
+    inFullPct: t.ordered > 0 ? received / t.ordered : null,
+    otifPct: t.ordered > 0 ? t.onTime / t.ordered : null,
+    missed: t.ordered - t.onTime,
+    first: rows[0]?.wk, last: rows.at(-1)?.wk,
+  };
 }
 
-// OTIF per week, from its own feed. Shared with the actions panel.
-const otifRowsOf = (otif) => (otif ?? []).filter((r) => r.otif != null).map((r) => ({
-  wk: r.wk, v: r.otif, note: F.int(r.unfilled) + " cs unfilled",
-})).slice(-14);
+// Walmart's cost per case, for the fine estimate: the MEDIAN NetSuite price per
+// delivered case over the last 13 weeks. Median, because some dough lines carry
+// a ~10× price (KNOWN_ISSUES §9) that a mean would pass straight through.
+function costPerCase(orders) {
+  const rows = (orders ?? []).filter(r => r.dlv > 0 && r.rev > 0);
+  if (!rows.length) return null;
+  const last = Math.max(...rows.map(r => r.wk));
+  const xs = rows.filter(r => wkIndex(last) - wkIndex(r.wk) < 13).map(r => r.rev / r.dlv).sort((a, b) => a - b);
+  return xs.length ? xs[Math.floor(xs.length / 2)] : null;
+}
 
-function ServiceHealth({ series, otif }) {
-  // ── In-store fill rate, from the POS feed ──
-  const isRows = instockRows(series);
-  const isNow = isRows[isRows.length - 1] ?? null;
-  const isPrev = isRows[isRows.length - 2] ?? null;
-  // Percentage POINTS, not a percentage change — a move from 98% to 96% is
-  // "down 2 points", and calling it "-2.0%" would understate it by 50x.
+// Weekly OTIF rows with the three grades. Shared with the actions panel.
+const otifWeeks = (otif) => (otif ?? []).filter(r => r.ordered > 0).map(r => ({ ...gradeOtif([r]), wk: r.wk }));
+
+// In-Stock % per week: Retail Link's own Instock column, traited-store
+// weighted across items. An item-week reporting exactly 0 while it sold is a
+// launch week Walmart has not started measuring (BC, W36–37), not an empty
+// shelf in 3,000 stores, so it is left out. Shared with the actions panel.
+function instockRows(pos) {
+  const byWk = new Map();
+  for (const p of pos ?? []) {
+    const v = p._instockRaw ?? p.instock, w = p.traited; // SEED rows carry only `instock`
+    if (!(v > 0) || !(w > 0) || !(p.units > 0)) continue;
+    const a = byWk.get(p.wk) || { wk: p.wk, num: 0, den: 0, bySku: {} };
+    a.num += v * w; a.den += w; a.bySku[p.sku] = v;
+    byWk.set(p.wk, a);
+  }
+  return [...byWk.values()].sort((a, b) => a.wk - b.wk)
+    .map(a => ({ wk: a.wk, v: a.num / a.den, bySku: a.bySku })).slice(-14);
+}
+
+function ServiceHealth({ series, feeds }) {
+  // ── In-Stock % ──
+  const isRows = instockRows(feeds.pos ?? SEED.pos);
+  const isNow = isRows.at(-1) ?? null;
+  const isPrev = isRows.at(-2) ?? null;
+  // Percentage POINTS, not a percentage change.
   const isDelta = isNow && isPrev ? (isNow.v - isPrev.v) * 100 : null;
+  const is4 = isRows.slice(-4);
+  const is4Avg = is4.length ? is4.reduce((a, r) => a + r.v, 0) / is4.length : null;
 
-  // ── OTIF, its own feed ──
-  // Separate from the cut-recovery panel below on purpose: OTIF is Walmart
-  // measuring us against MABD, cut recovery is what DOT failed to ship. Same
-  // shipments, opposite ends, and the weeks do not align — the DOT export is
-  // keyed on delivery date, OTIF on Walmart's week.
-  const src = otif ?? [];
-  const otifRows = otifRowsOf(otif);
-  const otifNow = otifRows[otifRows.length - 1] ?? null;
-  const otifOrdered = src.reduce((a, r) => a + (r.otif != null ? r.ordered : 0), 0);
-  const otifOnTime = src.reduce((a, r) => a + (r.otif != null ? (r.onTime ?? 0) : 0), 0);
-  const otifAll = otifOrdered > 0 ? otifOnTime / otifOrdered : null;
-  const worst = otifRows.length ? otifRows.reduce((a, b) => (b.v < a.v ? b : a)) : null;
+  // ── OTIF ──
+  const weeks = otifWeeks(feeds.otif);
+  const l4 = weeks.length ? gradeOtif((feeds.otif ?? []).filter(r => r.ordered > 0).slice(-4)) : null;
+  const cpc = costPerCase(feeds.orders);
+  const fine = g => (cpc != null ? g.missed * cpc * WMT_OTIF.fineRate : null);
+  const quarters = [...(feeds.otif ?? []).filter(r => r.ordered > 0).reduce((m, r) => {
+    const { fy, q } = fiscalQuarter(r.wk);
+    const k = fy * 10 + q;
+    if (!m.has(k)) m.set(k, { k, fy, q, rows: [] });
+    m.get(k).rows.push(r);
+    return m;
+  }, new Map()).values()].sort((a, b) => b.k - a.k).slice(0, 3).map(x => ({ ...x, g: gradeOtif(x.rows) }));
+  const why = l4 && l4.missed > 0 ? [
+    { l: "Unfilled (cut)", v: l4.unfilled, c: "#C2185B" },
+    { l: "Late", v: l4.late, c: "#E8A33D" },
+    { l: "Early", v: l4.early, c: "#6B3F8C" },
+  ] : [];
+  const thead = "text-[11px] uppercase tracking-wider opacity-60 font-normal";
 
   return (
     <section className="bg-white rounded-2xl border p-5" style={{ borderColor: "#E5D9DE" }}>
       <header className="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
-        <h2 className="cc-serif text-lg">Service health</h2>
+        <h2 className="cc-serif text-lg">Service health — how Walmart grades us</h2>
         <span className="text-xs opacity-60">
-          In-store fill rate and OTIF (In Time and In Full) — the two ends of the chain.
-          Source: Retail Link weekly + OTIF PO details.
+          OTIF (On-Time and In-Full, on cases) and store In-Stock %, as Walmart measures them.
+          Source: Retail Link OTIF PO details + weekly item detail.
         </span>
       </header>
 
       <div className="grid gap-6 md:grid-cols-2">
-        {/* ── in-store fill rate ── */}
+        {/* ── OTIF ── */}
         <div>
-          <div className="flex items-baseline gap-3 mb-1">
-            <Stat label="In-store fill rate" value={F.pct(isNow?.v)} tone={tone(isNow?.v, 0.65, 0.8)}
-              src={isNow ? "Repl in-stock % \u00b7 " + wkEnding(isNow.wk) : "awaiting a Retail Link upload"} />
+          <div className="text-[11px] uppercase tracking-wider font-semibold mb-2" style={{ color: "#C2185B" }}>
+            OTIF{l4 ? " · last 4 weeks loaded, " + weekEndingNumeric(l4.first) + "–" + weekEndingNumeric(l4.last) : ""}
+          </div>
+          {l4 ? (
+            <>
+              <div className="grid grid-cols-3 gap-3 mb-3">
+                <Stat label="On-Time" value={F.pct(l4.onTimePct)} tone={toneVsTarget(l4.onTimePct, WMT_OTIF.onTime)}
+                  src={"target " + F.pct0(WMT_OTIF.onTime) + " · in window ÷ arrived"} />
+                <Stat label="In-Full" value={F.pct(l4.inFullPct)} tone={toneVsTarget(l4.inFullPct, WMT_OTIF.inFull)}
+                  src={"target " + F.pct0(WMT_OTIF.inFull) + " · received ÷ ordered"} />
+                <Stat label="OTIF" value={F.pct(l4.otifPct)}
+                  src="on time ÷ ordered (Walmart's OTIF %)" />
+              </div>
+              {why.length > 0 && (
+                <div className="mb-3">
+                  <div className="text-[11px] opacity-70 mb-1">
+                    <b>{F.int(l4.missed)} of {F.int(l4.ordered)} cs</b> non-compliant
+                    {fine(l4) != null && <> · est. fine <b>${F.int(fine(l4))}</b> (3% of ~${cpc.toFixed(2)}/cs)</>}
+                  </div>
+                  <div className="flex h-2.5 rounded overflow-hidden" style={{ background: "#F1E7EC" }}>
+                    {why.filter(w => w.v > 0).map(w => (
+                      <div key={w.l} style={{ width: (w.v / l4.missed) * 100 + "%", background: w.c }} title={w.l + ": " + F.int(w.v) + " cs"} />
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-x-3 mt-1 text-[11px]">
+                    {why.map(w => (
+                      <span key={w.l}><span className="inline-block w-2 h-2 rounded-sm mr-1" style={{ background: w.c }} />
+                        {w.l} {F.int(w.v)} cs ({F.pct0(w.v / l4.missed)})</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="text-[11px] opacity-60 mb-0.5">In-Full by week (target {F.pct0(WMT_OTIF.inFull)})</div>
+              <ServiceBars rows={weeks.map(w => ({ wk: w.wk, v: w.inFullPct, note: F.int(w.unfilled) + " cs unfilled of " + F.int(w.ordered) }))}
+                bad={WMT_OTIF.inFull} warn={WMT_OTIF.inFull + WMT_OTIF.nearPts} fmt={F.pct} />
+              <div className="text-[11px] opacity-60 mb-0.5 mt-3">On-Time by week (target {F.pct0(WMT_OTIF.onTime)})</div>
+              <ServiceBars rows={weeks.map(w => ({ wk: w.wk, v: w.onTimePct, note: F.int(w.late) + " cs late, " + F.int(w.early) + " early" }))}
+                bad={WMT_OTIF.onTime} warn={WMT_OTIF.onTime + WMT_OTIF.nearPts} fmt={F.pct} />
+              {quarters.length > 0 && (
+                <div className="overflow-x-auto mt-3">
+                  <table className="w-full text-[11px] tabular-nums">
+                    <thead><tr className="text-left">
+                      <th className={thead}>Walmart quarter</th><th className={thead + " text-right"}>On-Time</th>
+                      <th className={thead + " text-right"}>In-Full</th><th className={thead + " text-right"}>OTIF</th>
+                      <th className={thead + " text-right"}>Missed cs</th><th className={thead + " text-right"}>Est. fine</th>
+                    </tr></thead>
+                    <tbody>
+                      {quarters.map(x => (
+                        <tr key={x.k} style={{ borderTop: "1px solid #F1E7EC" }}>
+                          <td className="py-1 pr-2">FY{String(x.fy + 1).slice(2)} Q{x.q} <span className="opacity-50">({weekEndingNumeric(x.g.first)}–{weekEndingNumeric(x.g.last)})</span></td>
+                          <td className="py-1 text-right font-bold" style={{ color: barColor(x.g.onTimePct, WMT_OTIF.onTime, WMT_OTIF.onTime + WMT_OTIF.nearPts) }}>{F.pct(x.g.onTimePct)}</td>
+                          <td className="py-1 text-right font-bold" style={{ color: barColor(x.g.inFullPct, WMT_OTIF.inFull, WMT_OTIF.inFull + WMT_OTIF.nearPts) }}>{F.pct(x.g.inFullPct)}</td>
+                          <td className="py-1 text-right">{F.pct(x.g.otifPct)}</td>
+                          <td className="py-1 text-right">{F.int(x.g.missed)}</td>
+                          <td className="py-1 text-right">{fine(x.g) != null ? "$" + F.int(fine(x.g)) : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <p className="text-[11px] opacity-60 mt-2">
+                Same formulas and targets as Walmart's Supplier One scorecard (In full / On time, store) — checked
+                to the hundredth of a point on week ending 10/25. Graded per PO, on cases; the export has no item
+                number, so OTIF cannot be split by SKU. Walmart's fiscal year starts in February (FY27 = Feb 2026 – Jan 2027).
+                The fine is an estimate: 3% of cost of goods per non-compliant case, as supplier guides describe it.
+              </p>
+            </>
+          ) : (
+            <p className="text-[11px] opacity-60">
+              Upload an "OTIF STORE Performance PO DETAILS" export at Uploads &rarr; Retail Link OTIF.
+            </p>
+          )}
+        </div>
+
+        {/* ── In-Stock % ── */}
+        <div>
+          <div className="text-[11px] uppercase tracking-wider font-semibold mb-2" style={{ color: "#C2185B" }}>Store In-Stock %</div>
+          <div className="flex flex-wrap items-baseline gap-3 mb-1">
+            <Stat label="In-Stock %" value={F.pct(isNow?.v)} tone={tone(isNow?.v, WMT_INSTOCK.bad, WMT_INSTOCK.warn)}
+              src={isNow ? "Retail Link Instock · " + wkEnding(isNow.wk) : "awaiting a Retail Link upload"} />
             {isDelta != null && (
               <span className="text-[11px] px-2 py-0.5 rounded-full"
                 style={{ background: isDelta < 0 ? "#FDF6FA" : "#EAF4EC", color: isDelta < 0 ? "#8E1039" : "#245B33" }}>
                 {(isDelta > 0 ? "+" : "") + isDelta.toFixed(1)} pts vs prior wk
+              </span>
+            )}
+            {is4Avg != null && (
+              <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ background: "#F7F1F4", color: "#2D2235" }}>
+                {F.pct(is4Avg)} avg, last 4 wks
               </span>
             )}
           </div>
@@ -914,43 +1072,26 @@ function ServiceHealth({ series, otif }) {
                 if (v == null) return null;
                 return (
                   <span key={s.sku} className="text-[11px] px-2 py-0.5 rounded-full"
-                    style={{ background: "#F7F1F4", color: barColor(v, 0.65, 0.8) }}>
+                    style={{ background: "#F7F1F4", color: barColor(v, WMT_INSTOCK.bad, WMT_INSTOCK.warn) }}>
                     <b>{s.sku}</b> {F.pct(v)}
                   </span>
                 );
               })}
             </div>
           )}
-          <ServiceBars rows={isRows} bad={0.65} warn={0.8} fmt={F.pct} />
+          <ServiceBars rows={isRows} bad={WMT_INSTOCK.bad} warn={WMT_INSTOCK.warn} fmt={F.pct} />
           <p className="text-[11px] opacity-60 mt-1.5">
-            Share of traited stores holding stock, averaged across SKUs. Suppressed POS in a low
-            week is corrected into true demand by the engine — it is not lost sales you can plan on.
+            Share of traited stores with the item in stock — Walmart's own Retail Link figure, weighted by
+            traited stores across items. Not on the Supplier One scorecard, so Walmart sets no target for it here:
+            red below {F.pct0(WMT_INSTOCK.bad)} and amber below {F.pct0(WMT_INSTOCK.warn)} are this page's lines.
+            Launch weeks Walmart reports as exactly 0% are left out.
           </p>
-        </div>
 
-        {/* ── OTIF ── */}
-        <div>
-          <div className="flex items-baseline gap-3 mb-1">
-            <Stat label="OTIF — In Time and In Full" value={F.pct(otifNow?.v)} tone={tone(otifNow?.v, 0.9, 0.98)}
-              src={otifNow ? "cases in time / cases ordered \u00b7 " + wkEnding(otifNow.wk) : "awaiting an OTIF upload"} />
-            {otifAll != null && (
-              <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ background: "#F7F1F4", color: "#2D2235" }}>
-                {F.pct(otifAll)} across {F.int(otifOrdered)} cs loaded
-              </span>
-            )}
+          <div className="mt-4 rounded-lg px-3 py-2 text-[11px]" style={{ background: "#F7F1F4" }}>
+            <b>SQEP</b> (Supplier Quality Excellence Program) is not on this page yet — no SQEP export is uploaded.
+            Supplier One grades six areas, each against a 100% target: ASN compliance, PO line accuracy, and case,
+            packaging, pallet and load compliance; every defect is charged. See Supplier One &rarr; Scorecard &rarr; SQEP.
           </div>
-          <ServiceBars rows={otifRows} bad={0.9} warn={0.98} fmt={F.pct} />
-          {worst && worst.v < 0.9 && (
-            <p className="text-[11px] mt-2 rounded-lg px-3 py-2" style={{ background: "#FDF6FA", color: "#8E1039" }}>
-              Worst week loaded is <b>{wkEnding(worst.wk)}</b> at {F.pct(worst.v)} — {worst.note}. OTIF is
-              measured per PO against MABD and carries no item number, so it cannot be split by SKU.
-            </p>
-          )}
-          {!otifRows.length && (
-            <p className="text-[11px] opacity-60 mt-1.5">
-              Upload an "OTIF STORE Performance PO DETAILS" export at Uploads &rarr; Retail Link OTIF.
-            </p>
-          )}
         </div>
       </div>
     </section>
@@ -974,7 +1115,7 @@ const PROVENANCE = [
   { series: 'pos', field: 'Traited stores', file: 'Dirty Cookie WK#', sheet: 'All Item Detail',
     detail: 'Data Type "Traited Stores"' },
   { series: 'pos', field: 'In-stock %', file: 'Dirty Cookie WK#', sheet: 'All Item Detail',
-    detail: 'Data Type "Instock" — but see the note below: the engine is fed POS Qty ÷ POS Qty if Instock instead, so it reproduces Walmart\'s own true demand exactly' },
+    detail: 'Data Type "Instock". Service health shows it as Walmart reports it, rolled up across items weighted by Traited Stores (item-weeks reading exactly 0 while selling are launch weeks, left out). The engine is fed POS Qty ÷ POS Qty if Instock instead, so it reproduces Walmart\'s own true demand exactly; the two agree within 0.2 pts on established items' },
   { series: 'pos', field: 'Store on-hand', file: 'Dirty Cookie WK#', sheet: 'Sales Summary',
     detail: '"Curr Str On Hand" — CURRENT WEEK ONLY. No weekly on-hand history exists in any export, so backfilled weeks are blank, not zero' },
   { series: 'pos', field: 'True demand', derived: true,
@@ -990,6 +1131,8 @@ const PROVENANCE = [
     detail: 'quantity and Amount by the line\'s ACTUAL delivery week — a different date from the above' },
   { series: 'otif', field: 'OTIF %', file: 'OTIF Store Performance', sheet: 'Receiver',
     detail: 'SUM(Cases On Time) ÷ SUM(Cases Ordered) — cases-weighted, never a mean of per-PO percentages' },
+  { series: 'otif', field: 'On-Time % / In-Full %', file: 'OTIF Store Performance', sheet: 'Receiver',
+    detail: 'Walmart grades the two parts separately. On-Time = Cases On Time ÷ (Cases Ordered − Cases Unfilled): early and late both miss. In-Full = (Cases Ordered − Cases Unfilled) ÷ Cases Ordered. Early + On Time + Late + Unfilled = Ordered exactly. Est. fine = 3% × non-compliant cases × median NetSuite $/case, last 13 weeks' },
   { series: 'consignment', field: 'DOT shipped / cut by SKU', file: 'DOT Consignment Sales History', sheet: 'Consignment Sales History',
     detail: 'Quantity Ordered vs Quantity Received per DOT order × Walmart item, by Detail Establish Date (ship) week. Grouped per Walmart PO × SKU before the cut is taken, so a PO DOT re-placed and later shipped counts as filled. Every shipment, not just cut ones — supersedes Order History for the weeks it covers' },
   { series: 'openOrders', field: 'DOT open orders', file: 'DOT Customer Order Details', sheet: 'Details',
@@ -1342,7 +1485,24 @@ const ACTION_OWNERS = {
 };
 const EXPIRING_RED_SHARE = 0.3;   // the prototype's threshold, now the amber → red line
 const GAP_WARN = 0.15, GAP_BAD = 0.4;
-const INSTOCK_BAD = 0.65, OTIF_BAD = 0.9; // Service health's red lines
+// Below this our next-4-week forecast is too small for a % gap to mean
+// anything: BC read "+2049%" on a handful of cases (Nov 5 review). Under it the
+// gap is shown as the two figures in cs/wk, and flags amber at most.
+const GAP_MIN_BASE_CS = 50;
+// Walmart's store forecast vs ours, next 4 weeks, for one SKU's metrics.
+// Shared by the product card header and the actions panel so they agree.
+function fcstGap(m) {
+  if (m.n4wGap == null) return null;
+  const pack = packOf(m.sku).unitsPerCase;
+  const wmtCs = m.n4wWmtFcst / pack, oursCs = m.n4wInternal / pack;
+  const smallBase = oursCs < GAP_MIN_BASE_CS;
+  const off = Math.abs(m.n4wGap) > GAP_WARN;
+  return {
+    gap: m.n4wGap, smallBase, wmtCs, oursCs,
+    tone: !off ? null : smallBase || Math.abs(m.n4wGap) <= GAP_BAD ? "warn" : "bad",
+    text: smallBase ? F.int(wmtCs) + " vs " + F.int(oursCs) + " cs/wk" : F.spct(m.n4wGap),
+  };
+}
 const STALE_WEEKS = 2;
 const CUT_WARN = 0.05, CUT_BAD = 0.15; // share of ordered cases DOT cut, last 4 ship weeks
 // Weeks apart, across the fiscal year end (52 weeks; live POS also carries 53).
@@ -1386,11 +1546,16 @@ function buildActions({ series, metrics, feeds, todayWk }) {
   }
 
   // ── Walmart's forecast vs ours, next 4 weeks ──
-  for (const m of metrics) {
-    if (m.n4wGap == null || Math.abs(m.n4wGap) <= GAP_WARN) continue;
-    add(Math.abs(m.n4wGap) > GAP_BAD ? "bad" : "warn", ACTION_OWNERS.walmart,
-      "Challenge the " + m.sku + " forecast: Walmart is " + F.spct(m.n4wGap) + " vs ours, next 4 weeks",
-      "Retail Link forecast vs internal · after " + wkTag(m.latestWk));
+  // One action for all SKUs (Nov 6 2026): it is one conversation with Walmart,
+  // and four near-identical lines crowded the panel. Worst SKU first.
+  const gaps = metrics.map(m => ({ m, g: fcstGap(m) })).filter(x => x.g?.tone)
+    .sort((a, b) => (a.g.tone === b.g.tone ? Math.abs(b.g.gap) - Math.abs(a.g.gap) : a.g.tone === "bad" ? -1 : 1));
+  if (gaps.length) {
+    const latest = Math.max(...gaps.map(x => x.m.latestWk ?? 0));
+    add(gaps[0].g.tone, ACTION_OWNERS.walmart,
+      "Challenge Walmart's forecast, next 4 weeks (Walmart vs ours): " +
+        gaps.map(x => x.m.sku + " " + x.g.text).join(" · "),
+      "Retail Link forecast vs internal · after " + wkTag(latest));
   }
 
   // ── DOT cuts, by SKU: last 4 ship weeks of Consignment Sales History ──
@@ -1422,15 +1587,34 @@ function buildActions({ series, metrics, feeds, todayWk }) {
     }
   }
 
-  // ── Service: red lines only ──
-  const isNow = instockRows(series).at(-1);
-  if (isNow && isNow.v < INSTOCK_BAD) add("bad", ACTION_OWNERS.walmart,
-    "In-store fill rate is " + F.pct(isNow.v) + ", below " + F.pct0(INSTOCK_BAD) + " — shelves are empty in stores carrying the item",
-    "Retail Link weekly · " + wkTag(isNow.wk));
-  const otifNow = otifRowsOf(feeds.otif).at(-1);
-  if (otifNow && otifNow.v < OTIF_BAD) add("bad", ACTION_OWNERS.walmart,
-    "OTIF is " + F.pct(otifNow.v) + ", below " + F.pct0(OTIF_BAD) + " (" + otifNow.note + ")",
-    "OTIF PO details · " + wkTag(otifNow.wk));
+  // ── Service, graded the way Walmart grades it (Nov 6 2026) ──
+  // OTIF: last 4 weeks loaded, each part against its own target, with the
+  // fine estimate. In-Stock: SKUs under the amber line in the newest week.
+  const otifL4 = (feeds.otif ?? []).filter(r => r.ordered > 0).slice(-4);
+  if (otifL4.length) {
+    const g = gradeOtif(otifL4);
+    const misses = [
+      g.inFullPct != null && g.inFullPct < WMT_OTIF.inFull && "In-Full " + F.pct(g.inFullPct) + " (target " + F.pct0(WMT_OTIF.inFull) + ")",
+      g.onTimePct != null && g.onTimePct < WMT_OTIF.onTime && "On-Time " + F.pct(g.onTimePct) + " (target " + F.pct0(WMT_OTIF.onTime) + ")",
+    ].filter(Boolean);
+    if (misses.length) {
+      const cpc = costPerCase(feeds.orders);
+      const top = [["cut", g.unfilled], ["late", g.late], ["early", g.early]].sort((a, b) => b[1] - a[1])[0];
+      add("bad", ACTION_OWNERS.walmart,
+        "OTIF below Walmart's target, last 4 weeks: " + misses.join(" · ") + " — " + F.int(g.missed) + " cs non-compliant" +
+          (cpc != null ? ", est. fine $" + F.int(g.missed * cpc * WMT_OTIF.fineRate) : "") +
+          "; " + F.pct0(top[1] / g.missed) + " of misses were " + top[0],
+        "OTIF PO details · " + wkTag(g.first) + " to " + wkTag(g.last));
+    }
+  }
+  const isNow = instockRows(feeds.pos ?? SEED.pos).at(-1);
+  if (isNow) {
+    const low = Object.entries(isNow.bySku).filter(([, v]) => v < WMT_INSTOCK.warn).sort((a, b) => a[1] - b[1]);
+    if (low.length) add(low[0][1] < WMT_INSTOCK.bad ? "bad" : "warn", ACTION_OWNERS.walmart,
+      "In-Stock below " + F.pct0(WMT_INSTOCK.warn) + ": " + low.map(([k, v]) => k + " " + F.pct(v)).join(" · ") +
+        " — stores carrying the item are out of stock",
+      "Retail Link Instock · " + wkTag(isNow.wk));
+  }
 
   // ── Stale uploads: the page is only as current as its last file ──
   const lastPosWk = feeds.sources?.pos === "live" ? feeds.asOf : null;
@@ -1840,7 +2024,7 @@ const ROWS = [
   { k: "traited", l: "Traited stores", g: c => c.traited, f: "int" },
   { k: "pos", l: "POS actual (units)", g: c => c.pos, f: "int" },
   { k: "instock", l: "In-stock %", g: c => c.instock, f: "pct0",
-    flag: c => (c.instock != null && c.instock < 0.65 ? "bad" : c.instock != null && c.instock < 0.8 ? "warn" : null) },
+    flag: c => (c.instock != null && c.instock < WMT_INSTOCK.bad ? "bad" : c.instock != null && c.instock < WMT_INSTOCK.warn ? "warn" : null) },
   { k: "true", l: "True demand (OOS-adj)", g: c => c.trueDemand, f: "int" },
   { k: "vel", l: "Velocity (u/store/wk)", g: c => c.velocity, f: "d2" },
   { k: "ohdoh", l: "Store OH DOH", g: c => c.storeOhDoh, f: "d1" },
@@ -2190,7 +2374,7 @@ export default function DemandPlanner() {
             </div>
             <ActionPanel series={series} metrics={metrics} feeds={feeds} />
             <div className="mt-4" />
-            <ServiceHealth series={series} otif={feeds.otif} />
+            <ServiceHealth series={series} feeds={feeds} />
             <div className="mt-4" />
             <Summary series={series} metrics={metrics} feeds={feeds} />
             <OpenOrdersPanel open={feeds.openOrders} series={series} feeds={feeds} />
