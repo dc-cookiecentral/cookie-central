@@ -114,6 +114,48 @@ export function shapeConsignment(csRows) {
   return { consignment, consignmentWeekly };
 }
 
+// ── DOT open-order pipeline (Customer Order Details) ─────────────────────
+// Pure, exported for scripts/test-dot-customer-orders.mjs.
+//
+// The order report is a SNAPSHOT, and history may be uploaded out of order,
+// so a stored status can be stale: a line Open in an older report may have
+// shipped since. Status alone is therefore not trusted for "open":
+//   · open    = status Open / Picking / Loaded, AND the DOT order × SKU is not
+//               in Consignment Sales History (which lists only shipped lines);
+//   · pastDue = an open line whose requested delivery date is more than
+//               PAST_DUE_DAYS before today — likely shipped or cancelled and
+//               not yet confirmed by a newer upload, so it is shown apart
+//               rather than counted as upcoming.
+// `uncommitted` = cases on Open-status lines: DOT has not picked them, so
+// they still have to come out of DOT's sellable stock (the Inventory
+// Snapshot's sellable already excludes Picking + Loaded).
+const OPEN_STATUSES = new Set(['open', 'released', 'picking', 'picked', 'loaded']);
+const PAST_DUE_DAYS = 7;
+export function shapeOpenOrders(rows, csRows, today) {
+  if (!rows) return null;
+  const shipped = new Set((csRows ?? []).map((r) => `${r.dot_order_number}|${r.sku}`));
+  const cutoff = (() => {
+    const d = new Date(`${today}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - PAST_DUE_DAYS);
+    return d.toISOString().slice(0, 10);
+  })();
+  const lines = [];
+  let shippedSince = 0;
+  for (const r of rows) {
+    if (!r.sku || !OPEN_STATUSES.has(String(r.order_status ?? '').trim().toLowerCase())) continue;
+    if (shipped.has(`${r.dot_order_number}|${r.sku}`)) { shippedSince++; continue; }
+    const pastDue = !!r.requested_delivery_date && r.requested_delivery_date < cutoff;
+    lines.push({
+      order: r.dot_order_number, sku: r.sku, po: r.customer_po, status: r.order_status,
+      wk: r.requested_week, requested: r.requested_delivery_date, dest: r.customer_name,
+      cases: Number(r.ordered_cases) || 0, pastDue,
+      uncommitted: String(r.order_status).trim().toLowerCase() === 'open' || String(r.order_status).trim().toLowerCase() === 'released',
+    });
+  }
+  const seen = rows.map((r) => r.last_seen_at).filter(Boolean).sort();
+  return { lines, shippedSince, lastSeen: seen.at(-1) ?? null };
+}
+
 export function useDemandFeeds() {
   const [state, setState] = useState({
     loading: true,
@@ -124,10 +166,11 @@ export function useDemandFeeds() {
     dotDeliveries: null,
     dotOnHand: null,
     consignment: null,
+    openOrders: null,
     otif: null,
     orders: null,
     unmappedOrderItems: [],
-    sources: { pos: 'seed', forecasts: 'seed', dotService: 'seed', otif: 'seed', orders: 'seed', dotDeliveries: 'seed', dot: 'seed', consignment: 'seed' },
+    sources: { pos: 'seed', forecasts: 'seed', dotService: 'seed', otif: 'seed', orders: 'seed', dotDeliveries: 'seed', dot: 'seed', consignment: 'seed', openOrders: 'seed' },
     asOf: null,
   });
 
@@ -135,7 +178,7 @@ export function useDemandFeeds() {
     let active = true;
 
     async function run() {
-      const [posR, fcstR, otifR, dotR, ordR, ohR, csR] = await Promise.all([
+      const [posR, fcstR, otifR, dotR, ordR, ohR, csR, coR] = await Promise.all([
         fetchAll(() => supabase
           .from('retail_link_pos_weekly')
           // wmt_forecast_units and pos_units_if_instock are NOT engine inputs —
@@ -179,6 +222,13 @@ export function useDemandFeeds() {
           .select('dot_order_number, item_number, sku, customer_po, order_date, ship_date, ship_week, ordered_cases, received_cases, dest_name, dest_state')
           .order('dot_order_number')
           .order('item_number')),
+        // DOT Customer Order Details — order status snapshot, for the open
+        // pipeline. Ordered on the full primary key so pages cannot overlap.
+        fetchAll(() => supabase
+          .from('dot_customer_orders')
+          .select('dot_order_number, dot_item_number, sku, customer_po, customer_name, order_status, requested_delivery_date, requested_week, ordered_cases, last_seen_at')
+          .order('dot_order_number')
+          .order('dot_item_number')),
       ]);
       if (!active) return;
 
@@ -192,6 +242,7 @@ export function useDemandFeeds() {
       const orderRows = rows(ordR);
       const ohRows = rows(ohR);
       const csRows = rows(csR);
+      const coRows = rows(coR);
 
       // ── DOT outbound, unfiltered and by item: Consignment Sales History ──
       // Grouped by Walmart PO × SKU FIRST. DOT re-places a cut PO as a new DOT
@@ -201,6 +252,8 @@ export function useDemandFeeds() {
       // sum of re-asks), received = everything that shipped against it, and
       // the week is the ship week of the newest line.
       const { consignment, consignmentWeekly } = shapeConsignment(csRows);
+      const todayIso = (() => { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; })();
+      const openOrders = shapeOpenOrders(coRows, csRows, todayIso);
       const consignmentWeeks = new Set((consignmentWeekly ?? []).map((r) => r.wk));
 
       const pos = posRows
@@ -503,6 +556,7 @@ export function useDemandFeeds() {
         dotDeliveries,
         dotOnHand,
         consignment,
+        openOrders,
         otif,
         orders,
         unmappedOrderItems,
@@ -515,6 +569,7 @@ export function useDemandFeeds() {
           dotDeliveries: dotDeliveries ? 'live' : 'seed',
           dot: dotOnHand ? 'live' : 'seed',
           consignment: consignment ? 'live' : 'seed',
+          openOrders: openOrders ? 'live' : 'seed',
         },
         asOf,
       });
