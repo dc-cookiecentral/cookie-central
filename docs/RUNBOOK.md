@@ -33,7 +33,8 @@ All uploads go through `/uploads`. The page leads with the **six exports actuall
 | Retail Link | `Dirty Cookie Supply Plan Wk##.xlsx` | `retail_link_supply_plan` |
 | Retail Link | `Dirty Cookie WK##.xlsx` | `retail_link_pos_weekly` + `retail_link_forecast` |
 | Retail Link | `OTIF STORE Performance PO DETAILS *.xlsx` (1-week **and** 3-week) | `retail_link_otif` |
-| DOT | `Order History (N).xlsx` — outbound orders + cuts | `dot_order_history` |
+| DOT | `Order History (N).xlsx` — outbound orders + cuts (cut orders only, no item) | `dot_order_history` |
+| DOT | `Consignment Sales History.xlsx` — every outbound line, ordered vs received, by item | `dot_consignment_sales` |
 
 Every upload writes one row to `upload_log` with `status='processing'` → `complete` (or `error`). Watch the table at the bottom of `/uploads` — if an import errored, the row carries the error message.
 
@@ -68,9 +69,10 @@ Six files, in the order they appear on `/uploads`:
 | 3 | `OTIF STORE Performance … 1 week` | In Time and In Full — cases ordered / in time / late / unfilled per PO |
 | 4 | `OTIF STORE Performance … 3 weeks` | Same format, wider window. **Upload both** — they overlap on purpose |
 | 5 | `DOT Report` — `Order History (N).xlsx` | Outbound DOT orders and **cut** cases. Drives cut recovery: the volume DOT never shipped, which NetSuite never sees. **Arrives weekly** — if the planner's cut-recovery panel warns it is 2+ weeks behind POS, an upload was missed |
+| 8 | `Consignment Sales History.xlsx` (DOT) | Every DOT shipment to a Walmart GDC, **by item**, with cases ordered and received — the only source of the order *before* cuts (NetSuite stores the post-cut quantity). Drives cut recovery, the per-SKU cut table and the Tracker's DOT shipped / cut rows; replaces card 5 for the weeks it covers. A rolling history: upload the **whole file** each week (it upserts on DOT order × item). Parser check: `node scripts/test-dot-consignment-sales.mjs <file>` |
 | 6 | `Walmart Report (NetSuite)` | Drives the planner's `orders` series (requested / delivered / revenue / cuts) and carries the **Cut Reason** column. Also auto-ingests nightly from `systems@` |
 
-**Files 1–4 arrive by email** (once the Nov 5 2026 functions are deployed): Bentonville Merchants' weekly "Dirty Cookie \| Weekly Reporting \| WK##" from caroline@bentonvillemerchants.com carries them, and the email agent imports each through its card's parser (§9.3). Check `/uploads` for four `source='email'` rows that week; upload by hand only a file that is missing or listed as unrecognised. Files 5–7 (DOT) are still manual.
+**Files 1–4 arrive by email** (once the Nov 5 2026 functions are deployed): Bentonville Merchants' weekly "Dirty Cookie \| Weekly Reporting \| WK##" from caroline@bentonvillemerchants.com carries them, and the email agent imports each through its card's parser (§9.3). Check `/uploads` for four `source='email'` rows that week; upload by hand only a file that is missing or listed as unrecognised. Files 5, 7 and 8 (DOT) are still manual.
 
 Then `/demand-planner` picks them up on next load; its banner's "as of" is the newest week **with data**, not the time of the fetch.
 

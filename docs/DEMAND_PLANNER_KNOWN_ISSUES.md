@@ -165,6 +165,18 @@ predating the column, fixed via trigger + redeploy, see BUILD_PLAN Oct 27–28).
 The Order History upload remains the only source of cut *volume* history; this
 fixes the cut-reason trail going forward.
 
+✅ **Nov 5 2026 — answered: the Order History IS filtered.** DOT's *Consignment
+Sales History* export (upload card 8, `dot_consignment_sales`) lists every
+outbound line, by item: 558 of its 620 lines (Aug 24 – Oct 26 orders) have no
+cut. It reproduces Retail Link OTIF's cases ordered exactly for its first three
+weeks, and NetSuite's PO quantity equals its *received* on 561 of 566 POs — so
+NetSuite never holds the original ask. It now drives cut recovery for the weeks
+it covers; Order History is used only for the weeks before it (June–July).
+Still not in the DOT cascade (`c.dotOut`): it is complete, but its ship-week
+bucketing differs from NetSuite's delivery dates, and the cascade is a
+placeholder until production is live. First file: BC 56.9% filled (4,387 cs cut
+of 10,181), PBG 88%, CCF 98%, WC 100%.
+
 ---
 
 ## 🟠 5. Walmart's data has two defects we work around

@@ -9,7 +9,7 @@ import { getParser } from '../parsers';
 // parsers that never saw a real file (Cortina PO PDF, NetSuite POs).
 //
 // The exports that are actually uploaded, in the order Caroline listed them
-// (Aug 24 2026; card 7, DOT on-hand, added Oct 28 2026), followed by everything
+// (Aug 24 2026; card 7, DOT on-hand, added Oct 28 2026; card 8, DOT consignment sales, Nov 5 2026), followed by everything
 // else demoted to a collapsed group.
 //
 // `type` → a parser in src/parsers. Two cards may share a `type`: the 1-week and
@@ -34,6 +34,7 @@ const SECTIONS = [
       { type: 'dot_order_history', title: '5 · DOT Report (Order History)', note: 'The DOT `Order History (N).xlsx` outbound export — one row per DOT order to a Walmart GDC, with ordered vs cut cases. Drives the cut-recovery panel: this is the volume DOT failed to ship, which NetSuite never sees. Validated against a real export — bucketed by delivery date it reproduces the planner\'s existing DOT figures exactly. Upserts on DOT order number.' },
       { type: 'walmart_orders', title: '6 · Walmart Report (NetSuite)', note: 'The Cortina/NetSuite Walmart Orders export — the primary source for Product Orders and Payments. Also auto-ingested nightly from systems@, so a manual upload here is a top-up or a backfill. Upserts on SO number, so re-uploading the full history is safe.' },
       { type: 'dot_inventory_snapshot', title: '7 · DOT Inventory Snapshot', note: 'DOT\'s on-hand export (`Inventory Snapshot.xlsx`, three tabs). Reads Inventory Summary: good cases (RG lots, committed included), committed (Loaded + Picked) and expired (EX lots) per Walmart SKU, keyed by case GTIN; the other two tabs are cross-checks. The file carries no date, so the reading is dated by the workbook\'s created date and stored as the CLOSING stock of that Walmart week — the Tracker\'s DOT line opens from it. One row per SKU per week: a re-upload in the same week replaces it, but an older file never overwrites a newer one. ⚠️ Not the Assemblers "Inventory Snapshot Report", which is refused (Assemblers reports are no longer imported).' },
+      { type: 'dot_consignment_sales', title: '8 · DOT Consignment Sales History', note: 'DOT\'s outbound export (`Consignment Sales History.xlsx`) — one line per Walmart PO × item that DOT shipped to a Walmart GDC, with cases ORDERED and RECEIVED. The only source with the original order before cuts, by item: NetSuite stores the post-cut quantity, and the Order History (card 5) lists only orders that had a cut and carries no item. Drives cut recovery and the Tracker\'s DOT shipped / cut rows; for the weeks it covers it replaces card 5. A rolling history, so upload the whole file each week — it upserts on DOT order × item.' },
     ],
   },
   {
