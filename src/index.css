@@ -13,3 +13,16 @@ body {
   color: #2D2235;
   -webkit-font-smoothing: antialiased;
 }
+
+/* Phone width (below Tailwind's md, 768px): a table wider than the screen
+   scrolls sideways inside its own box instead of pushing the whole page off
+   the right edge (Nov 6 2026). One rule rather than a wrapper on each of the
+   app's ~37 tables. Desktop is untouched. */
+@media (max-width: 767.98px) {
+  main table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}

@@ -810,14 +810,18 @@ function withMissingWeeks(rows) {
   return out.slice(-14);
 }
 
+const PHONE_WEEKS = 8;
 function ServiceBars({ rows: data, bad, warn, fmt }) {
   if (!data.length) return <div className="text-[11px] opacity-60">No weekly history yet.</div>;
   const rows = withMissingWeeks(data);
+  // Phones show the last PHONE_WEEKS slots only: 14 value labels do not fit
+  // 360px and run into each other. Desktop keeps all 14.
+  const phoneHide = i => (i < rows.length - PHONE_WEEKS ? " hidden md:flex" : "");
   return (
     <div>
       <div className="flex items-end gap-1" style={{ height: 56 }}>
-        {rows.map((r) => (
-          <div key={r.key} className="flex-1 min-w-0 flex flex-col justify-end" style={{ height: 56 }}
+        {rows.map((r, i) => (
+          <div key={r.key} className={"flex-1 min-w-0 flex flex-col justify-end" + phoneHide(i)} style={{ height: 56 }}
             title={r.missing ? r.title : wkEnding(r.wk) + ": " + fmt(r.v) + (r.note ? " \u00b7 " + r.note : "")}>
             {r.missing
               ? <div className="w-full rounded-t" style={{ height: 56, border: "1px dashed #D9C7D0" }} />
@@ -833,16 +837,16 @@ function ServiceBars({ rows: data, bad, warn, fmt }) {
           would collapse them. The % sign is carried once in the axis label
           rather than repeated 14 times, which is what makes the column fit. */}
       <div className="flex gap-1 mt-1">
-        {rows.map((r) => (
-          <div key={r.key} className="flex-1 min-w-0 text-center text-[11px] cc-mono font-bold tabular-nums tracking-tighter"
+        {rows.map((r, i) => (
+          <div key={r.key} className={"flex-1 min-w-0 justify-center text-center text-[11px] cc-mono font-bold tabular-nums tracking-tighter" + phoneHide(i)}
             style={{ color: r.missing ? "#B9A9B1" : barColor(r.v, bad, warn) }}>
             {r.v == null ? "—" : (r.v * 100).toFixed(1)}
           </div>
         ))}
       </div>
       <div className="flex gap-1">
-        {rows.map((r) => (
-          <div key={r.key} className="flex-1 min-w-0 text-center text-[10px] cc-mono opacity-60 tabular-nums tracking-tighter">
+        {rows.map((r, i) => (
+          <div key={r.key} className={"flex-1 min-w-0 justify-center text-center text-[10px] cc-mono opacity-60 tabular-nums tracking-tighter" + phoneHide(i)}>
             {r.label}
           </div>
         ))}
@@ -971,7 +975,7 @@ function ServiceHealth({ series, feeds }) {
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* ── OTIF ── */}
-        <div>
+        <div className="min-w-0">
           <div className="text-[11px] uppercase tracking-wider font-semibold mb-2" style={{ color: "#C2185B" }}>
             OTIF{l4 ? " · last 4 weeks loaded, " + weekEndingNumeric(l4.first) + "–" + weekEndingNumeric(l4.last) : ""}
           </div>
@@ -1048,7 +1052,7 @@ function ServiceHealth({ series, feeds }) {
         </div>
 
         {/* ── In-Stock % ── */}
-        <div>
+        <div className="min-w-0">
           <div className="text-[11px] uppercase tracking-wider font-semibold mb-2" style={{ color: "#C2185B" }}>Store In-Stock %</div>
           <div className="flex flex-wrap items-baseline gap-3 mb-1">
             <Stat label="In-Stock %" value={F.pct(isNow?.v)} tone={tone(isNow?.v, WMT_INSTOCK.bad, WMT_INSTOCK.warn)}
@@ -1746,7 +1750,8 @@ function DotServicePanel({ svc, latestDataWk, consignment }) {
           <Stat label="Invisible in NetSuite" value={"+" + F.int(svc.recovered) + " cs"} tone="bad" />
           <Stat label="True fill (order book)" value={F.pct(svc.trueFill)} tone={svc.trueFill < 0.9 ? "bad" : undefined} />
         </div>
-        <div>
+        {/* min-w-0 + scroll: ~30 weekly bars do not fit a phone; the strip scrolls sideways there. */}
+        <div className="min-w-0 overflow-x-auto">
           <div className="flex items-end gap-2" style={{ height: 84 }}>
             {svc.rows.map(r => (
               <div key={r.wk} className="flex flex-col items-center gap-1 flex-1 min-w-0"

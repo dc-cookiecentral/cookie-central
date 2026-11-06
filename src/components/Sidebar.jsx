@@ -60,18 +60,41 @@ function visibleNav(items) {
 // The Cortina sales role sees only Sample Central (role gate, Task 2.7).
 const CORTINA_NAV = [{ to: '/sample-central', label: 'Sample Central' }];
 
-export default function Sidebar() {
+// Desktop (md, 768px and up): a fixed 190px column, unchanged.
+// Phone and narrow tablet: hidden off-canvas; Layout's top bar opens it as a
+// drawer over the page (Nov 6 2026 — at 390px the fixed column left the page
+// half the screen and cut it off on the right). `open` / `onClose` come from
+// Layout; a nav tap closes it.
+export default function Sidebar({ open = false, onClose = () => {} }) {
   const { uom, setUom, options } = useUOM();
   const { profile, signOut } = useAuth();
   const nav = profile?.role === 'cortina' ? CORTINA_NAV : visibleNav(NAV);
 
   return (
-    <aside className="w-[190px] bg-dk min-h-screen flex flex-col flex-shrink-0">
-      <div className="px-[14px] py-[18px] border-b border-[#3D2D4D]">
+    <>
+    {open && (
+      <div className="fixed inset-0 z-40 bg-black/40 md:hidden" onClick={onClose} aria-hidden="true" />
+    )}
+    <aside
+      id="app-sidebar"
+      className={[
+        'w-[230px] md:w-[190px] bg-dk flex flex-col flex-shrink-0',
+        'fixed inset-y-0 left-0 z-50 overflow-y-auto transition-[transform,visibility] duration-200',
+        'md:static md:min-h-screen md:overflow-visible md:translate-x-0 md:visible md:transition-none',
+        open ? 'translate-x-0 visible shadow-2xl' : '-translate-x-full invisible',
+      ].join(' ')}
+    >
+      <div className="px-[14px] py-[18px] border-b border-[#3D2D4D] flex items-start justify-between">
+        <div>
         <div className="text-[17px] font-black italic text-pk">cookie central</div>
         <div className="text-[8px] text-gr mt-[3px] uppercase tracking-[0.08em]">
           Walmart + Kroger
         </div>
+        </div>
+        <button onClick={onClose} aria-label="Close menu"
+          className="md:hidden -mr-1 -mt-1 w-9 h-9 flex items-center justify-center rounded-md text-[#B8A8C8] hover:bg-white/10 text-[20px] leading-none">
+          ×
+        </button>
       </div>
 
       <nav className="px-[6px] py-[8px] flex-1 flex flex-col">
@@ -86,9 +109,10 @@ export default function Sidebar() {
             <NavLink
               key={n.to}
               to={n.to}
+              onClick={onClose}
               className={({ isActive }) =>
                 [
-                  'block w-full px-[10px] py-[8px] rounded-[7px] text-[12px] mb-px text-left',
+                  'block w-full px-[10px] py-[11px] md:py-[8px] rounded-[7px] text-[14px] md:text-[12px] mb-px text-left',
                   isActive
                     ? 'bg-[rgba(194,24,91,0.15)] text-pk font-bold'
                     : 'bg-transparent text-[#B8A8C8] font-medium hover:bg-[rgba(194,24,91,0.08)]',
@@ -134,5 +158,6 @@ export default function Sidebar() {
         )}
       </div>
     </aside>
+    </>
   );
 }
