@@ -57,5 +57,41 @@ if (table.size !== recs.length || delivered !== 17) bad.push(['older snapshot ro
 if (!isNotOlder({ order_status: 'Open' }, { order_status: 'Loaded' })) bad.push(['forward move refused', 'Open → Loaded']);
 if (isNotOlder({ order_status: 'Delivered' }, { order_status: 'Picking' })) bad.push(['backward move allowed', 'Delivered → Picking']);
 
+// ── Open pipeline (useDemandFeeds.shapeOpenOrders), optional 2nd arg ──
+// node scripts/test-dot-customer-orders.mjs <orders.xlsx> <consignment.xlsx>
+// Lines DOT lists as open but Consignment Sales History shows as shipped
+// must drop out.
+const csPath = process.argv[3] && !process.argv[3].startsWith('--') ? process.argv[3] : null;
+if (csPath) {
+  const { execFileSync } = await import('node:child_process');
+  const { mkdtempSync, rmSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { parseRows: parseCs } = await import('../src/parsers/dotConsignmentSales.js');
+  const cwb = XLSX.readFile(csPath);
+  const cs = parseCs(XLSX.utils.sheet_to_json(cwb.Sheets['Consignment Sales History'], { header: 1, defval: null })).records;
+  const dir = mkdtempSync(join(process.cwd(), '.co-test-'));
+  try {
+    execFileSync('npx', ['esbuild', 'src/hooks/useDemandFeeds.js', '--bundle', '--format=esm', '--platform=node',
+      '--external:react', '--external:@supabase/*',
+      '--define:import.meta.env={"VITE_SUPABASE_URL":"http://localhost","VITE_SUPABASE_ANON_KEY":"test"}',
+      `--outfile=${join(dir, 'h.mjs')}`, '--log-level=error']);
+    const { shapeOpenOrders } = await import(join(dir, 'h.mjs'));
+    const open = shapeOpenOrders(recs.map((r) => ({ ...r, last_seen_at: '2026-11-05T18:00:00Z' })), cs, '2026-11-05');
+    const by = open.lines.reduce((m, l) => ((m[l.sku] = (m[l.sku] || 0) + l.cases), m), {});
+    const summary = { openLines: open.lines.length, shippedSince: open.shippedSince, pastDue: open.lines.filter((l) => l.pastDue).length,
+      notYetPicked: open.lines.filter((l) => l.uncommitted && !l.pastDue).reduce((a, l) => a + l.cases, 0), casesBySku: by };
+    console.log('open pipeline', summary);
+    const expectOpen = recs.filter((r) => ['Open', 'Picking', 'Loaded'].includes(r.order_status)).length;
+    if (open.lines.length + open.shippedSince !== expectOpen) bad.push(['open lines + shipped-since', open.lines.length + open.shippedSince]);
+    // A line marked Open but present in consignment must be excluded:
+    const anyShipped = cs.find((c) => recs.some((r) => r.dot_order_number === c.dot_order_number && r.sku === c.sku));
+    if (anyShipped) {
+      const fake = recs.filter((r) => r.dot_order_number === anyShipped.dot_order_number).map((r) => ({ ...r, order_status: 'Open' }));
+      const o2 = shapeOpenOrders(fake, cs, '2026-11-05');
+      if (o2.lines.length !== 0 || o2.shippedSince !== fake.length) bad.push(['stale Open line not dropped', o2.lines.length]);
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+}
+
 console.log(bad.length ? '\n❌ ' + bad.map(([k, v]) => `${k}: got ${v}`).join(' · ') : '\n✅ matches the first real file');
 process.exit(bad.length ? 1 : 0);

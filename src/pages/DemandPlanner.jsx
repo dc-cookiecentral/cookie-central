@@ -992,6 +992,8 @@ const PROVENANCE = [
     detail: 'SUM(Cases On Time) ÷ SUM(Cases Ordered) — cases-weighted, never a mean of per-PO percentages' },
   { series: 'consignment', field: 'DOT shipped / cut by SKU', file: 'DOT Consignment Sales History', sheet: 'Consignment Sales History',
     detail: 'Quantity Ordered vs Quantity Received per DOT order × Walmart item, by Detail Establish Date (ship) week. Grouped per Walmart PO × SKU before the cut is taken, so a PO DOT re-placed and later shipped counts as filled. Every shipment, not just cut ones — supersedes Order History for the weeks it covers' },
+  { series: 'openOrders', field: 'DOT open orders', file: 'DOT Customer Order Details', sheet: 'Details',
+    detail: '"Item Detail" lines with Order Status Open / Picking / Loaded, by Requested Delivery Date week — minus any DOT order × SKU that Consignment Sales History already shows as shipped (the report is a snapshot, so a stored status can be stale). Lines requested more than 7 days ago are shown apart as past due. "Not yet picked" = Open status only' },
   { series: 'dotService', field: 'DOT ordered / cut (older weeks)', file: 'DOT Report (Order History)', sheet: 'Outbound Orders',
     detail: 'by Delivery Date week. Per PO — the export carries no item column, and lists only orders with a cut. Used only for weeks before Consignment Sales History begins' },
   { series: 'production', field: 'Cases produced', derived: false, file: '— none —',
@@ -1024,7 +1026,7 @@ function Sources({ feeds, series }) {
   const src = feeds.sources ?? {};
   const statusOf = (k) => (k === 'production'
     ? 'seed'
-    : k === 'dot' || k === 'consignment'          // no seed exists for either
+    : k === 'dot' || k === 'consignment' || k === 'openOrders'   // no seed exists for these
       ? (src[k] === 'live' ? 'live' : 'none')
       : (src[k] === 'live' ? 'live' : 'seed'));
 
@@ -1405,6 +1407,19 @@ function buildActions({ series, metrics, feeds, todayWk }) {
     }
   }
 
+  // ── DOT open orders vs sellable stock (Customer Order Details) ──
+  // Not-yet-picked cases on open DOT orders above sellable stock at DOT:
+  // orders DOT cannot fill from what it holds. Needs both feeds.
+  if (feeds.openOrders?.lines?.length) {
+    for (const r of openOrdersBySku(feeds.openOrders, series, feeds)) {
+      if (!r.short) continue;
+      add("bad", ACTION_OWNERS.dot,
+        r.sku + ": " + F.int(r.uncommitted) + " cs on open DOT orders not yet picked vs " + F.int(r.sellable) +
+          " sellable at DOT — " + F.int(r.short) + " cs short, cut risk",
+        "DOT Customer Order Details + Inventory Snapshot " + r.dotLabel);
+    }
+  }
+
   // ── Service: red lines only ──
   const isNow = instockRows(series).at(-1);
   if (isNow && isNow.v < INSTOCK_BAD) add("bad", ACTION_OWNERS.walmart,
@@ -1630,6 +1645,127 @@ function DotServicePanel({ svc, latestDataWk, consignment }) {
   );
 }
 
+/* ---------------- DOT open-order pipeline ---------------- */
+// What DOT is about to ship (Nov 5 2026), from the Customer Order Details
+// upload as shaped by useDemandFeeds.shapeOpenOrders: lines Open / Picking /
+// Loaded that Consignment Sales History does not yet show as shipped.
+//
+// Rows are SKUs, columns are REQUESTED delivery weeks (week ending). Lines
+// requested more than a week ago sit in a separate "past due" column — most
+// likely shipped or cancelled and not yet confirmed by a newer upload.
+//
+// The coverage check compares only NOT-YET-PICKED cases (status Open) with
+// sellable stock at DOT: the Inventory Snapshot's "sellable" already excludes
+// Picking + Loaded, so counting those again would double-subtract them.
+const STATUS_ORDER = ["Open", "Picking", "Loaded"];
+function openOrdersBySku(open, series, feeds) {
+  const lines = open?.lines ?? [];
+  return ["WC", "PBG", "CCF", "BC"].map(sku => {
+    const mine = lines.filter(l => l.sku === sku);
+    const upcoming = mine.filter(l => !l.pastDue);
+    const s = series.find(x => x.sku === sku);
+    const dot = s ? funnelInputs(sku, s, feeds).dot : null;
+    const sellable = dot ? dot.cases - (dot.committed ?? 0) : null;
+    const uncommitted = upcoming.filter(l => l.uncommitted).reduce((a, l) => a + l.cases, 0);
+    return {
+      sku, lines: mine, upcoming,
+      total: upcoming.reduce((a, l) => a + l.cases, 0),
+      pastDue: mine.filter(l => l.pastDue).reduce((a, l) => a + l.cases, 0),
+      uncommitted, sellable, dotLabel: dot?.label ?? null,
+      short: sellable != null ? Math.max(0, uncommitted - sellable) : null,
+    };
+  });
+}
+
+function OpenOrdersPanel({ open, series, feeds }) {
+  if (!open) return null;
+  const lines = open.lines;
+  const rows = openOrdersBySku(open, series, feeds);
+  const weeks = [...new Set(lines.filter(l => !l.pastDue && l.wk).map(l => l.wk))].sort((a, b) => a - b);
+  const anyPastDue = lines.some(l => l.pastDue);
+  const byStatus = STATUS_ORDER.map(st => ({
+    st, cases: lines.filter(l => !l.pastDue && String(l.status).toLowerCase() === st.toLowerCase()).reduce((a, l) => a + l.cases, 0),
+  }));
+  const cell = (ls) => {
+    if (!ls.length) return { cases: 0, title: "" };
+    const cases = ls.reduce((a, l) => a + l.cases, 0);
+    const split = STATUS_ORDER.map(st => [st, ls.filter(l => String(l.status).toLowerCase() === st.toLowerCase()).reduce((a, l) => a + l.cases, 0)])
+      .filter(([, v]) => v > 0).map(([st, v]) => st + " " + F.int(v)).join(" · ");
+    return { cases, title: `${F.int(cases)} cs on ${new Set(ls.map(l => l.order)).size} DOT order(s) — ${split}` };
+  };
+  const loaded = open.lastSeen
+    ? new Date(open.lastSeen).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })
+    : null;
+  const th = "font-normal pb-1 px-2 text-right whitespace-nowrap";
+  return (
+    <section className="bg-white rounded-2xl border p-5 mt-4" style={{ borderColor: "#E5D9DE" }}>
+      <header className="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-3">
+        <h2 className="cc-serif text-lg">DOT open orders — what ships next</h2>
+        <span className="text-xs opacity-60">
+          Source: DOT Customer Order Details{loaded ? ` (newest upload ${loaded})` : ""} · lines Open, Picking or Loaded that
+          Consignment Sales History does not yet show as shipped · cases by requested delivery week.
+        </span>
+      </header>
+      {lines.length === 0 ? (
+        <p className="text-[12px] opacity-60">
+          No open DOT orders{open.shippedSince ? ` — all ${open.shippedSince} line(s) the last report listed as open have since shipped` : ""}.
+          Upload the newest Customer Order Details at Uploads → card 9.
+        </p>
+      ) : (
+        <>
+          <div className="flex flex-wrap gap-2 mb-3">
+            {byStatus.map(b => (
+              <span key={b.st} className="text-[11px] px-2.5 py-1 rounded-full" style={{ background: "#F7F1F4" }}>
+                <b>{b.st}:</b> {F.int(b.cases)} cs
+              </span>
+            ))}
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12px] cc-mono">
+              <thead>
+                <tr className="text-[11px] uppercase tracking-wider opacity-60 cc-sans">
+                  <th className="text-left font-semibold pb-1 pr-3">SKU</th>
+                  {anyPastDue && <th className={th} title="Requested more than a week ago — likely shipped or cancelled; upload a newer report to confirm">Past due</th>}
+                  {weeks.map(w => <th key={w} className={th}>{weekEndingNumeric(w)}</th>)}
+                  <th className={th + " font-semibold"}>Open total</th>
+                  <th className={th} title="Cases on Open-status lines: DOT has not picked them yet">Not yet picked</th>
+                  <th className={th} title="Sellable at DOT in the newest Inventory Snapshot (good − picked − loaded)">Sellable at DOT</th>
+                  <th className={th}>Short</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(r => (
+                  <tr key={r.sku} style={{ borderTop: "1px solid #F1E7EC" }}>
+                    <td className="py-1.5 pr-3 font-bold cc-sans">{r.sku}</td>
+                    {anyPastDue && (() => { const c = cell(r.lines.filter(l => l.pastDue)); return (
+                      <td className="px-2 text-right" style={{ color: c.cases ? "#8A5A10" : undefined, opacity: c.cases ? 1 : 0.3 }} title={c.title}>{c.cases ? F.int(c.cases) : "—"}</td>
+                    ); })()}
+                    {weeks.map(w => { const c = cell(r.upcoming.filter(l => l.wk === w)); return (
+                      <td key={w} className="px-2 text-right" style={{ opacity: c.cases ? 1 : 0.3 }} title={c.title}>{c.cases ? F.int(c.cases) : "—"}</td>
+                    ); })}
+                    <td className="px-2 text-right font-bold">{F.int(r.total)}</td>
+                    <td className="px-2 text-right">{F.int(r.uncommitted)}</td>
+                    <td className="px-2 text-right" title={r.dotLabel ? "Inventory Snapshot " + r.dotLabel : "No DOT Inventory Snapshot"}>{r.sellable == null ? "—" : F.int(r.sellable)}</td>
+                    <td className="px-2 text-right font-bold" style={{ color: r.short ? "#C2185B" : "#245B33" }}>
+                      {r.short == null ? "—" : r.short ? F.int(r.short) : "0"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[11px] opacity-60 mt-2">
+            Columns are requested delivery weeks, week ending (month/day). Hover a cell for orders and status.
+            Short = not-yet-picked cases above sellable stock at DOT — orders DOT cannot fill from what it holds.
+            {open.shippedSince > 0 && ` ${open.shippedSince} line(s) still open in an uploaded report have shipped since (per Consignment Sales History) and are excluded.`}
+            {anyPastDue && " Past due = requested more than a week ago; upload a newer report to confirm."}
+          </p>
+        </>
+      )}
+    </section>
+  );
+}
+
 /* ---------------- data freshness strip ---------------- */
 // Replaced the green "Live Retail Link data through…" paragraph (Nov 5 2026).
 // One tile per feed, each saying how far its data runs and how that compares
@@ -1658,7 +1794,7 @@ function DataFreshness({ items }) {
     <section aria-label="Data freshness" className="px-6 py-3 border-b cc-sans"
       style={{ borderColor: "#E5D9DE", background: "#FFFFFF" }}>
       <div className="text-[11px] uppercase tracking-wider font-semibold opacity-60 mb-2">Data through</div>
-      <div className="grid gap-px rounded-lg overflow-hidden grid-cols-2 sm:grid-cols-4 xl:grid-cols-7"
+      <div className="grid gap-px rounded-lg overflow-hidden grid-cols-2 sm:grid-cols-4 xl:grid-cols-8"
         style={{ background: "#EFE4E9", border: "1px solid #EFE4E9" }}>
         {items.map(it => {
           const t = FRESH_TONE[it.status.tone];
@@ -1951,6 +2087,12 @@ export default function DemandPlanner() {
             { prefix: "shipped wk ending", title: "DOT Consignment Sales History — every shipment to Walmart, by item. Drives cut recovery." })
         : item("DOT shipments & cuts", maxWk(dotSvcRows), src.dotService === "live",
             { title: "DOT Order History (cut orders only) — upload the Consignment Sales History for every shipment" }),
+      feeds.openOrders?.lastSeen
+        ? { label: "DOT open orders", prefix: "uploaded",
+            date: new Date(feeds.openOrders.lastSeen).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }),
+            status: freshnessOf({ wk: walmartWeekOf(new Date(feeds.openOrders.lastSeen).toISOString().slice(0, 10)), live: true, todayWk }),
+            title: "DOT Customer Order Details — the newest upload. A snapshot: upload a fresh one weekly." }
+        : { label: "DOT open orders", date: null, status: { tone: "bad", text: "nothing uploaded" } },
       { label: "Production", prefix: "frozen", date: new Date(`${SEED.asOf}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }),
         status: PRODUCTION_LIVE ? { tone: "ok", text: "live" } : { tone: "bad", text: "not live · no feed yet" },
         title: "Production is still the " + SEED.asOf + " seed — every supply-side figure built on it is a placeholder" },
@@ -2033,6 +2175,7 @@ export default function DemandPlanner() {
             <ServiceHealth series={series} otif={feeds.otif} />
             <div className="mt-4" />
             <Summary series={series} metrics={metrics} feeds={feeds} />
+            <OpenOrdersPanel open={feeds.openOrders} series={series} feeds={feeds} />
             <DotServicePanel svc={svc} latestDataWk={latestDataWk} consignment={feeds.consignment} />
           </>
         )}

@@ -63,7 +63,16 @@ const LIVE_DOT_SHAPE = {
   dotDeliveries: [{ wk: 202625, sku: 'WC', delivered: 0, ordered: 84, cut: 42, source: 'order_history' },
                   { wk: 202639, sku: 'WC', delivered: 42, ordered: 42, cut: 0, source: 'consignment' },
                   { wk: 202639, sku: 'BC', delivered: 54, ordered: 84, cut: 30, source: 'consignment' }],
-  sources: { ...LIVE_SHAPE.sources, dot: 'live', consignment: 'live' },
+  // DOT open orders, as useDemandFeeds.shapeOpenOrders returns them. BC's
+  // not-yet-picked 1,100 cs exceed its 1,029 sellable (1,257 − 228) → cut risk.
+  openOrders: {
+    lastSeen: '2026-11-05T18:00:00Z', shippedSince: 0,
+    lines: [
+      { order: '1188106', sku: 'BC', po: '3885630856', status: 'Open', wk: 202641, requested: '2026-11-09', dest: 'Walmart/Dry #7036', cases: 1100, pastDue: false, uncommitted: true },
+      { order: '155546', sku: 'PBG', po: '0122306679', status: 'Picking', wk: 202641, requested: '2026-11-06', dest: 'Walmart/Gdc #6064', cases: 21, pastDue: false, uncommitted: false },
+    ],
+  },
+  sources: { ...LIVE_SHAPE.sources, dot: 'live', consignment: 'live', openOrders: 'live' },
 };
 // Everything null — what the page sees before the first upload, when every
 // series falls back to SEED.
@@ -83,7 +92,9 @@ const EXPECT_SUMMARY = {
   dot: ['Decide what to do with 246 expired cases at DOT (WC 246)',
         'WC: 229 good cases expire within 60 days (15% of good stock, first Dec 23)',
         'BC: DOT cut 30 of 84 cs Walmart ordered (36%), last 4 ship weeks',
-        'By SKU · Consignment Sales History'],
+        'By SKU · Consignment Sales History',
+        'BC: 1,100 cs on open DOT orders not yet picked vs 1,029 sellable at DOT — 71 cs short, cut risk',
+        'DOT open orders — what ships next'],
   empty: ['This week’s actions', 'No live Retail Link POS', 'No DOT Inventory Snapshot uploaded'],
 };
 
