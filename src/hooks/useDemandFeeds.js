@@ -17,6 +17,11 @@ import { walmartWeekOf } from '../parsers/retailLinkSupplyPlan';
 // orders and `dot` (DOT on-hand). Only `production` is still SEED
 // (`production_runs` holds 5 rows).
 //
+// DOT outbound comes from `dot_consignment_sales` (DOT's Consignment Sales
+// History, first file Nov 5 2026) for the weeks it covers, and from
+// `dot_order_history` before that. Consignment is unfiltered and item-level;
+// Order History is cut-orders-only with no item. See `consignment` below.
+//
 // `dot` comes from `dot_on_hand`, fed by DOT's Inventory Snapshot upload — the
 // report KNOWN_ISSUES §3 once said would never exist (it arrived 2026-10-27).
 // A reading is the CLOSING stock of its Walmart week; the engine's forward DOT
@@ -75,6 +80,40 @@ const CORTINA_ITEM_TO_SKU = { 1252: 'WC', 1251: 'PBG', 1287: 'CCF', 1324: 'BC' }
 // `fetchAll` lives in src/lib/fetchAll.js (moved Nov 5 2026, shared with the
 // order, invoice and alert hooks).
 
+// ── DOT Consignment Sales History → planner shapes ──────────────────────
+// Pure, exported for scripts/test-dot-consignment-sales.mjs.
+//
+// Grouped by Walmart PO × SKU FIRST. DOT re-places a cut PO as a new DOT
+// order (PO 0112957696: cut 42 → 0, then re-shipped 42 on a second DOT
+// order), so per-line cuts would count recovered volume as lost. Per
+// PO × SKU: ordered = the largest single ask (the PO quantity, not the sum of
+// re-asks), received = everything that shipped against it, and the week is
+// the ship week of the newest line.
+export function shapeConsignment(csRows) {
+  if (!csRows) return { consignment: null, consignmentWeekly: null };
+  const byPo = new Map();
+  for (const r of csRows) {
+    if (!r.sku || !r.ship_week) continue;
+    const k = `${r.customer_po}|${r.sku}`;
+    const a = byPo.get(k) || { po: r.customer_po, sku: r.sku, wk: 0, shipDate: '', ordered: 0, received: 0, lines: 0, dest: r.dest_name, state: r.dest_state };
+    a.ordered = Math.max(a.ordered, Number(r.ordered_cases) || 0);
+    a.received += Number(r.received_cases) || 0;
+    a.lines += 1;
+    if ((r.ship_date || '') > a.shipDate) { a.shipDate = r.ship_date; a.wk = r.ship_week; }
+    byPo.set(k, a);
+  }
+  const consignment = [...byPo.values()].map((a) => ({ ...a, cut: Math.max(0, a.ordered - a.received), replaced: a.lines > 1 }));
+  // Per week × SKU, the engine-facing shape (same as dotDeliveries).
+  const consignmentWeekly = [...consignment.reduce((m, r) => {
+    const k = `${r.wk}|${r.sku}`;
+    const a = m.get(k) || { wk: r.wk, sku: r.sku, delivered: 0, ordered: 0, cut: 0, pos: 0, source: 'consignment' };
+    a.delivered += r.received; a.ordered += r.ordered; a.cut += r.cut; a.pos += 1;
+    m.set(k, a);
+    return m;
+  }, new Map()).values()].sort((a, b) => a.wk - b.wk || a.sku.localeCompare(b.sku));
+  return { consignment, consignmentWeekly };
+}
+
 export function useDemandFeeds() {
   const [state, setState] = useState({
     loading: true,
@@ -84,10 +123,11 @@ export function useDemandFeeds() {
     dotService: null,
     dotDeliveries: null,
     dotOnHand: null,
+    consignment: null,
     otif: null,
     orders: null,
     unmappedOrderItems: [],
-    sources: { pos: 'seed', forecasts: 'seed', dotService: 'seed', otif: 'seed', orders: 'seed', dotDeliveries: 'seed', dot: 'seed' },
+    sources: { pos: 'seed', forecasts: 'seed', dotService: 'seed', otif: 'seed', orders: 'seed', dotDeliveries: 'seed', dot: 'seed', consignment: 'seed' },
     asOf: null,
   });
 
@@ -95,7 +135,7 @@ export function useDemandFeeds() {
     let active = true;
 
     async function run() {
-      const [posR, fcstR, otifR, dotR, ordR, ohR] = await Promise.all([
+      const [posR, fcstR, otifR, dotR, ordR, ohR, csR] = await Promise.all([
         fetchAll(() => supabase
           .from('retail_link_pos_weekly')
           // wmt_forecast_units and pos_units_if_instock are NOT engine inputs —
@@ -132,6 +172,13 @@ export function useDemandFeeds() {
           .select('sku, wm_week, snapshot_date, good_cases, committed_cases, expired_cases, expiring_60d_cases, earliest_good_expiry, cases_per_pallet')
           .order('wm_week')
           .order('sku')),
+        // DOT Consignment Sales History — one row per DOT order × item.
+        // Ordered on the full primary key so pages cannot overlap.
+        fetchAll(() => supabase
+          .from('dot_consignment_sales')
+          .select('dot_order_number, item_number, sku, customer_po, order_date, ship_date, ship_week, ordered_cases, received_cases, dest_name, dest_state')
+          .order('dot_order_number')
+          .order('item_number')),
       ]);
       if (!active) return;
 
@@ -144,6 +191,17 @@ export function useDemandFeeds() {
       const dotRows = rows(dotR);
       const orderRows = rows(ordR);
       const ohRows = rows(ohR);
+      const csRows = rows(csR);
+
+      // ── DOT outbound, unfiltered and by item: Consignment Sales History ──
+      // Grouped by Walmart PO × SKU FIRST. DOT re-places a cut PO as a new DOT
+      // order (PO 0112957696: cut 42 → 0, then re-shipped 42 on a second DOT
+      // order), so per-line cuts would count recovered volume as lost. Per
+      // PO × SKU: ordered = the largest single ask (the PO quantity, not the
+      // sum of re-asks), received = everything that shipped against it, and
+      // the week is the ship week of the newest line.
+      const { consignment, consignmentWeekly } = shapeConsignment(csRows);
+      const consignmentWeeks = new Set((consignmentWeekly ?? []).map((r) => r.wk));
 
       const pos = posRows
         ? posRows
@@ -213,10 +271,16 @@ export function useDemandFeeds() {
       // point of the panel: OTIF is Walmart measuring US against MABD, while
       // this is what DOT failed to ship — the volume "invisible in NetSuite".
       // Bucketing by delivery_week reproduces SEED.dotService exactly.
-      const dotService = dotRows
+      //
+      // Weeks covered by Consignment Sales History come from it instead — it is
+      // complete and item-level, where Order History is cut-orders-only. The
+      // two do not overlap today (Order History ends 202625, consignment
+      // starts 202630); if they ever do, consignment wins the week.
+      const orderHistoryService = dotRows
         ? [...dotRows
             .reduce((m, r) => {
               if (!r.delivery_week) return m;   // unbucketable rows are stored but not charted
+              if (consignmentWeeks.has(r.delivery_week)) return m;
               const a = m.get(r.delivery_week) || { wk: r.delivery_week, ordered: 0, cut: 0, pos: 0 };
               a.ordered += r.ordered_cases || 0;
               a.cut += r.cut_cases || 0;
@@ -224,7 +288,18 @@ export function useDemandFeeds() {
               m.set(r.delivery_week, a);
               return m;
             }, new Map())
-            .values()].sort((a, b) => a.wk - b.wk)
+            .values()].map((r) => ({ ...r, source: 'order_history' }))
+        : null;
+      const consignmentService = consignmentWeekly
+        ? [...consignmentWeekly.reduce((m, r) => {
+            const a = m.get(r.wk) || { wk: r.wk, ordered: 0, cut: 0, pos: 0, source: 'consignment' };
+            a.ordered += r.ordered; a.cut += r.cut; a.pos += r.pos;
+            m.set(r.wk, a);
+            return m;
+          }, new Map()).values()]
+        : null;
+      const dotService = orderHistoryService || consignmentService
+        ? [...(orderHistoryService ?? []), ...(consignmentService ?? [])].sort((a, b) => a.wk - b.wk)
         : null;
 
       // ── DOT deliveries into each Walmart depot, per SKU ──
@@ -247,7 +322,7 @@ export function useDemandFeeds() {
       // `reconciled_cases` is the delivered/settled figure. NOT `shipped_cases`,
       // which is 0 throughout the sample, and not `ordered_cases`, which is what
       // was asked for — the gap between them is the cut.
-      const dotDeliveries = (dotRows && orderRows)
+      const orderHistoryDeliveries = (dotRows && orderRows)
         ? (() => {
             // PO → its SKU split, in cases.
             const splitByPo = new Map();
@@ -262,7 +337,7 @@ export function useDemandFeeds() {
             const acc = new Map();
             let unmatched = 0;
             for (const d of dotRows) {
-              if (!d.delivery_week) continue;
+              if (!d.delivery_week || consignmentWeeks.has(d.delivery_week)) continue;
               const split = splitByPo.get(d.customer_po);
               if (!split || !split.size) { unmatched += d.reconciled_cases || 0; continue; }
               const total = [...split.values()].reduce((a, b) => a + b, 0);
@@ -278,9 +353,19 @@ export function useDemandFeeds() {
               }
             }
             const out = [...acc.values()]
-              .map((a) => ({ ...a, delivered: Math.round(a.delivered), ordered: Math.round(a.ordered), cut: Math.round(a.cut) }))
+              .map((a) => ({ ...a, delivered: Math.round(a.delivered), ordered: Math.round(a.ordered), cut: Math.round(a.cut), source: 'order_history' }))
               .sort((a, b) => a.wk - b.wk || a.sku.localeCompare(b.sku));
             out.unmatchedCases = unmatched;   // surfaced by the page, not swallowed
+            return out;
+          })()
+        : null;
+      // Consignment weeks are exact by item; Order History weeks are pro-rata
+      // and cut-orders-only. `source` on each row says which.
+      const dotDeliveries = orderHistoryDeliveries || consignmentWeekly
+        ? (() => {
+            const out = [...(orderHistoryDeliveries ?? []), ...(consignmentWeekly ?? [])]
+              .sort((a, b) => a.wk - b.wk || a.sku.localeCompare(b.sku));
+            out.unmatchedCases = orderHistoryDeliveries?.unmatchedCases ?? 0;
             return out;
           })()
         : null;
@@ -417,6 +502,7 @@ export function useDemandFeeds() {
         dotService,
         dotDeliveries,
         dotOnHand,
+        consignment,
         otif,
         orders,
         unmappedOrderItems,
@@ -428,6 +514,7 @@ export function useDemandFeeds() {
           orders: orders ? 'live' : 'seed',
           dotDeliveries: dotDeliveries ? 'live' : 'seed',
           dot: dotOnHand ? 'live' : 'seed',
+          consignment: consignment ? 'live' : 'seed',
         },
         asOf,
       });

@@ -51,7 +51,19 @@ const LIVE_DOT_SHAPE = {
     { wk: 202639, sku: 'BC', cases: 1257, committed: 228, expired: 0, expiring60: 0,
       earliestExpiry: '2027-03-01', casesPerPallet: 96, snapshotDate: '2026-10-27' },
   ],
-  sources: { ...LIVE_SHAPE.sources, dot: 'live' },
+  // DOT Consignment Sales History, as useDemandFeeds shapes it (per PO × SKU).
+  // BC is cut hard (30 of 84) and must raise an action; WC's re-placed PO
+  // shipped in full and must not.
+  consignment: [
+    { po: '0112957696', sku: 'WC', wk: 202639, shipDate: '2026-10-28', ordered: 42, received: 42, lines: 2, cut: 0, replaced: true },
+    { po: '0120830468', sku: 'BC', wk: 202639, shipDate: '2026-10-29', ordered: 84, received: 54, lines: 1, cut: 30, replaced: false },
+  ],
+  dotService: [{ wk: 202625, ordered: 84, cut: 42, pos: 2, source: 'order_history' },
+               { wk: 202639, ordered: 126, cut: 30, pos: 2, source: 'consignment' }],
+  dotDeliveries: [{ wk: 202625, sku: 'WC', delivered: 0, ordered: 84, cut: 42, source: 'order_history' },
+                  { wk: 202639, sku: 'WC', delivered: 42, ordered: 42, cut: 0, source: 'consignment' },
+                  { wk: 202639, sku: 'BC', delivered: 54, ordered: 84, cut: 30, source: 'consignment' }],
+  sources: { ...LIVE_SHAPE.sources, dot: 'live', consignment: 'live' },
 };
 // Everything null — what the page sees before the first upload, when every
 // series falls back to SEED.
@@ -69,7 +81,9 @@ const EMPTY_SHAPE = {
 const EXPECT_SUMMARY = {
   live: ['This week’s actions', 'Retail Link POS is', 'No DOT Inventory Snapshot uploaded', 'Case pack is changing'],
   dot: ['Decide what to do with 246 expired cases at DOT (WC 246)',
-        'WC: 229 good cases expire within 60 days (15% of good stock, first Dec 23)'],
+        'WC: 229 good cases expire within 60 days (15% of good stock, first Dec 23)',
+        'BC: DOT cut 30 of 84 cs Walmart ordered (36%), last 4 ship weeks',
+        'By SKU · Consignment Sales History'],
   empty: ['This week’s actions', 'No live Retail Link POS', 'No DOT Inventory Snapshot uploaded'],
 };
 

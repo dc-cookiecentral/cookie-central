@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, Fragment } from "react";
+import { useMemo, useState, Fragment } from "react";
 import { useDemandFeeds } from "../hooks/useDemandFeeds";
 import { walmartWeekOf } from "../parsers/retailLinkSupplyPlan";
 import { ComposedChart, Line, Bar, LabelList, XAxis, YAxis, Tooltip, ReferenceLine, ReferenceArea, ResponsiveContainer } from "recharts";
@@ -122,7 +122,10 @@ function buildSkuSeries(input, sku) {
   const ovrMap = new Map((input.overrides || []).filter(r => r.sku === sku).map(r => [r.wk, r]));
   // DOT → Walmart depot deliveries, ACTUAL, per week. Optional: absent for every
   // week before the first DOT Order History upload and for every future week.
-  const dotDlvMap = new Map((input.dotDeliveries || []).filter(r => r.sku === sku).map(r => [r.wk, r.delivered]));
+  // Since Nov 5 2026 also carries `cut` and `source`: 'consignment' weeks
+  // (Consignment Sales History) are complete and exact by item; 'order_history'
+  // weeks are cut-orders-only and pro-rata. Still NOT in the cascade — see c.dotOut.
+  const dotDlvMap = new Map((input.dotDeliveries || []).filter(r => r.sku === sku).map(r => [r.wk, r]));
 
   const latestFc = new Map(), lagFc = new Map(), whseFc = new Map();
   const targets = new Set(input.forecasts.filter(f => f.sku === sku).map(f => f.target));
@@ -149,7 +152,9 @@ function buildSkuSeries(input, sku) {
     demandCases: 0, req: null, dlv: null, variance: null, fillRate: null, cuts: null,
     revenue: null, dcOpen: 0, dcIn: 0, dcOut: 0, dcClose: 0, dcTgt: 0, dcDoh: 0,
     dotOpen: 0, dotIn: 0, dotOut: 0, dotCloseModel: 0,
-    dotDelivered: dotDlvMap.has(wk) ? dotDlvMap.get(wk) : null,
+    dotDelivered: dotDlvMap.has(wk) ? dotDlvMap.get(wk).delivered : null,
+    dotCut: dotDlvMap.has(wk) ? dotDlvMap.get(wk).cut ?? null : null,
+    dotSrc: dotDlvMap.has(wk) ? dotDlvMap.get(wk).source ?? null : null,
     dotActual: dotMap.has(wk) ? dotMap.get(wk) : null,
     dotUsed: 0, dotTgt: 0, dotDoh: 0, rec: 0, shifts: 0, plan: 0,
     actual: prodMap.has(wk) ? prodMap.get(wk) : null, prodVariance: null, pallets: 0,
@@ -985,8 +990,10 @@ const PROVENANCE = [
     detail: 'quantity and Amount by the line\'s ACTUAL delivery week — a different date from the above' },
   { series: 'otif', field: 'OTIF %', file: 'OTIF Store Performance', sheet: 'Receiver',
     detail: 'SUM(Cases On Time) ÷ SUM(Cases Ordered) — cases-weighted, never a mean of per-PO percentages' },
-  { series: 'dotService', field: 'DOT ordered / cut', file: 'DOT Report (Order History)', sheet: 'Outbound Orders',
-    detail: 'by Delivery Date week. Per PO — the export carries no item column' },
+  { series: 'consignment', field: 'DOT shipped / cut by SKU', file: 'DOT Consignment Sales History', sheet: 'Consignment Sales History',
+    detail: 'Quantity Ordered vs Quantity Received per DOT order × Walmart item, by Detail Establish Date (ship) week. Grouped per Walmart PO × SKU before the cut is taken, so a PO DOT re-placed and later shipped counts as filled. Every shipment, not just cut ones — supersedes Order History for the weeks it covers' },
+  { series: 'dotService', field: 'DOT ordered / cut (older weeks)', file: 'DOT Report (Order History)', sheet: 'Outbound Orders',
+    detail: 'by Delivery Date week. Per PO — the export carries no item column, and lists only orders with a cut. Used only for weeks before Consignment Sales History begins' },
   { series: 'production', field: 'Cases produced', derived: false, file: '— none —',
     detail: 'Still the frozen seed. production_runs holds 5 rows' },
   { series: 'dot', field: 'DOT on-hand', derived: false, file: 'DOT Inventory Snapshot', sheet: 'Inventory Summary',
@@ -1017,8 +1024,8 @@ function Sources({ feeds, series }) {
   const src = feeds.sources ?? {};
   const statusOf = (k) => (k === 'production'
     ? 'seed'
-    : k === 'dot'
-      ? (src.dot === 'live' ? 'live' : 'none')
+    : k === 'dot' || k === 'consignment'          // no seed exists for either
+      ? (src[k] === 'live' ? 'live' : 'none')
       : (src[k] === 'live' ? 'live' : 'seed'));
 
   // ── Forecast comparison: the four forward numbers, side by side ──
@@ -1333,9 +1340,16 @@ const EXPIRING_RED_SHARE = 0.3;   // the prototype's threshold, now the amber �
 const GAP_WARN = 0.15, GAP_BAD = 0.4;
 const INSTOCK_BAD = 0.65, OTIF_BAD = 0.9; // Service health's red lines
 const STALE_WEEKS = 2;
+const CUT_WARN = 0.05, CUT_BAD = 0.15; // share of ordered cases DOT cut, last 4 ship weeks
 // Weeks apart, across the fiscal year end (52 weeks; live POS also carries 53).
 const wkIndex = wk => (Math.floor(wk / 100) - 2026) * 52 + (wk % 100);
 const wkTag = wkEnding;
+// The Walmart week three weeks before `wk` (a 4-week window ending at wk).
+const s4Back = wk => {
+  const i = wkIndex(wk) - 3;
+  const y = 2026 + Math.floor((i - 1) / 52);
+  return y * 100 + (((i - 1) % 52) + 52) % 52 + 1;
+};
 const sortSkus = obj => Object.entries(obj).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
 
 function buildActions({ series, metrics, feeds, todayWk }) {
@@ -1373,6 +1387,22 @@ function buildActions({ series, metrics, feeds, todayWk }) {
     add(Math.abs(m.n4wGap) > GAP_BAD ? "bad" : "warn", ACTION_OWNERS.walmart,
       "Challenge the " + m.sku + " forecast: Walmart is " + F.spct(m.n4wGap) + " vs ours, next 4 weeks",
       "Retail Link forecast vs internal · after " + wkTag(m.latestWk));
+  }
+
+  // ── DOT cuts, by SKU: last 4 ship weeks of Consignment Sales History ──
+  // Measured, item-level (Nov 5 2026). Flags a SKU when DOT shipped less than
+  // CUT_WARN of what Walmart ordered; red past CUT_BAD.
+  const cs = feeds.consignment ?? [];
+  if (cs.length) {
+    const newest = Math.max(...cs.map(r => r.wk));
+    for (const a of consignmentBySku(cs, s4Back(newest))) {
+      const share = a.ordered > 0 ? a.cut / a.ordered : 0;
+      if (share <= CUT_WARN) continue;
+      add(share > CUT_BAD ? "bad" : "warn", ACTION_OWNERS.dot,
+        a.sku + ": DOT cut " + F.int(a.cut) + " of " + F.int(a.ordered) + " cs Walmart ordered (" + F.pct0(share) +
+          "), last 4 ship weeks — check supply allocation",
+        "DOT Consignment Sales History · " + wkEnding(s4Back(newest)) + " to " + wkEnding(newest));
+    }
   }
 
   // ── Service: red lines only ──
@@ -1449,8 +1479,31 @@ function Summary({ series, metrics, feeds }) {
   );
 }
 
-function DotServicePanel({ svc, latestDataWk }) {
+// Per-SKU cut table, from Consignment Sales History (Nov 5 2026) — the first
+// DOT feed with an item on every line. Grouped per PO × SKU in the hook, so a
+// re-placed order that later shipped counts as filled.
+function consignmentBySku(rows, fromWk) {
+  const by = new Map();
+  for (const r of rows ?? []) {
+    if (fromWk && wkIndex(r.wk) < wkIndex(fromWk)) continue;
+    const a = by.get(r.sku) || { sku: r.sku, ordered: 0, received: 0, cut: 0, pos: 0, replaced: 0 };
+    a.ordered += r.ordered; a.received += r.received; a.cut += r.cut; a.pos += 1;
+    if (r.replaced && r.cut === 0) a.replaced += 1;
+    by.set(r.sku, a);
+  }
+  return ["WC", "PBG", "CCF", "BC"].map(k => by.get(k)).filter(Boolean)
+    .map(a => ({ ...a, fill: a.ordered > 0 ? a.received / a.ordered : null }));
+}
+
+function DotServicePanel({ svc, latestDataWk, consignment }) {
   if (!svc.rows.length) return null;
+  const csWeeks = (consignment ?? []).map(r => r.wk);
+  const csNewest = csWeeks.length ? Math.max(...csWeeks) : null;
+  const csFirst = csWeeks.length ? Math.min(...csWeeks) : null;
+  // "Last 4 weeks" = the four newest SHIP weeks in the file.
+  const l4From = csNewest ? s4Back(csNewest) : null;
+  const skuL4 = consignmentBySku(consignment, l4From);
+  const skuAll = consignmentBySku(consignment, null);
   const max = Math.max(...svc.rows.map(r => r.trueOrdered));
   // A DOT report now arrives WEEKLY (Caroline, Aug 24 2026), so this gap is a
   // missed-upload signal rather than an inherent property of the feed — which
@@ -1468,8 +1521,10 @@ function DotServicePanel({ svc, latestDataWk }) {
       <header className="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-3">
         <h2 className="cc-serif text-lg">DOT service & cut recovery</h2>
         <span className="text-xs opacity-60">
-          Source: the DOT "Order History" outbound export + NetSuite requested/delivered · all SKUs.
-          Cut = cases DOT did not ship; the order book Walmart placed is larger than NetSuite records by that amount.
+          {csFirst
+            ? <>Source: DOT Consignment Sales History from {wkEnding(csFirst)} (every shipment, by item){svc.rows.some(r => r.wk < csFirst) ? "; earlier weeks from DOT Order History (cut orders only)" : ""} · NetSuite requested/delivered.</>
+            : <>Source: the DOT "Order History" outbound export + NetSuite requested/delivered · all SKUs.</>}
+          {" "}Cut = cases DOT did not ship; the order book Walmart placed is larger than NetSuite records by that amount.
         </span>
         {stale && (
           <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold"
@@ -1508,12 +1563,57 @@ function DotServicePanel({ svc, latestDataWk }) {
       {stale && (
         <p className="text-[11px] mt-3 rounded-lg px-3 py-2"
           style={{ background: "#FDF3D8", border: "1px solid #E8D9A8", color: "#5C4A1F" }}>
-          <b>This panel is not current.</b> The loaded DOT Order History ends {wkEnding(newestDot)},
+          <b>This panel is not current.</b> The loaded DOT shipment data ends {wkEnding(newestDot)},
           {weeksBehind} weeks behind the POS data above. A DOT report arrives <b>weekly</b>, so this
           means {weeksBehind === 1 ? "an upload is due" : "uploads have been missed"} — not that none
           was available. Cut recovery here describes that window, not today.
-          Upload the latest at Uploads → DOT Report.
+          Upload the latest DOT Consignment Sales History at Uploads → card 8.
         </p>
+      )}
+      {skuAll.length > 0 && (
+        <div className="mt-4 overflow-x-auto">
+          <div className="text-[11px] uppercase tracking-wider opacity-60 mb-1">
+            By SKU · Consignment Sales History · cases ordered vs shipped
+          </div>
+          <table className="w-full text-[12px] cc-mono">
+            <thead>
+              <tr className="text-[11px] uppercase tracking-wider opacity-60 text-right cc-sans">
+                <th className="text-left font-semibold pb-1 pr-3">SKU</th>
+                <th className="font-semibold pb-1 pr-3" colSpan={4}>Last 4 ship weeks (from {wkEnding(l4From)})</th>
+                <th className="font-semibold pb-1 pl-4" colSpan={3}>All loaded ({wkEnding(csFirst)} – {wkEnding(csNewest)})</th>
+              </tr>
+              <tr className="text-[11px] opacity-60 text-right cc-sans">
+                <th />
+                <th className="font-normal pr-3">Ordered</th><th className="font-normal pr-3">Shipped</th>
+                <th className="font-normal pr-3">Cut</th><th className="font-normal pr-3">Fill</th>
+                <th className="font-normal pl-4 pr-3">Ordered</th><th className="font-normal pr-3">Cut</th><th className="font-normal">Fill</th>
+              </tr>
+            </thead>
+            <tbody>
+              {skuAll.map(a => {
+                const l = skuL4.find(x => x.sku === a.sku);
+                const fillColor = f => (f == null ? undefined : f < 0.9 ? "#C2185B" : f < 0.98 ? "#B87514" : "#245B33");
+                return (
+                  <tr key={a.sku} style={{ borderTop: "1px solid #F1E7EC" }} className="text-right">
+                    <td className="text-left py-1 pr-3 font-bold cc-sans">{a.sku}</td>
+                    <td className="pr-3">{l ? F.int(l.ordered) : "—"}</td>
+                    <td className="pr-3">{l ? F.int(l.received) : "—"}</td>
+                    <td className="pr-3" style={{ color: l?.cut ? "#8E1039" : undefined }}>{l ? F.int(l.cut) : "—"}</td>
+                    <td className="pr-3 font-bold" style={{ color: fillColor(l?.fill) }}>{l ? F.pct(l.fill) : "—"}</td>
+                    <td className="pl-4 pr-3">{F.int(a.ordered)}</td>
+                    <td className="pr-3" style={{ color: a.cut ? "#8E1039" : undefined }}>{F.int(a.cut)}</td>
+                    <td className="font-bold" style={{ color: fillColor(a.fill) }}>{F.pct(a.fill)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <p className="text-[11px] opacity-60 mt-1 cc-sans">
+            Per Walmart PO × SKU: a PO that DOT cut and later re-shipped on a new DOT order counts as filled
+            ({skuAll.reduce((n, a) => n + a.replaced, 0)} such PO{skuAll.reduce((n, a) => n + a.replaced, 0) === 1 ? "" : "s"} in the loaded window).
+            Weeks are the ship week (Detail Establish Date).
+          </p>
+        </div>
       )}
       <p className="text-[11px] mt-3 rounded-lg px-3 py-2" style={{ background: "#FDF6FA", color: "#8E1039" }}>
         The order book Walmart actually placed was <b>{F.int(svc.recovered)} cases</b> larger than
@@ -1607,7 +1707,13 @@ const ROWS = [
   { k: "dcclose", l: "DC closing (cs)", g: c => c.dcClose, f: "int", sec: "Walmart DC" },
   { k: "dcdoh", l: "DC DOH (fwd)", placeholder: true, g: c => c.dcDoh, f: "d1", flag: c => (c.dcDoh > 0 && c.dcDoh < 7 ? "bad" : null) },
   { k: "dotused", l: "DOT closing — used (cs)", placeholder: true, g: c => c.dotUsed, f: "int", sec: "DOT" },
-  { k: "dotdlv", l: "DOT delivered — cut orders only (cs)", g: c => c.dotDelivered, f: "int" },
+  // Consignment Sales History weeks are every shipment; Order History weeks
+  // (before Aug 2026) are cut orders only — italic, with the reason on hover.
+  { k: "dotdlv", l: "DOT shipped to Walmart (cs)", g: c => c.dotDelivered, f: "int", partial: c => c.dotSrc === "order_history",
+    hint: "DOT Consignment Sales History: cases received against each Walmart PO, by ship week. Italic weeks predate it and come from DOT Order History, which lists only orders that had a cut." },
+  { k: "dotcut", l: "DOT cut (cs)", g: c => c.dotCut, f: "int", partial: c => c.dotSrc === "order_history",
+    flag: c => (c.dotCut > 0 && c.dotDelivered != null && c.dotCut / (c.dotCut + c.dotDelivered) > 0.1 ? "bad" : c.dotCut > 0 ? "warn" : null),
+    hint: "Ordered − received per Walmart PO × SKU. A PO DOT re-placed and later shipped counts as filled, not cut." },
   // A measured reading (DOT Inventory Snapshot, good cases), not a model — so
   // no placeholder flag. Blank in weeks without an upload.
   { k: "dotact", l: "DOT actual OH (feed)", g: c => c.dotActual, f: "int" },
@@ -1668,7 +1774,7 @@ function Tracker({ series, onEdit }) {
                       <tr>
                         <td className="sticky left-0 bg-white z-10 cc-sans px-3 py-1 border-b"
                           style={{ borderColor: "#F2EAEE", color: row.placeholder ? "#B0A3AC" : undefined }}
-                          title={row.placeholder ? "Placeholder — computed from frozen production data; DOT on-hand is measured only in weeks with an Inventory Snapshot upload. Do not plan from this row." : undefined}>
+                          title={row.placeholder ? "Placeholder — computed from frozen production data; DOT on-hand is measured only in weeks with an Inventory Snapshot upload. Do not plan from this row." : row.hint}>
                           {row.l}
                           {row.placeholder && (
                             <span className="ml-1.5 text-[11px] uppercase tracking-wider px-1 py-0.5 rounded"
@@ -1688,7 +1794,8 @@ function Tracker({ series, onEdit }) {
                                 background: flag === "bad" ? "#F8CBCB" : flag === "warn" ? "#FDE9C8" : future ? "#FDF6FA" : undefined,
                                 color: flag === "bad" ? "#8E1039" : flag === "warn" ? "#8A5A10" : undefined,
                                 fontWeight: flag === "bad" ? 600 : undefined,
-                                ...(row.placeholder ? { color: "#B0A3AC", fontStyle: "italic" } : {}) }}>
+                                ...(row.placeholder ? { color: "#B0A3AC", fontStyle: "italic" } : {}),
+                                ...(row.partial && row.partial(c) ? { fontStyle: "italic", opacity: 0.6 } : {}) }}>
                               {editable ? (
                                 <input type="number" step={row.edit === "mult" ? "0.05" : "1"}
                                   defaultValue={row.g(c) ?? ""}
@@ -1727,19 +1834,16 @@ export default function DemandPlanner() {
   const [tab, setTab] = useState("summary");
   const [overrides, setOverrides] = useState([]);
   const [prodEdits, setProdEdits] = useState([]);
-  const [dotSvcRows, setDotSvcRows] = useState(SEED.dotService || []);
 
   // Live Retail Link feeds. Each series independently falls back to SEED when
   // the table is missing (pre-migration) or empty (pre-first-upload), so this
   // page behaves identically at every stage of the rollout.
   const feeds = useDemandFeeds();
 
-  // Held in state rather than read straight from `feeds` because the panel's
-  // rows used to be pasteable and the shape is worth keeping addressable. The
-  // live set is adopted when it arrives.
-  useEffect(() => {
-    if (feeds.dotService) setDotSvcRows(feeds.dotService);
-  }, [feeds.dotService]);
+  // Read straight from `feeds` (Nov 5 2026). It used to be copied into state
+  // by an effect — a leftover from when the rows were pasteable — which left
+  // the first render, and every server render, on SEED.
+  const dotSvcRows = feeds.dotService ?? SEED.dotService ?? [];
 
   const input = useMemo(() => {
     // Live where we have it, SEED where we don't. Tracker overrides and
@@ -1842,8 +1946,11 @@ export default function DemandPlanner() {
         ? { label: "DOT on-hand", prefix: "snapshot", date: dotReading.label,
             status: freshnessOf({ wk: dotReading.wk, live: true, todayWk }) }
         : { label: "DOT on-hand", date: null, status: { tone: "bad", text: "no snapshot uploaded" } },
-      item("DOT cut recovery", maxWk(dotSvcRows), src.dotService === "live",
-        { title: "DOT Order History export — drives the cut-recovery panel" }),
+      src.consignment === "live"
+        ? item("DOT shipments & cuts", maxWk(feeds.consignment), true,
+            { prefix: "shipped wk ending", title: "DOT Consignment Sales History — every shipment to Walmart, by item. Drives cut recovery." })
+        : item("DOT shipments & cuts", maxWk(dotSvcRows), src.dotService === "live",
+            { title: "DOT Order History (cut orders only) — upload the Consignment Sales History for every shipment" }),
       { label: "Production", prefix: "frozen", date: new Date(`${SEED.asOf}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }),
         status: PRODUCTION_LIVE ? { tone: "ok", text: "live" } : { tone: "bad", text: "not live · no feed yet" },
         title: "Production is still the " + SEED.asOf + " seed — every supply-side figure built on it is a placeholder" },
@@ -1926,7 +2033,7 @@ export default function DemandPlanner() {
             <ServiceHealth series={series} otif={feeds.otif} />
             <div className="mt-4" />
             <Summary series={series} metrics={metrics} feeds={feeds} />
-            <DotServicePanel svc={svc} latestDataWk={latestDataWk} />
+            <DotServicePanel svc={svc} latestDataWk={latestDataWk} consignment={feeds.consignment} />
           </>
         )}
         {tab === "tracker" && <Tracker series={series} onEdit={onEdit} />}
