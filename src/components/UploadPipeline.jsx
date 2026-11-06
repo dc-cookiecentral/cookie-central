@@ -217,6 +217,13 @@ export default function UploadPipeline({ parser, onComplete, title, note }) {
           <div className="text-sm font-semibold text-green-700">
             Imported {result?.inserted} record(s)
           </div>
+          {/* Importers that refuse stale rows (an older snapshot uploaded after
+              a newer one) report how many they left alone. */}
+          {result?.skipped > 0 && (
+            <div className="text-xs text-gr mt-1">
+              {result.skipped} kept as stored — this file is older than what is already loaded for them
+            </div>
+          )}
           <button onClick={reset} className="text-xs text-pk hover:text-pm mt-2 underline">
             Upload another
           </button>

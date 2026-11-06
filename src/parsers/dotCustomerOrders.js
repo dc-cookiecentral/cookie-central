@@ -212,21 +212,60 @@ async function parseFile(file) {
   return parseRows(rows, key);
 }
 
-// Upsert on DOT order × item, so a line's status moves forward with each
-// report. `first_seen_at` is left to its default on insert and never sent, so
-// it keeps the first sighting; `last_seen_at` is stamped every upload.
+// ── Overlapping and out-of-order uploads (Caroline, Nov 5 2026) ──────────
+// DOT exports at most 90 days per pull, so history arrives as overlapping
+// files, possibly older ones AFTER newer ones. Two guarantees:
+//   1. No duplicates — one row per DOT order × item (the primary key), so a
+//      line that appears in two files is one row.
+//   2. No going backwards — the file carries no report date, so a line's
+//      STATUS orders the readings: an older file must not move a Delivered
+//      line back to Open. A stored line further along than the incoming one
+//      is left untouched. Same rank → the incoming line wins (it may fill in
+//      dates). Statuses not in the table are always written.
+const STATUS_RANK = { open: 1, released: 1, picking: 2, picked: 2, loaded: 3, shipped: 3, 'in transit': 3, delivered: 4, reconciled: 5 };
+const rankOf = (r) => {
+  const base = STATUS_RANK[String(r?.order_status ?? '').trim().toLowerCase()];
+  if (base == null) return null;
+  return r.reconciled_date ? Math.max(base, STATUS_RANK.reconciled) : base;
+};
+// Pure, exported for the test script: should `incoming` overwrite `stored`?
+export function isNotOlder(stored, incoming) {
+  if (!stored) return true;
+  const a = rankOf(stored), b = rankOf(incoming);
+  if (a == null || b == null) return true;
+  return b >= a;
+}
+
+// Upsert on DOT order × item. `first_seen_at` is left to its default on insert
+// and never sent, so it keeps the first sighting; `last_seen_at` is stamped on
+// every line written.
 async function importRecords(records, { uploadId, client } = {}) {
   const supabase = client ?? (await import('../lib/supabase.js')).supabase;
   if (!records.length) return { inserted: 0 };
+
+  // Read what is stored for these orders, to apply guarantee 2.
+  const stored = new Map();
+  const orderNos = [...new Set(records.map((r) => r.dot_order_number))];
+  for (let i = 0; i < orderNos.length; i += 200) {
+    const { data, error } = await supabase
+      .from('dot_customer_orders')
+      .select('dot_order_number, dot_item_number, order_status, reconciled_date')
+      .in('dot_order_number', orderNos.slice(i, i + 200));
+    if (error) throw error;
+    for (const r of data ?? []) stored.set(`${r.dot_order_number}|${r.dot_item_number}`, r);
+  }
+  const fresh = records.filter((r) => isNotOlder(stored.get(`${r.dot_order_number}|${r.dot_item_number}`), r));
+  const skipped = records.length - fresh.length;
+
   const now = new Date().toISOString();
-  const rows = records.map((r) => ({ ...r, upload_id: uploadId ?? null, last_seen_at: now }));
+  const rows = fresh.map((r) => ({ ...r, upload_id: uploadId ?? null, last_seen_at: now }));
   for (let i = 0; i < rows.length; i += 500) {
     const { error } = await supabase
       .from('dot_customer_orders')
       .upsert(rows.slice(i, i + 500), { onConflict: 'dot_order_number,dot_item_number' });
     if (error) throw error;
   }
-  return { inserted: records.length };
+  return { inserted: rows.length, skipped };
 }
 
 export default {

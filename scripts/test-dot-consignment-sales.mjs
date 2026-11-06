@@ -60,6 +60,23 @@ try {
   const rp = consignment.find((r) => r.po === '0112957696' && r.sku === 'WC');
   if (!rp || rp.ordered !== 42 || rp.received !== 42 || rp.cut !== 0) bad.push(['re-placed PO shaped as filled', JSON.stringify(rp)]);
   if (shaped.poSku !== 619) bad.push(['PO × SKU groups', shaped.poSku]);
+
+  // ── Overlapping uploads must not duplicate (Caroline, Nov 5 2026) ──
+  // DOT allows 90-day pulls, so history arrives as overlapping files, in any
+  // order, sometimes twice. Simulate the table: one row per primary key
+  // (dot_order_number, item_number) — exactly what the upsert's onConflict
+  // does — and load two overlapping slices out of order, one of them twice.
+  const table = new Map();
+  const upsert = (rows) => rows.forEach((r) => table.set(`${r.dot_order_number}|${r.item_number}`, r));
+  const early = recs.filter((r) => r.ship_date <= '2026-10-10');   // Sep 1 – Oct 10
+  const late = recs.filter((r) => r.ship_date >= '2026-10-01');    // Oct 1 – Nov 4: overlaps 10 days
+  const overlapLines = recs.filter((r) => r.ship_date >= '2026-10-01' && r.ship_date <= '2026-10-10').length;
+  upsert(late); upsert(early); upsert(late); upsert(early.filter((r) => r.ship_date >= '2026-10-04'));
+  const re = shapeConsignment([...table.values()]);
+  const tot = (x) => ({ ordered: x.consignment.reduce((a, r) => a + r.ordered, 0), received: x.consignment.reduce((a, r) => a + r.received, 0), cut: x.consignment.reduce((a, r) => a + r.cut, 0), groups: x.consignment.length });
+  const once = tot({ consignment }), twice = tot(re);
+  console.log('overlap test', { overlapLines, tableRows: table.size, once, afterOverlaps: twice });
+  if (table.size !== recs.length || JSON.stringify(once) !== JSON.stringify(twice)) bad.push(['overlapping uploads changed the totals', JSON.stringify(twice)]);
 } finally { rmSync(dir, { recursive: true, force: true }); }
 
 console.log(bad.length ? '\n❌ ' + bad.map(([k, v]) => `${k}: got ${v}`).join(' · ') : '\n✅ matches the first real file');
