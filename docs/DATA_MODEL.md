@@ -722,6 +722,25 @@ Source: the **`Data`** sheet of `Dirty Cookie Supply Plan Wk##.xlsx`. Added by `
 
 ⚠️ **Excel serials, converted directly.** Reading these dates with SheetJS's `cellDates` produced values like `2026-08-15T23:00:21Z` — a fractional serial rendered in local time, which lands on the **wrong day** west of Greenwich. The parser converts serials against the 1899-12-30 epoch instead.
 
+### `walmart_sqep_defects` — Walmart SQEP defects and charges
+Source: `SQEP Total Compliance Table, <date>.csv` (upload cards 10–11), parsed by `src/parsers/walmartSqep.js`. Added by `20261109120000`. One row per SQEP defect against a PO.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `charge_status` | text NOT NULL | `projected` ("Potential Charge ($)") or `invoiced` ("Invoiced Charge ($)") — read from the file's charge header |
+| `defect_category`, `defect_type`, `defect_sub_type` | text NOT NULL DEFAULT `''` | e.g. `ASN COMPLIANCE` / `NO ASN RECEIVED` / `''` |
+| `po_number` | text NOT NULL | As given. **GDC POs are 9 digits here, 10 (zero-padded) in DOT / OTIF** — `lpad(po_number,10,'0')` to join |
+| `oms_po_number` | text | Equals `po_number` on GDC rows; a separate 9-digit OMS number on RDC (BC) rows |
+| `item_number`, `ticket_number` | text NOT NULL DEFAULT `''` | `NA` on ASN defects |
+| `occurrence` | int | nth identical defect within one file (keeps true duplicates) |
+| `processed_date`, `walmart_week`, `wmt_month` | | Walmart's own week (`202640`) and billing month (`NOV FYE 27`) |
+| `supplier_6digit`, `supplier_9digit`, `department`, `network`, `dc_number`, … | text | Supplier is **127224 NATIONAL FOOD TRADING CORP.**; dept 90 Dairy = GDC (WC/PBG/CCF), 95 Snacks = RDC (BC) |
+| `charge` | numeric | Potential or invoiced $, per `charge_status` |
+
+Key: `(charge_status, po_number, defect_category, defect_type, defect_sub_type, item_number, ticket_number, occurrence)`; re-pulls upsert. A projected defect Walmart later drops is **not** deleted by a newer pull — read `last_seen_at`.
+
+✅ **Validated Nov 9 2026:** projected wk 202640 = 62 ASN defects, $1,378.40; invoiced wk 202635 = 55 ASN defects, $1,375.00; every PO matched DOT shipments. Charge observed: **$10.17 per case, capped at $25.00 per PO**.
+
 ### `dot_order_history` — DOT outbound orders and cuts
 Source: the DOT `Order History (N).xlsx` export, sheet "Outbound Orders". Added by `20260824140000`. Drives the planner's cut-recovery panel.
 
@@ -773,4 +792,4 @@ Source: DOT's **Inventory Snapshot** export (three tabs: Inventory Summary, WH S
 ### RLS
 All six: `"All can read"` for any authenticated user, `"Internal write"` for `admin` / `finance` / `ops` — the EOS convention. The `cortina` role is gated out of `/demand-planner` at the router anyway (`InternalOnly` in `App.jsx`).
 
-`upload_log.upload_type` gained `'retail_link'` and `'retail_link_otif'` in `20260824120000`, `'retail_link_supply_plan'` in `20260824130000`, `'dot_order_history'` in `20260824140000`, and `'dot_inventory_snapshot'` in `20261028150000`.
+`upload_log.upload_type` gained `'retail_link'` and `'retail_link_otif'` in `20260824120000`, `'retail_link_supply_plan'` in `20260824130000`, `'dot_order_history'` in `20260824140000`, and `'dot_inventory_snapshot'` in `20261028150000`; `'walmart_sqep'` in `20261109120000`.
