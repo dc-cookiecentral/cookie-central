@@ -1,7 +1,7 @@
 # Cookie Central — Build Plan
 
 ## Timeline
-*(current as of October 29, 2026)*
+*(current as of November 6, 2026)*
 - **Start:** Wednesday May 21, 2026
 - **Phase 1 demo:** delivered June 2026 (Marc + David) ✅
 - **Phase 1 ship:** largely live. AI email reader (Day 10) ✅ and lot-traceability chain UI (Day 11) ✅ done. Remaining: Cortina NetSuite real-file reconciliation (waiting on Harshita's sample); DOT/QBO real-file reconciliation non-blocking.
@@ -202,7 +202,7 @@
   - [x] Review fixes committed (`48a7c1b`) and live: bundle `index-CRAbeeid.js` carries all three changes — 2026-11-02
   - [ ] Caroline: second look on the live page, including the amber rows (does amber read clearly against red?)
   - [ ] `smoke-render.mjs`: add a shape where nothing fires, to cover the green "No flags this week" line (see deviations)
-  - [ ] Settle KNOWN_ISSUES §6 (which in-stock figure is right): the forecast-gap flags, PBG's +66.7% above all, rest on it
+  - [ ] Settle KNOWN_ISSUES §6 (which in-stock figure is right): the forecast-gap flags, PBG's +66.7% above all, rest on it — *Nov 6: Service health now shows Walmart's own Instock column; on current weeks it and the engine's ratio agree within 0.2 pts. The restated June–July history is still unadjudicated*
 
   *Deviations from the plan* (Nov 2)
   - **Placement.** Planned below the placeholder notice; moved above it after Caroline's first screenshot, because only three of eight actions were above the fold.
@@ -261,7 +261,7 @@
   - [ ] Ask DOT to send **Consignment Sales History and Customer Order Details weekly**, ideally with a cut-reason column on the former; stop requesting Order History
   - [ ] Ask Cortina why the 7 CCF POs (MABD Oct 6–9, 147 cs) were zeroed before reaching DOT, and about BC's fill: 56.9% across the loaded window (4,387 cs cut of 10,181), 45% in the last 4 ship weeks
   - [ ] Caroline Collins's email address (Bentonville Merchants) — `docs/PEOPLE.md` says TBD
-  - [ ] Remaining UI review items: OTIF bars drop missing weeks without a gap; the four forecast-gap actions not consolidated; BC's forecast gap shown as a % on a tiny base (+2049%); sidebar text still 8px (`Sidebar.jsx`, app shell — left out on purpose); phone width unchecked
+  - [x] Remaining UI review items: OTIF bars drop missing weeks without a gap; the four forecast-gap actions not consolidated; BC's forecast gap shown as a % on a tiny base (+2049%); sidebar text still 8px (`Sidebar.jsx`, app shell — left out on purpose); phone width unchecked — *2026-11-06: all done and live except the sidebar's 8px text, still left as is on desktop (see November 6 below)*
   - [ ] Minor: upload cards now run 1–4, 6–9 (card 5 retired to Legacy) — renumber if the gap confuses anyone; parser messages and RUNBOOK refer to cards by number
 
   *Deviations this session (Nov 5)*
@@ -285,11 +285,32 @@
   - [x] **DOT Consignment Sales History — upload card 8** (branch `feat/dot-consignment-sales`, built 2026-11-05; **live and backfilled 2026-11-05**: Caroline uploaded 4 files, 1,957 lines, ship dates Mar 16 – Nov 4). DOT's every-shipment, by-item outbound export: parser `src/parsers/dotConsignmentSales.js` (test: `node scripts/test-dot-consignment-sales.mjs <file>`, matches the first file exactly), table `dot_consignment_sales` (migration `20261105120000`), hook groups per Walmart PO × SKU so re-placed DOT orders are not counted as cuts. Wired into cut recovery (replaces Order History for the weeks it covers; per-SKU cut table), a per-SKU DOT cut action (>5% amber, >15% red, last 4 ship weeks), the Tracker's DOT shipped / cut rows, the Data-through strip and Sources. **Live 2026-11-05:** ledger repaired for `20261102120000` (SQL-editor drift), `20261105120000` pushed via `db push --remote` (ledger in sync, table reachable via the API), merged (`d625119`) and pushed to `main`. **Still to do: Caroline uploads the Nov 5 file on card 8** and checks the cut-recovery panel and BC action on the live page. Then ask DOT for it weekly, ideally with a cut-reason column
   - [x] **Demand Planner UI and charts review** — 2026-11-05 (`feat/dp-ui-header-freshness`). Header cleaned (pack chip removed; the Walmart week is named only there, every other label is "wk ending <date>", calendar months on axes and Tracker bands); a **Data through** strip, one tile per feed with computed staleness, replaced the green status paragraph; the two amber caveats collapse to one line each; nothing under 11px except chart ticks; modelled figures hidden on the Summary tab behind `PRODUCTION_LIVE = false` (DOT buffer chip). **DOT days on hand is now measured** (sellable at DOT in the newest snapshot ÷ last-4-wk POS per day). Product card chart split into a demand panel and a store-base panel with their own axes (stores left, units/store/wk right); the single-week funnel became **Where every case sits, by week** (stacked by stage on a date axis, POS as a line, partial weeks starred). Verified with the render smoke test and a headless render on live data, not yet at phone width. Remaining review items: OTIF chart drops missing weeks without a gap; forecast-gap actions not consolidated; BC +2049% shown as a % on a tiny base; sidebar text still 8px
   - [ ] Caroline's second look at B2's amber rows (still open from Nov 2) — fold into the UI review
-  - [ ] Inventory's DOT block (`WarehouseView` / `ProductView` via `useDotInventory`) reads `dot_inventory`, which has always been empty; the real DOT stock is `dot_on_hand`. Point it there (ties into "retire `dot_inventory`", Oct 28–29)
+  - [x] Inventory's DOT block (`WarehouseView` / `ProductView` via `useDotInventory`) reads `dot_inventory`, which has always been empty; the real DOT stock is `dot_on_hand`. Point it there (ties into "retire `dot_inventory`", Oct 28–29) — *done and live 2026-11-06; `useAlerts` / `useEomSnapshot` still read `dot_inventory`*
   - [ ] Recommended next build after the UI review: Customer Order Details as an upload (see to-do above)
   - [ ] Optional: turn the Retail Link report suggestions into a page Caroline can send to Caroline Collins
 
-  **November 6 2026 — Demand Planner review fixes + Inventory DOT stock** (branch `feat/dp-review-fixes`)
+  **November 6 2026 — Demand Planner review fixes, Walmart-graded service health, phone width.** Two releases, both merged to `main`, pushed and **live**: `4fc4564` (branch `feat/dp-review-fixes`, bundle `index-DvF_2ky1.js`) and `ccb6815` (branch `feat/mobile-sidebar`, bundle `index-BltXZJur.js`); each live bundle matched a local build of its commit.
+
+  *Decisions* (Caroline, Nov 6)
+  - **OTIF and SQEP are the metrics that matter to Walmart** — the page grades service the way Supplier One does, not with its own thresholds. OTIF targets come from her Supplier One scorecard (In full 95%, On time 90%, store/prepaid)
+  - In-Stock is not on the scorecard; its 95% / 97% lines are page thresholds until she gives a target
+  - Phone width fixed in the app shell for every page, not just the Demand Planner
+
+  *Deviations* (Nov 6)
+  - Started as UI-review leftovers; the OTIF / In-Stock rework was added mid-session at Caroline's request and shipped on the same branch (`feat/dp-review-fixes`) rather than its own
+  - OTIF targets were first taken from third-party supplier guides (no public Walmart spec), then confirmed against the Supplier One screenshots the same day — formulas matched to 0.01 pt
+  - The "In-store fill rate" label and its POS-ratio source were replaced by Walmart's own Instock column: the ratio was never Walmart's figure, it only agreed with it
+  - Phone width: one global CSS rule for wide tables instead of an `overflow-x-auto` wrapper on each of ~37 tables — less code, desktop untouched; trade-off: a narrow table on a phone no longer stretches to full width
+  - SQEP was in scope but not built — no data source exists yet
+
+  *Still to do from this session*
+  - [ ] Ask DOT / Cortina who sends the ASNs and why they fail: Walmart week 10/31–11/05 SQEP charged **$902 for 40 ASN defects** (ASN compliance 24.53%), ~$900 a week
+  - [ ] Caroline: SQEP detail export from Supplier One (SQEP tab → View details → download) → parser + upload card + SQEP on Service health
+  - [ ] Caroline: an In-Stock target, if Walmart gives one, for `WMT_INSTOCK`
+  - [ ] Caroline: try the site on a real phone (only checked in headless Chrome at 390×844)
+  - [ ] Sources tab per-week forecast table still shows BC's gap as a % on a tiny base
+
+  *Work log*
   - [x] **Forecast-gap actions consolidated** into one action, worst SKU first, tone = worst (`fcstGap()` shared with the product card header) — 2026-11-06
   - [x] **Tiny base:** when our next-4-wk forecast is under `GAP_MIN_BASE_CS` (50 cs/wk) the gap shows as the two figures, not a % — BC now reads "930 vs 43 cs/wk" (was +2049%) — and flags amber at most — 2026-11-06
   - [x] **Service bars keep missing weeks** as a dashed empty slot (`withMissingWeeks`) — OTIF wk ending 9/20 now shows as a gap instead of 9/13 and 9/27 sitting side by side — 2026-11-06

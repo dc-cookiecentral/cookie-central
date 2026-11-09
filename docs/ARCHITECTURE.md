@@ -94,7 +94,7 @@ Design notes:
 
 | Layer | Technology | Notes |
 |-------|-----------|-------|
-| Frontend | React + Vite + Tailwind | Single-page app, sidebar navigation. **One bundle for every module** — Cookie Central, Sample Central, EOS and the Demand Planner all ship together, so any merge to `main` redeploys all four |
+| Frontend | React + Vite + Tailwind | Single-page app, sidebar navigation (below 768px the sidebar is a drawer opened from a top bar, and wide tables scroll in place — Nov 6 2026). **One bundle for every module** — Cookie Central, Sample Central, EOS and the Demand Planner all ship together, so any merge to `main` redeploys all four |
 | Charts | recharts | Added Aug 2026 for the Demand Planner; the only charting dependency |
 | Backend | Supabase | Postgres, Auth, Edge Functions, Storage |
 | Hosting | Vercel | Auto-deploy from GitHub main branch |

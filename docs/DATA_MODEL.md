@@ -187,6 +187,9 @@ Verified against `SEED.orders`: `req` 49/49 and `cuts` 49/49 exact. `cuts` is a 
 | notes | text | |
 
 ### dot_inventory
+
+> **Nov 6 2026:** still empty, and no longer read by the Inventory page (`useDotInventory` now reads `dot_on_hand`). Only `useAlerts` and `useEomSnapshot` still read it; retiring it is an open decision.
+
 | Column | Type | Notes |
 |--------|------|-------|
 | id | uuid PK | |

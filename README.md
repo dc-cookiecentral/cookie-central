@@ -32,7 +32,7 @@ Operational dashboard for Dirty Cookie's white-label retail business (Walmart + 
 
 **Also in this repo — a third project.** The **EOS Tracker** at `/eos`, the standing record for the weekly Level 10 leadership meeting (Scorecard, Issues, Rocks, To-Dos, Accountability Chart, V/TO). Built August 17–19, 2026 (ADR-047), **live since August 21**. 13 measurables with goals set, To-Dos that hang off a measurable and carry forward until ticked. Internal roles only — the `cortina` login cannot see any of it. See `docs/EOS.md`.
 
-**And a new module in the main project.** The **Walmart Demand Planner** at `/demand-planner` — **Service health** (in-store fill rate + OTIF), S&OP summary, chain-flow charts, DOT cut-recovery and tracker, for WC / PBG / CCF. Live since August 21; wired to live data August 24 (ADR-053→056).
+**And a new module in the main project.** The **Walmart Demand Planner** at `/demand-planner` — **Service health** (OTIF On-Time / In-Full and store In-Stock %, graded the way Walmart's Supplier One scorecard grades them — Nov 2026), S&OP summary, chain-flow charts, DOT cut-recovery and tracker, for WC / PBG / CCF. Live since August 21; wired to live data August 24 (ADR-053→056).
 
 **Five of its six series are live** *(as of Aug 24 2026 — migrations applied, all six exports uploaded)* — POS, Walmart forecast, OTIF, DOT cut recovery and NetSuite orders, fed by the six weekly uploads at `/uploads`. Only `production` is still `SEED`. DOT on-hand became a live upload on Oct 28 2026 (card 7, DOT Inventory Snapshot → `dot_on_hand`), but weeks after the latest reading are modelled on that frozen production — which is why days-on-hand and recommended production are **not trustworthy** (see the warning above). Each series falls back to SEED independently, so the banner reports which source won rather than claiming the page is simply "live" or "static". Start from **`docs/DEMAND_PLANNER_KNOWN_ISSUES.md`**, then `docs/DEMAND_PLANNER_FORMULAS.md` ("As built") and `docs/DATA_MODEL.md`.
 
@@ -144,7 +144,7 @@ cookie-central/
 | `/orders` | Product Orders list + KPIs + Attention banner | `purchase_orders` + `po_line_items` |
 | `/orders/:po` | PO detail + Fulfillment Timeline + email thread + Delivery & Lots + **live AI Insight** (from `po_emails.extracted_data`) | + `po_emails`, `po_changes`, `po_lot_numbers` |
 | `/payments` + `/payments/:po` | Two-stage payment list + 3-stage timeline | `purchase_orders` + `invoices` + `payments` |
-| `/inventory` | Warehouse + Product views + Reorder + Landing. Raw materials and packaging held at the co-packer (was "Assemblers" until Nov 2026) | `dot_inventory` + `raw_materials` + lots + orders |
+| `/inventory` | Warehouse + Product views + Reorder + Landing. Raw materials and packaging held at the co-packer (was "Assemblers" until Nov 2026) | `dot_on_hand` (DOT stock, since Nov 6 2026) + `raw_materials` + lots + orders |
 | `/snapshot` | EOM Snapshot (month-pinned KPIs + deltas) | All of the above, month-scoped |
 | `/reference` | Products + Raw Materials + Transitions | Walmart item master + `raw_materials` + `transitions` |
 | `/audit` | Audit log viewer (admin/finance only) | `audit_log` |

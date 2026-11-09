@@ -35,7 +35,8 @@ by a made-up one.
 | Recommended production / pallets | Summary cards, Tracker |
 | DOT closing / DOT opening | Tracker |
 
-**Do trust:** POS, true demand, velocity, in-store fill rate, OTIF, the Walmart
+**Do trust:** POS, true demand, velocity, store In-Stock %, OTIF (On-Time / In-Full
+match Walmart's Supplier One scorecard to 0.01 pt, checked Nov 6 2026), the Walmart
 forecast, PO requested / delivered / cuts, and DOT cut recovery. Every one of
 those was reconciled against the source files' own total rows.
 
