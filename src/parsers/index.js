@@ -11,9 +11,10 @@ import dotOrderHistory from './dotOrderHistory';
 import dotInventorySnapshot from './dotInventorySnapshot';
 import dotConsignmentSales from './dotConsignmentSales';
 import dotCustomerOrders from './dotCustomerOrders';
+import walmartSqep from './walmartSqep';
 
 // Registry keyed by upload_log.upload_type.
-export const PARSERS = { walmart_orders: walmartOrders, cortina_po: cortinaPO, netsuite, dot, qbo, ingredient_master: ingredientMaster, retail_link: retailLink, retail_link_otif: retailLinkOtif, retail_link_supply_plan: retailLinkSupplyPlan, dot_order_history: dotOrderHistory, dot_inventory_snapshot: dotInventorySnapshot, dot_consignment_sales: dotConsignmentSales, dot_customer_orders: dotCustomerOrders };
+export const PARSERS = { walmart_orders: walmartOrders, cortina_po: cortinaPO, netsuite, dot, qbo, ingredient_master: ingredientMaster, retail_link: retailLink, retail_link_otif: retailLinkOtif, retail_link_supply_plan: retailLinkSupplyPlan, dot_order_history: dotOrderHistory, dot_inventory_snapshot: dotInventorySnapshot, dot_consignment_sales: dotConsignmentSales, dot_customer_orders: dotCustomerOrders, walmart_sqep: walmartSqep };
 
 export function getParser(type) {
   return PARSERS[type] || null;

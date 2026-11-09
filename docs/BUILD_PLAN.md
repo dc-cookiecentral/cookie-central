@@ -1,7 +1,7 @@
 # Cookie Central — Build Plan
 
 ## Timeline
-*(current as of November 6, 2026)*
+*(current as of November 9, 2026)*
 - **Start:** Wednesday May 21, 2026
 - **Phase 1 demo:** delivered June 2026 (Marc + David) ✅
 - **Phase 1 ship:** largely live. AI email reader (Day 10) ✅ and lot-traceability chain UI (Day 11) ✅ done. Remaining: Cortina NetSuite real-file reconciliation (waiting on Harshita's sample); DOT/QBO real-file reconciliation non-blocking.
@@ -255,7 +255,7 @@
     - **Blocker — whose supplier account?** Onboarding: developer.walmart.com → My Account → **1P Supplier (US)** → pick the supplier account → API credentials. DOT's files show the shipments as "National Cortina Cnsg" and Cortina is our EDI conduit/financier, so the POs may sit on **Cortina's** Walmart supplier ID, not ours. Ask Harshita (Cortina) which supplier ID the POs are issued to and who can register / grant access. Get **sandbox** keys + the channel-type value first
     - **Build (once keys exist):** client ID/secret in Supabase Vault (same pattern as the Gmail agent, RUNBOOK §8); Edge Function `walmart-po-sync` on pg_cron (hourly) — token, `createdAfter` = last sync minus a 1-day overlap, page by `nextCursor`, fetch each PO's lines; upsert into a new `walmart_purchase_orders` (one row per PO × line, key `hostPurchaseOrderId` + `lineNumber`; status moves forward, never back — same rule as card 9); sync state + errors in a small table and on `/uploads`. Then the planner reads it as the source of Walmart's original order: cut recovery = ordered (API) − received (DOT consignment), the OTIF-only rule retires, and the open-order pipeline gains POs DOT has not received yet
     - **Verify in the sandbox before relying on it:** whether responses carry must-arrive-by date, ship-to DC, and cancelled/cut quantities (the docs show MABD only as a filter); full status lists; how far back history goes (for a 2026 backfill)
-    - Later, separately: Invoices & Payments API for the hidden Payments page; Scintilla Charter (ask Caroline Collins, Bentonville Merchants) for POS / forecast / in-stock / OTIF by API
+    - Later, separately: Invoices & Payments API for the hidden Payments page — *now also the SQEP / OTIF deductions check, see November 9 2026 below*; Scintilla Charter (ask Caroline Collins, Bentonville Merchants) for POS / forecast / in-stock / OTIF by API
   - [x] **Caroline: upload DOT Customer Order Details on card 9** — uploaded 2026-11-06; `dot_customer_orders` holds 131 lines (exact count via the API), matching the first file. *Was:* the table was still empty at 22:00 Nov 5, so the open-order panel and the cut-risk action show nothing yet; Caroline is pulling it from DOT now. **DOT exports only CURRENT orders for this report — no historicals** (Caroline, Nov 5), so there is no backfill: its history starts with the first upload and builds one snapshot per weekly upload. Upload weekly, or orders that open and close between uploads are never seen (Consignment Sales History still records them once shipped)
   - [x] **Caroline: click through `/demand-planner` on the live site** — 2026-11-06: "the site looks good". The BC cut action (the per-SKU DOT cut line in the actions panel, red >15%) was explained; not yet confirmed seen. Phone width still unchecked. *Was:* every change this session was verified by the render smoke test and headless renders (live data via the anon key, auth wrapper bypassed), never signed in on the live page and never at phone width. Check: header + Data-through strip, the product cards' two-panel chart and by-week inventory chart, DOT days on hand, cut recovery's per-SKU table and the 7 OTIF-only CCF POs, the open-order panel, the BC cut action
   - [ ] Ask DOT to send **Consignment Sales History and Customer Order Details weekly**, ideally with a cut-reason column on the former; stop requesting Order History
@@ -305,7 +305,7 @@
 
   *Still to do from this session*
   - [ ] Ask DOT / Cortina who sends the ASNs and why they fail: Walmart week 10/31–11/05 SQEP charged **$902 for 40 ASN defects** (ASN compliance 24.53%), ~$900 a week
-  - [ ] Caroline: SQEP detail export from Supplier One (SQEP tab → View details → download) → parser + upload card + SQEP on Service health
+  - [ ] ~~Caroline: SQEP detail export from Supplier One (SQEP tab → View details → download)~~ → parser + upload card + SQEP on Service health — *Nov 9: Supplier One has no SQEP export; replaced by the HighRadius / Retail Link / Invoices API tasks under November 9 2026*
   - [ ] Caroline: an In-Stock target, if Walmart gives one, for `WMT_INSTOCK`
   - [ ] Caroline: try the site on a real phone (only checked in headless Chrome at 390×844)
   - [ ] Sources tab per-week forecast table still shows BC's gap as a % on a tiny base
@@ -337,6 +337,39 @@
     - Checked in headless Chrome at 390×844, live data: no page wider than the screen on Demand Planner, Inventory, EOS, Spec Sheet, Supplies, Uploads, Reference, Audit Log; drawer opens (`aria-expanded`), navigates, closes. `vite build` clean, smoke 9/9. Not checked on a real phone
     - Not done: Sample Central sits outside `Layout` (own nav, ADR-030) and was not touched; the sidebar's 8px UOM / user text is unchanged on desktop
   - Note: Supplier One labels weeks Sat–Fri (10/17 – 10/23); this page labels the same week "wk ending Oct 25" (the Sunday after, Caroline's Nov 5 convention). Same week, different label
+
+  **November 9 2026 — SQEP / OTIF chargeback check, and where the data comes from.** No code changed in this repo. Analysis delivered as a claude.ai dashboard (https://claude.ai/artifact/EAVM6Cfraj4sVmqmMScPCX, private until shared) built from `retail_link_otif` + `dot_consignment_sales` and Caroline's Supplier One screenshots.
+
+  *Findings* (Supplier One SQEP, Walmart weeks 10/03–11/05/2026 = 202636–202640)
+  - **$9,709.00 / 335 defects is internally consistent**: the six cards sum to the header, and every score works back to a whole graded count — ASN 14 of 338 passed (324 defects, $7,853, $24.24/defect), PO line accuracy 342 of 345 (3, $350), case 2 of 19 failed ($373), pallet 6 of 23 failed ($1,133), packaging and load 100%
+  - **ASN is 81% of the charges and systemic**: wk 36–39 284 of 285 ASNs failed ($6,951); wk 40 40 of 53 ($902). ~338 ASNs ≈ the ~400 POs DOT shipped, i.e. roughly one ASN per PO, almost all failing. Points at how / when the EDI 856 is sent for DOT shipments, not individual invoices. Third-party guides say "ASN not downloaded" is usually **timing** (856 arriving after the truck) and is disputable with the **997 acknowledgment** showing Walmart received it before arrival
+  - The 11 Quality defects ($1,856) are all in wk 36–39 (the wk 40 scorecard showed none)
+  - OTIF wk 36–38 (export ends at 38): In full 86.4% (target 95), On time 89.4% (target 90). 79 POs missed: 28 cut at DOT with nothing shipped (1,066 cs, mostly BC wk 38), 19 left DOT after MABD (817 cs), 14 DOT shipped in full but Walmart booked a cut (191 cs — ask DOT for proof of delivery), 7 cut with no DOT record (147 cs, the known pre-DOT CCF POs)
+  - **SQEP charges may still be "projected"**: third-party guides (2024 webinar) say the SQEP dashboard shows projected charges, which can be disputed before the monthly invoice, and invoiced charges, which are final. Check which the $9,709 is
+
+  *Where the data is* (researched Nov 9; Walmart's own docs are behind Retail Link sign-in, so most of this is third-party and to be confirmed in Caroline's accounts)
+  - **Supplier One → Scorecard → SQEP has no export** (Caroline, Nov 9) — the "View details" export assumed on Nov 6 does not exist there
+  - **Walmart developer portal (1P Supplier) has no Chargebacks, Deductions, Compliance, Scorecard, OTIF or SQEP API** — checked the full API reference nav. The Supplier Academy course Caroline linked is behind Retail Link login and could not be read
+  - Candidate SQEP sources, best first: (1) **HighRadius** — the portal Walmart bills and takes disputes on for SQEP and OTIF charges; Open / Closed Bills per PO, item, defect type, DC, cases, ticket; access via Walmart team / site admin / supplier contact center. (2) **Retail Link SQEP Dashboard** — the original app; card drill-down to line-item detail (PO, version, network). (3) **Retail Link Fixit** — case / pallet / packaging defects only, tickets with DC photos. (4) **Deductions as taken** — Invoices & Payments API (below) or Retail Link APDP. (5) Fallback: copy the Supplier One "View details" table into a spreadsheet
+  - Third-party codes (conflicting, unverified): OTIF deductions code 99; SQEP disputes via HighRadius (some sources say APDP / EIPP)
+
+  *Still to do*
+  - [ ] **Invoices & Payments API — SQEP / OTIF deductions check.** `POST /v3/reports/reportRequests?reportType=INVOICES&reportVersion=v1` → poll `GET /v3/reports/singleReport` until `READY` → `GET /v3/reports/downloadReport` (expiring `downloadURL`). Columns: Invoice Number / Date / Status, Total and Net Invoice Amount, PO Number, Check Number / Date / Amount, Due Date, Vendor Number / Name, Store Number, Control / Document Number, **Discount Amount, Reason Code, Reason Descriptions**. The docs never mention SQEP, OTIF or deductions, so first **pull one report for Oct–Nov 2026 and look for SQEP / OTIF lines** (reason code 99 for OTIF per third-party lists); if they are there, match them to the scorecard's $9,709 and the dashboard's PO list. Gives dollars actually taken and when, **not** the defect reason. Same keys and the same blocker as the PO API above (whose supplier ID — Dirty Cookie or Cortina). If it works: a daily `walmart-invoice-sync` alongside `walmart-po-sync`, table `walmart_deductions` (invoice × reason code), shown on Service health and the hidden Payments page. Docs: https://developer.walmart.com/suppliers/docs/invoices-overview-1
+  - [ ] Caroline: request **HighRadius** access (Walmart team, site admin or supplier contact center) and check whether Open / Closed Bills export to Excel / CSV — the likeliest weekly SQEP file
+  - [ ] Caroline: check the **Retail Link SQEP Dashboard** line-item view for a download icon, and whether the $9,709 is projected or invoiced
+  - [ ] Ask Cortina / DOT for the **EDI 856 send times and 997 acknowledgments** for wk 36–40 shipments — both the root cause of the ASN defects and the evidence to dispute them (~$900 a week while it continues)
+  - [ ] Once a SQEP file exists: parser + upload card 10 (or an email route via Bentonville Merchants' weekly email) + SQEP on Service health next to OTIF; one Walmart week per pull, upsert on PO × defect
+  - [ ] DOT proof of delivery for the 14 POs DOT shows shipped in full that Walmart booked as cut (wk 36–38)
+  - Supersedes Nov 6's "SQEP detail export from Supplier One (View details → download)": that export does not exist
+
+  *Later the same day — the SQEP line-item export found, and built as an upload*
+  - **Source found:** Caroline exported the **SQEP Total Compliance Table** (CSV) — projected (`Potential Charge ($)`) and invoiced (`Invoiced Charge ($)`), same 30 columns otherwise. Projected wk 202640: 62 defects, $1,378.40, all ASN "NO ASN RECEIVED" (GDC 32 / $800, RDC 30 / $578.40). Invoiced wk 202635 ("SEP FYE 27"): 55 ASN defects, $1,375.00, all GDC. A second invoiced pull had only a header (no October invoice yet, or a filter that matched nothing). Every PO matched DOT / NetSuite
+  - **Findings:** (1) charges are **$10.17 per case, capped at $25 per PO**; (2) the defect is **"NO ASN RECEIVED"** — no 856 reaches Walmart at all, so not a timing dispute; (3) the supplier on every row is **127224 NATIONAL FOOD TRADING CORP.** — the vendor of record, which must send the ASN, and whose supplier ID any Walmart API keys would come from (confirm it is Cortina's entity); (4) SQEP so far: wk 35 invoiced $1,375 + wk 36–40 projected $9,709 = **$11,084**
+  - [x] **Upload cards 10 (projected) and 11 (invoiced)** — branch `feat/sqep-upload`, built 2026-11-09. Parser `src/parsers/walmartSqep.js` (own CSV reader so PO numbers stay text; tells projected from invoiced by the charge header), table `walmart_sqep_defects` (migration `20261109120000`), test `node scripts/test-walmart-sqep.mjs <file>` — PASS on both real files. `vite build` clean, smoke OK. *Deviation: the Nov 6 plan was a parser for a Supplier One "View details" download, which does not exist; the Total Compliance Table export replaced it*
+  - [ ] Push migration `20261109120000`, merge, deploy; Caroline uploads the three Nov 9 files on cards 10–11
+  - [ ] Caroline: projected pull for 10/03–11/05, all categories — reconciles to the scorecard's $9,709 and brings in the 11 case / pallet / PO-line defects; and the invoiced table year to date (were there charges before wk 35?)
+  - [ ] **SQEP on Service health** (not built): Supplier One–style cards by week from `walmart_sqep_defects`, projected vs invoiced $, defect list by PO joined to DOT load / SKU / ship date (pad PO to 10)
+  - [ ] Ask Cortina / National Food Trading who sends the ASN (EDI 856) for DOT consignment shipments, and to start — ~$900–1,400 a week until fixed
 
   **October 28–29 2026 — Supplies & Vendors (`docs/SUPPLIES_SPEC.md`).** PRs #67 (V1), #68 (V1.1), #69 (V1.2), all merged and live. Full build notes in the spec's status log.
 

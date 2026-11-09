@@ -9,7 +9,7 @@ import { getParser } from '../parsers';
 // parsers that never saw a real file (Cortina PO PDF, NetSuite POs).
 //
 // The exports that are actually uploaded, in the order Caroline listed them
-// (Aug 24 2026; card 7, DOT on-hand, added Oct 28 2026; card 8, DOT consignment sales, and card 9, DOT order details, Nov 5 2026), followed by everything
+// (Aug 24 2026; card 7, DOT on-hand, added Oct 28 2026; card 8, DOT consignment sales, and card 9, DOT order details, Nov 5 2026; cards 10–11, Walmart SQEP, Nov 9 2026), followed by everything
 // else demoted to a collapsed group.
 //
 // `type` → a parser in src/parsers. Two cards may share a `type`: the 1-week and
@@ -20,12 +20,14 @@ import { getParser } from '../parsers';
 const SECTIONS = [
   {
     origin: 'Weekly — Retail Link (Walmart)',
-    note: 'Downloaded from Retail Link. These four are the demand planner\'s entire demand side. All of them UPSERT — Walmart restates POS after the fact, so re-uploading a file whose weeks you already have is how the numbers stay correct, not a mistake.',
+    note: 'Downloaded from Retail Link. Cards 1–4 are the demand planner\'s entire demand side; 10–11 are Walmart\'s SQEP charges. All of them UPSERT — Walmart restates POS after the fact, so re-uploading a file whose weeks you already have is how the numbers stay correct, not a mistake.',
     items: [
       { type: 'retail_link_supply_plan', title: '1 · Dirty Cookie Supply Plan WK#', note: 'Walmart\'s forward ORDER plan — the POs it intends to place on us, by order-place date, bucketed to Walmart weeks. Reads the workbook\'s `Data` sheet (the `Supply Plan` tab is a monthly pivot and is ignored). ⚠️ Not the same as the store forecast below: this is what Walmart plans to ORDER, that is what it expects shoppers to BUY. Adding them together double-counts.' },
       { type: 'retail_link', title: '2 · Dirty Cookie WK#', note: 'The main weekly workbook. Reads All Item Detail (POS units/$, in-stock, traited stores and true demand for EVERY week of the year — one upload backfills the whole history), the Forecast sheet (Walmart\'s store forecast, stamped with this file\'s week so accuracy can be scored later), and Sales Summary for current store/warehouse on-hand.' },
       { type: 'retail_link_otif', title: '3 · OTIF Store Performance — 1 week', note: 'In Time and In Full. One row per PO — cases ordered / in time / late / unfilled by Walmart week. Feeds the Service health panel and cut recovery.' },
       { type: 'retail_link_otif', title: '4 · OTIF Store Performance — 3 weeks', note: 'Same format, wider window. It overlaps the 1-week file on purpose; the same PO in both files updates rather than duplicates, so upload both.' },
+      { type: 'walmart_sqep', title: '10 · SQEP Total Compliance Table — projected', note: 'Walmart\'s SQEP defect list (`SQEP Total Compliance Table, <date>.csv`) with the "Potential Charge ($)" column — one row per defect per PO: ASN, PO line accuracy, case / packaging / pallet / load compliance, with DC, defect type and charge. Projected charges are not billed yet and can still be disputed. Pull the previous Walmart week every Monday; re-pulls and overlapping ranges update rather than duplicate (one row per PO × defect).' },
+      { type: 'walmart_sqep', title: '11 · SQEP Total Compliance Table — invoiced', note: 'The same export with the "Invoiced Charge ($)" column — what Walmart actually billed on its monthly SQEP invoice. Stored beside the projected rows, so the two can be compared defect by defect. The card reads the charge column to tell projected from invoiced, so either file is safe on either card.' },
     ],
   },
   {
