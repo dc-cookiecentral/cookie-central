@@ -213,6 +213,58 @@ export function shapeOpenOrders(rows, csRows, today) {
   return { lines, shippedSince, lastSeen: seen.at(-1) ?? null };
 }
 
+
+// ── Walmart SQEP defects (cards 10–11, Nov 9 2026) ───────────────────────
+// One row per defect from the SQEP Total Compliance Table, projected or
+// invoiced. Joined to DOT by Walmart PO: SQEP gives GDC POs as 9 digits, DOT
+// pads them to 10, so both sides are compared padded. RDC (BC) rows carry the
+// 10-digit PO in po_number and a separate OMS number; po_number is tried
+// first, then the OMS number.
+// Pure, exported for scripts/test-walmart-sqep.mjs and the page.
+export const padPo = (po) => (po == null ? null : String(po).trim().padStart(10, '0'));
+export function shapeSqep(sqRows, csRows, coRows) {
+  if (!sqRows) return null;
+  const ship = new Map();
+  for (const r of csRows ?? []) {
+    const k = padPo(r.customer_po);
+    const a = ship.get(k) || { skus: new Set(), shipDate: '', dest: r.dest_name, status: 'Shipped' };
+    if (r.sku) a.skus.add(r.sku);
+    if ((r.ship_date || '') > a.shipDate) a.shipDate = r.ship_date;
+    ship.set(k, a);
+  }
+  for (const r of coRows ?? []) {
+    const k = padPo(r.customer_po);
+    if (ship.has(k)) continue; // shipped lines win over the order snapshot
+    const a = { skus: new Set(r.sku ? [r.sku] : []), shipDate: '', dest: r.customer_name, status: r.order_status ?? 'Open' };
+    ship.set(k, a);
+  }
+  return sqRows.map((r) => {
+    const d = ship.get(padPo(r.po_number)) ?? ship.get(padPo(r.oms_po_number)) ?? null;
+    return {
+      status: r.charge_status,
+      wk: r.walmart_week,
+      month: r.wmt_month,
+      processed: r.processed_date,
+      category: r.defect_category,
+      type: r.defect_type,
+      subType: r.defect_sub_type || null,
+      po: r.po_number,
+      oms: r.oms_po_number,
+      network: r.network,
+      dc: r.dc_number,
+      item: r.item_number || null,
+      ticket: r.ticket_number || null,
+      charge: r.charge == null ? null : Number(r.charge),
+      supplier: r.supplier_6digit,
+      lastSeen: r.last_seen_at,
+      sku: d ? [...d.skus].join('/') || null : null,
+      shipDate: d?.shipDate || null,
+      dotStatus: d?.status ?? null,
+      dest: d?.dest ?? null,
+    };
+  }).sort((a, b) => b.wk - a.wk || (b.processed || '').localeCompare(a.processed || '') || a.po.localeCompare(b.po));
+}
+
 export function useDemandFeeds() {
   const [state, setState] = useState({
     loading: true,
@@ -224,10 +276,11 @@ export function useDemandFeeds() {
     dotOnHand: null,
     consignment: null,
     openOrders: null,
+    sqep: null,
     otif: null,
     orders: null,
     unmappedOrderItems: [],
-    sources: { pos: 'seed', forecasts: 'seed', dotService: 'seed', otif: 'seed', orders: 'seed', dotDeliveries: 'seed', dot: 'seed', consignment: 'seed', openOrders: 'seed' },
+    sources: { pos: 'seed', forecasts: 'seed', dotService: 'seed', otif: 'seed', orders: 'seed', dotDeliveries: 'seed', dot: 'seed', consignment: 'seed', openOrders: 'seed', sqep: 'seed' },
     asOf: null,
   });
 
@@ -235,7 +288,7 @@ export function useDemandFeeds() {
     let active = true;
 
     async function run() {
-      const [posR, fcstR, otifR, dotR, ordR, ohR, csR, coR] = await Promise.all([
+      const [posR, fcstR, otifR, dotR, ordR, ohR, csR, coR, sqR] = await Promise.all([
         fetchAll(() => supabase
           .from('retail_link_pos_weekly')
           // wmt_forecast_units and pos_units_if_instock are NOT engine inputs —
@@ -286,6 +339,13 @@ export function useDemandFeeds() {
           .select('dot_order_number, dot_item_number, sku, customer_po, customer_name, order_status, requested_delivery_date, requested_week, ordered_cases, last_seen_at')
           .order('dot_order_number')
           .order('dot_item_number')),
+        // Walmart SQEP defects (cards 10–11). Ordered on the full primary key
+        // so pages cannot overlap.
+        fetchAll(() => supabase
+          .from('walmart_sqep_defects')
+          .select('charge_status, walmart_week, wmt_month, processed_date, defect_category, defect_type, defect_sub_type, po_number, oms_po_number, network, dc_number, item_number, ticket_number, occurrence, charge, supplier_6digit, last_seen_at')
+          .order('charge_status').order('po_number').order('defect_category').order('defect_type')
+          .order('defect_sub_type').order('item_number').order('ticket_number').order('occurrence')),
       ]);
       if (!active) return;
 
@@ -300,6 +360,7 @@ export function useDemandFeeds() {
       const ohRows = rows(ohR);
       const csRows = rows(csR);
       const coRows = rows(coR);
+      const sqep = shapeSqep(rows(sqR), csRows, coRows);
 
       // ── DOT outbound, unfiltered and by item: Consignment Sales History ──
       // Grouped by Walmart PO × SKU FIRST. DOT re-places a cut PO as a new DOT
@@ -619,6 +680,7 @@ export function useDemandFeeds() {
         dotOnHand,
         consignment,
         openOrders,
+        sqep,
         otif,
         orders,
         unmappedOrderItems,
@@ -632,6 +694,7 @@ export function useDemandFeeds() {
           dot: dotOnHand ? 'live' : 'seed',
           consignment: consignment ? 'live' : 'seed',
           openOrders: openOrders ? 'live' : 'seed',
+          sqep: sqep ? 'live' : 'seed',
         },
         asOf,
       });

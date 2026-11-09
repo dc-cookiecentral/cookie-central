@@ -934,6 +934,177 @@ function instockRows(pos) {
     .map(a => ({ wk: a.wk, v: a.num / a.den, bySku: a.bySku })).slice(-14);
 }
 
+// ── SQEP — Walmart's Supplier Quality Excellence Program (Nov 9 2026) ──────
+// From the SQEP Total Compliance Table export (upload cards 10–11): one row per
+// defect, PROJECTED (not yet billed, still disputable) or INVOICED (on the
+// monthly SQEP bill). Supplier One's scorecard shows six cards, each scored
+// against 100%. The export lists only the DEFECTS, not everything Walmart
+// checked, so the score itself cannot be computed here: the cards show defects
+// and charges, the same two lines Supplier One prints under each score.
+// Each defect is joined to DOT by Walmart PO (padded to 10 digits) for SKU and
+// ship date.
+const SQEP_CARDS = [
+  { key: "asn", label: "Advance shipment notice (ASN) compliance", test: c => /ASN/i.test(c) },
+  { key: "poline", label: "PO line accuracy", test: c => /PO\s*LINE|LINE\s*ACCURACY/i.test(c) },
+  { key: "case", label: "Case compliance", test: c => /CASE/i.test(c) },
+  { key: "pack", label: "Packaging compliance", test: c => /PACKAG/i.test(c) },
+  { key: "pallet", label: "Pallet compliance", test: c => /PALLET/i.test(c) },
+  { key: "load", label: "Load compliance", test: c => /LOAD/i.test(c) },
+];
+const sqepCard = cat => SQEP_CARDS.find(c => c.test(cat || "")) ?? { key: "other:" + cat, label: cat || "Other" };
+const usd2 = v => (v == null ? "—" : "$" + v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+const wmtWk = wk => "Wk " + String(wk).slice(4) + " · " + weekEndingNumeric(wk);
+
+function SqepHealth({ sqep }) {
+  const hasProjected = (sqep ?? []).some(r => r.status === "projected");
+  const [view, setView] = useState(null);
+  const status = view ?? (hasProjected ? "projected" : "invoiced");
+  const thead = "text-[11px] uppercase tracking-wider opacity-60 font-normal";
+
+  if (!sqep?.length) {
+    return (
+      <p className="text-[11px] opacity-60">
+        Upload Walmart's "SQEP Total Compliance Table" export at Uploads &rarr; 10 (projected) or 11 (invoiced).
+      </p>
+    );
+  }
+  const rows = sqep.filter(r => r.status === status);
+  const sum = xs => xs.reduce((a, r) => a + (r.charge ?? 0), 0);
+  const weeksOf = xs => [...new Set(xs.map(r => r.wk))].sort((a, b) => a - b);
+  const wks = weeksOf(rows);
+  const span = wks.length ? (wks.length > 1 ? wmtWk(wks[0]) + " – " + wmtWk(wks.at(-1)) : wmtWk(wks[0])) : "—";
+
+  // Cards: Supplier One's six, plus any category the export adds.
+  const cards = [...SQEP_CARDS.map(c => ({ ...c, rows: [] }))];
+  for (const r of rows) {
+    const c = sqepCard(r.category);
+    let card = cards.find(x => x.key === c.key);
+    if (!card) { card = { ...c, rows: [] }; cards.push(card); }
+    card.rows.push(r);
+  }
+
+  // Weekly roll-up, projected and invoiced side by side.
+  const byWk = [...sqep.reduce((m, r) => {
+    const a = m.get(r.wk) || { wk: r.wk, month: r.month, projected: { n: 0, $: 0 }, invoiced: { n: 0, $: 0 } };
+    a[r.status].n += 1; a[r.status].$ += r.charge ?? 0;
+    m.set(r.wk, a);
+    return m;
+  }, new Map()).values()].sort((a, b) => b.wk - a.wk);
+
+  // What dominates: the most common defect type and the vendor of record.
+  const types = [...rows.reduce((m, r) => m.set(r.type, (m.get(r.type) || 0) + 1), new Map())].sort((a, b) => b[1] - a[1]);
+  const top = types[0];
+  const suppliers = [...new Set(rows.map(r => r.supplier).filter(Boolean))];
+  const unmatched = rows.filter(r => !r.sku).length;
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        {["projected", "invoiced"].map(k => {
+          const n = sqep.filter(r => r.status === k).length;
+          return (
+            <button key={k} onClick={() => setView(k)} disabled={!n}
+              className="text-[11px] px-3 py-1 rounded-full border disabled:opacity-40"
+              style={{ borderColor: status === k ? "#2D2235" : "#E5D9DE", background: status === k ? "#2D2235" : "white", color: status === k ? "white" : "#2D2235" }}>
+              {k === "projected" ? "Projected" : "Invoiced"} ({n})
+            </button>
+          );
+        })}
+        <span className="text-[11px] opacity-60">
+          {status === "projected" ? "Not billed yet — can still be disputed." : "Billed on Walmart's monthly SQEP invoice."} Walmart weeks loaded: {span}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 mb-3 max-w-md">
+        <Stat label="Total charges" value={usd2(sum(rows))} tone={sum(rows) > 0 ? "bad" : undefined}
+          src={status === "projected" ? "potential charge, not yet invoiced" : "invoiced charge"} />
+        <Stat label="Total defects" value={F.int(rows.length)} tone={rows.length > 0 ? "bad" : undefined}
+          src={wks.length + " Walmart week" + (wks.length === 1 ? "" : "s")} />
+      </div>
+
+      <div className="grid gap-2 mb-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+        {cards.map(c => {
+          const $ = sum(c.rows);
+          return (
+            <div key={c.key} className="rounded-lg border p-3 min-w-0" style={{ borderColor: "#E5D9DE" }}>
+              <div className="text-[11px] font-semibold leading-tight mb-1" style={{ minHeight: "2.4em" }}>{c.label}</div>
+              <div className="text-[11px] tabular-nums">Targeted score: 100%</div>
+              <div className="text-[11px] tabular-nums">Defects: <b>{F.int(c.rows.length)}</b></div>
+              <div className="text-[11px] tabular-nums">Total charges: <b style={{ color: $ > 0 ? "#C2185B" : "#3E8E5A" }}>{usd2($)}</b></div>
+            </div>
+          );
+        })}
+      </div>
+
+      {top && (
+        <p className="text-[11px] mb-3">
+          <b>{F.int(top[1])} of {F.int(rows.length)}</b> {status} defects are <b>{top[0]}</b>
+          {rows.length ? <> · average <b>{usd2(sum(rows) / rows.length)}</b> per defect</> : null}
+          {suppliers.length > 0 && <> · Walmart supplier on these POs: <b>{suppliers.join(", ")}</b></>}
+        </p>
+      )}
+
+      <div className="overflow-x-auto mb-3">
+        <table className="w-full text-[11px] tabular-nums">
+          <thead><tr className="text-left">
+            <th className={thead}>Walmart week</th><th className={thead}>Billing month</th>
+            <th className={thead + " text-right"}>Projected defects</th><th className={thead + " text-right"}>Projected $</th>
+            <th className={thead + " text-right"}>Invoiced defects</th><th className={thead + " text-right"}>Invoiced $</th>
+          </tr></thead>
+          <tbody>
+            {byWk.map(w => (
+              <tr key={w.wk} style={{ borderTop: "1px solid #F1E7EC" }}>
+                <td className="py-1 pr-2">{wmtWk(w.wk)}</td>
+                <td className="py-1 pr-2 opacity-70">{w.month ?? "—"}</td>
+                <td className="py-1 text-right">{w.projected.n ? F.int(w.projected.n) : "—"}</td>
+                <td className="py-1 text-right">{w.projected.n ? usd2(w.projected.$) : "—"}</td>
+                <td className="py-1 text-right">{w.invoiced.n ? F.int(w.invoiced.n) : "—"}</td>
+                <td className="py-1 text-right font-bold">{w.invoiced.n ? usd2(w.invoiced.$) : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <details>
+        <summary className="text-[11px] cursor-pointer font-semibold">
+          {F.int(rows.length)} {status} defects by PO{unmatched ? " · " + unmatched + " not found in DOT's records" : ""}
+        </summary>
+        <div className="overflow-x-auto mt-2">
+          <table className="w-full text-[11px] tabular-nums">
+            <thead><tr className="text-left">
+              <th className={thead}>Wk</th><th className={thead}>Processed</th><th className={thead}>Defect</th>
+              <th className={thead}>PO</th><th className={thead}>DC</th><th className={thead}>SKU</th>
+              <th className={thead}>DOT ship / status</th><th className={thead + " text-right"}>Charge</th>
+            </tr></thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={r.po + "|" + r.type + "|" + i} style={{ borderTop: "1px solid #F1E7EC" }}>
+                  <td className="py-1 pr-2 whitespace-nowrap">{String(r.wk).slice(4)}</td>
+                  <td className="py-1 pr-2 whitespace-nowrap">{r.processed ?? "—"}</td>
+                  <td className="py-1 pr-2">{sqepCard(r.category).label.replace(" compliance", "")}: {r.type}{r.subType ? " · " + r.subType : ""}{r.ticket ? " · ticket " + r.ticket : ""}</td>
+                  <td className="py-1 pr-2 cc-mono whitespace-nowrap">{r.po}</td>
+                  <td className="py-1 pr-2 whitespace-nowrap">{r.network} {r.dc}</td>
+                  <td className="py-1 pr-2">{r.sku ?? <span style={{ color: "#C2185B" }}>not in DOT</span>}</td>
+                  <td className="py-1 pr-2 whitespace-nowrap">{r.shipDate || r.dotStatus || "—"}</td>
+                  <td className="py-1 text-right">{usd2(r.charge)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
+
+      <p className="text-[11px] opacity-60 mt-2">
+        Source: Walmart's SQEP Total Compliance Table (projected and invoiced exports). The export lists defects only, not
+        everything Walmart graded, so Supplier One's score % is not computed here — read it on the scorecard. SKU and ship
+        date come from DOT's Consignment Sales History, or its order snapshot for POs not yet shipped. Projected charges can
+        change until Walmart invoices them.
+      </p>
+    </div>
+  );
+}
+
 function ServiceHealth({ series, feeds }) {
   // ── In-Stock % ──
   const isRows = instockRows(feeds.pos ?? SEED.pos);
@@ -968,8 +1139,8 @@ function ServiceHealth({ series, feeds }) {
       <header className="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
         <h2 className="cc-serif text-lg">Service health — how Walmart grades us</h2>
         <span className="text-xs opacity-60">
-          OTIF (On-Time and In-Full, on cases) and store In-Stock %, as Walmart measures them.
-          Source: Retail Link OTIF PO details + weekly item detail.
+          OTIF (On-Time and In-Full, on cases), store In-Stock % and SQEP charges, as Walmart measures them.
+          Source: Retail Link OTIF PO details, weekly item detail and the SQEP Total Compliance Table.
         </span>
       </header>
 
@@ -1091,12 +1262,15 @@ function ServiceHealth({ series, feeds }) {
             Launch weeks Walmart reports as exactly 0% are left out.
           </p>
 
-          <div className="mt-4 rounded-lg px-3 py-2 text-[11px]" style={{ background: "#F7F1F4" }}>
-            <b>SQEP</b> (Supplier Quality Excellence Program) is not on this page yet — no SQEP export is uploaded.
-            Supplier One grades six areas, each against a 100% target: ASN compliance, PO line accuracy, and case,
-            packaging, pallet and load compliance; every defect is charged. See Supplier One &rarr; Scorecard &rarr; SQEP.
-          </div>
         </div>
+      </div>
+
+      {/* ── SQEP ── full width: six cards don't fit half the panel. */}
+      <div className="mt-6 pt-4 min-w-0" style={{ borderTop: "1px solid #F1E7EC" }}>
+        <div className="text-[11px] uppercase tracking-wider font-semibold mb-2" style={{ color: "#C2185B" }}>
+          SQEP · Supplier Quality Excellence Program charges
+        </div>
+        <SqepHealth sqep={feeds.sqep} />
       </div>
     </section>
   );
@@ -2282,6 +2456,10 @@ export default function DemandPlanner() {
       item("Retail Link POS", feeds.asOf ?? (latestDataWk || null), src.pos === "live"),
       item("Walmart forecast", fcstSnap, src.forecasts === "live", { prefix: "pulled wk ending" }),
       item("OTIF", maxWk(feeds.otif, r => r.otif != null), src.otif === "live"),
+      feeds.sqep?.length
+        ? item("Walmart SQEP", maxWk(feeds.sqep), true,
+            { title: "SQEP Total Compliance Table — newest Walmart week with a projected or invoiced defect. Upload the previous week every Monday." })
+        : { label: "Walmart SQEP", date: null, status: { tone: "bad", text: "nothing uploaded" } },
       // Orders carry future SCHEDULED weeks, so freshness is the newest week
       // with deliveries, not the newest week in the table.
       item("NetSuite deliveries", maxWk(feeds.orders ?? SEED.orders, r => r.dlv > 0), src.orders === "live"),
