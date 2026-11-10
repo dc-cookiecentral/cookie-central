@@ -407,7 +407,10 @@ per upload from here on.
 ## Service metrics — in-store fill rate and OTIF
 
 The two headline numbers, in the **Service health** panel above the S&OP cards
-(Caroline, Aug 24 2026). **OTIF = In Time and In Full.** They are the two ends of
+(Caroline, Aug 24 2026). *Nov 9 2026: the OTIF detail (and SQEP) moved to the
+**Walmart Compliance** page, `/walmart-compliance`; the planner's Service health
+keeps store In-Stock % and a one-line OTIF / SQEP summary. The formulas below are
+unchanged and are what that page uses.* **OTIF = In Time and In Full.** They are the two ends of
 the chain: OTIF is whether we delivered to Walmart complete and to the date;
 in-store fill is whether it then reached the shelf. Both sit above the demand
 read because a problem in either invalidates it — suppressed POS from an

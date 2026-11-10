@@ -338,7 +338,7 @@
     - Not done: Sample Central sits outside `Layout` (own nav, ADR-030) and was not touched; the sidebar's 8px UOM / user text is unchanged on desktop
   - Note: Supplier One labels weeks Sat–Fri (10/17 – 10/23); this page labels the same week "wk ending Oct 25" (the Sunday after, Caroline's Nov 5 convention). Same week, different label
 
-  **November 9 2026 — SQEP / OTIF chargeback check, the SQEP data source, and SQEP in Cookie Central.** Started as analysis only, delivered as a claude.ai dashboard (https://claude.ai/artifact/EAVM6Cfraj4sVmqmMScPCX, private until shared; built from `retail_link_otif` + `dot_consignment_sales` and Caroline's Supplier One screenshots — a one-off snapshot, now superseded by Service health). It became four releases, all merged to `main`, pushed and live: `944cf91` (SQEP upload cards 10–11 + table), `405a05b` (SQEP on Service health), `0f18688` (scored-but-not-charged, Supplier One defect counting), `a714c79` (by-week wording).
+  **November 9 2026 — SQEP / OTIF chargeback check, the SQEP data source, and SQEP in Cookie Central.** Started as analysis only, delivered as a claude.ai dashboard (https://claude.ai/artifact/EAVM6Cfraj4sVmqmMScPCX, private until shared; built from `retail_link_otif` + `dot_consignment_sales` and Caroline's Supplier One screenshots — a one-off snapshot, now superseded by the Walmart Compliance page). It became six releases, all merged to `main`, pushed and live: `944cf91` (SQEP upload cards 10–11 + table), `405a05b` (SQEP on Service health), `0f18688` (scored-but-not-charged, Supplier One defect counting), `a714c79` (by-week wording), `7bdbba3` (**Walmart Compliance page**, OTIF + SQEP moved off the planner) and `ad7c550` (suggested actions removed).
 
   *Deviations* (Nov 9)
   - **Analysis turned into a build mid-session**: Caroline asked to check the $9,709, then for the data weekly in Cookie Central, then for an upload and a Service health section. No plan entry existed beyond Nov 6's "SQEP detail export → parser + card"
@@ -348,6 +348,8 @@
   - **Defects counted per PO × ticket** after the full-year upload showed Supplier One counts that way (case compliance 4 lines = 2 defects)
   - **" - " kept as a literal in `item_number`**: tried reading it as empty, reverted the same evening — the first uploads had stored "-" and `item_number` is in the key, so the change would have duplicated 11 pallet rows on re-upload
   - **Migration partly applied in the SQL editor**: the first upload failed on the `upload_log` type check; Caroline re-ran that part in the editor (ledger check below)
+  - **SQEP lived on the Demand Planner for one afternoon**, then moved with OTIF to a page of its own (`/walmart-compliance`) at Caroline's request ("taking the OTIF and SQEP info off the Demand Planner page and adding a new page")
+  - **Suggested actions were built, then removed the same day** at Caroline's request ("Remove the suggested action."); the page keeps owners and dispute notes. The rule text stays in `complianceRules.js`, undisplayed
 
   *Findings* (Supplier One SQEP, Walmart weeks 10/03–11/05/2026 = 202636–202640)
   - **$9,709.00 / 335 defects is internally consistent**: the six cards sum to the header, and every score works back to a whole graded count — ASN 14 of 338 passed (324 defects, $7,853, $24.24/defect), PO line accuracy 342 of 345 (3, $350), case 2 of 19 failed ($373), pallet 6 of 23 failed ($1,133), packaging and load 100%
@@ -403,6 +405,7 @@
     - *Deviation:* I asked whether to keep a one-line summary on the planner; no answer, so the recommendation (keep it) was built
   - [x] **Suggested actions removed** (Caroline, Nov 9: "Remove the suggested action.") — 2026-11-09 (branch `fix/compliance-no-actions`). No action text on any tab; the Actions tab is now **By owner** (`#owners`: dollars per owner and issue, with dispute notes). Kept: owner, dispute route, invoiced / projected / not-charged status. The `action` text stays in `complianceRules.js`, not displayed
   - [ ] Caroline: check the owners and dispute notes on the page
+  - [x] Branches `feat/walmart-compliance` and `fix/compliance-no-actions` deleted after merging (local only) — 2026-11-09
   - [ ] Open `/walmart-compliance` to the cortina login once complete (route group + sidebar `CORTINA_NAV`); decide what of our cost data Cortina may see first
   - [ ] Optional: CSV download of the issue lists (for sending to Cortina / DOT); an SQEP item in the planner's actions panel
 
