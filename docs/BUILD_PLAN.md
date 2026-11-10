@@ -401,7 +401,8 @@
     - **Access**: internal roles only (`InternalOnly` route group; the cortina login's sidebar shows only Sample Central). *Decision (Caroline, Nov 9): the cortina login gets it "eventually, but not until it is complete"*
     - Checked: `vite build` clean, smoke OK, headless Chrome on live data — all three tabs and the slimmed planner render; SQEP $2,527.00 invoiced / $10,160.63 projected; OTIF last-13-week causes led by "left DOT after MABD" (40 POs, ~$1,451 est.)
     - *Deviation:* I asked whether to keep a one-line summary on the planner; no answer, so the recommendation (keep it) was built
-  - [ ] Caroline: review the suggested actions / owners on the new page and correct them
+  - [x] **Suggested actions removed** (Caroline, Nov 9: "Remove the suggested action.") — 2026-11-09 (branch `fix/compliance-no-actions`). No action text on any tab; the Actions tab is now **By owner** (`#owners`: dollars per owner and issue, with dispute notes). Kept: owner, dispute route, invoiced / projected / not-charged status. The `action` text stays in `complianceRules.js`, not displayed
+  - [ ] Caroline: check the owners and dispute notes on the page
   - [ ] Open `/walmart-compliance` to the cortina login once complete (route group + sidebar `CORTINA_NAV`); decide what of our cost data Cortina may see first
   - [ ] Optional: CSV download of the issue lists (for sending to Cortina / DOT); an SQEP item in the planner's actions panel
 

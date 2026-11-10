@@ -10,6 +10,8 @@
 // evidence, Fixit tickets carry DC photos). Walmart's own manuals are behind
 // Retail Link sign-in, so treat dispute guidance as a starting point.
 //
+// ⚠️ Nov 9 2026: Caroline asked for the suggested actions to be removed from
+// the page. `action` is kept here but NOT displayed; owner and dispute are.
 // An issue with no rule shows "No rule yet" rather than a guess. To add or
 // correct one, edit SQEP_RULES — the page reads nothing else.
 // ─────────────────────────────────────────────────────────────────────────
