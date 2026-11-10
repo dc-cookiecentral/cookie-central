@@ -11,10 +11,12 @@ import { sqepRule, sqepTiming, otifCauses, OWNERS } from "../lib/complianceRules
    Planner into a page of their own, plus what the planner never had:
      · every SQEP issue with the Cortina invoice it hit, Walmart's own words
        for the issue, its money (invoiced / projected / scored-not-charged)
-       and a suggested action, owner and dispute route (src/lib/complianceRules.js);
+       an owner and dispute route (src/lib/complianceRules.js);
      · every PO that missed OTIF, why (joined to DOT), the estimated fine and
-       the action;
-     · one Actions list across both, grouped by owner and ranked by dollars.
+       the owner;
+     · one list across both, grouped by owner and ranked by dollars.
+   Suggested actions were shown too, and removed the same day at Caroline's
+   request; the rule text is kept in complianceRules.js but not displayed.
    Internal roles only for now (App.jsx InternalOnly); Caroline plans to open
    it to the cortina login once it is complete.
    ───────────────────────────────────────────────────────────────────────── */
@@ -22,7 +24,7 @@ import { sqepRule, sqepTiming, otifCauses, OWNERS } from "../lib/complianceRules
 const TABS = [
   { id: "sqep", label: "SQEP" },
   { id: "otif", label: "OTIF" },
-  { id: "actions", label: "Actions" },
+  { id: "owners", label: "By owner" },
 ];
 const thead = "text-[11px] uppercase tracking-wider opacity-60 font-normal text-left";
 const PAGE = 100;
@@ -41,9 +43,6 @@ function Select({ id, label, value, onChange, options }) {
 }
 
 const uniq = xs => [...new Set(xs.filter(Boolean))];
-// The row tables show the action's first sentence; the full text is in the
-// by-issue / by-cause table above them (and in the cell's tooltip).
-const firstSentence = t => { const m = (t || "").match(/^.*?[.!?](\s|$)/); return m ? m[0].trim() : t; };
 
 // Charged $ over the last 4 Walmart weeks that carry a charge, per week.
 function runRate(rows) {
@@ -54,7 +53,7 @@ function runRate(rows) {
   return { perWk: recent.reduce((a, r) => a + r.charge, 0) / 4, last };
 }
 
-/* ── SQEP: every issue, with invoice, money and action ─────────────────── */
+/* ── SQEP: every issue, with invoice and money ─────────────────────────── */
 function SqepIssues({ rows }) {
   const [status, setStatus] = useState("charged");
   const [issue, setIssue] = useState("");
@@ -91,10 +90,10 @@ function SqepIssues({ rows }) {
 
   return (
     <div className="mt-6">
-      <h3 className="cc-serif text-base mb-1">Every SQEP issue — invoice, money and what to do</h3>
+      <h3 className="cc-serif text-base mb-1">Every SQEP issue — invoice and money</h3>
       <p className="text-[11px] opacity-60 mb-3 max-w-3xl">
         One line per defect Walmart recorded, in Walmart's own words, joined to the Cortina sales order and invoice for the
-        PO and to DOT for SKU and ship date. The suggested action, owner and dispute route come from the rules in
+        PO and to DOT for SKU and ship date. The owner and dispute route come from the rules in
         <span className="cc-mono"> src/lib/complianceRules.js</span> — tell Claude where they are wrong.
       </p>
 
@@ -125,7 +124,7 @@ function SqepIssues({ rows }) {
             <th className={thead}>Issue (Walmart's words)</th><th className={thead}>Owner</th>
             <th className={thead + " text-right"}>Defects</th><th className={thead + " text-right"}>Invoiced</th>
             <th className={thead + " text-right"}>Projected</th><th className={thead + " text-right"}>Not charged</th>
-            <th className={thead + " text-right"}>Recent $/wk</th><th className={thead}>Suggested action</th>
+            <th className={thead + " text-right"}>Recent $/wk</th><th className={thead}>Dispute</th>
           </tr></thead>
           <tbody>
             {byIssue.map(a => (
@@ -137,7 +136,7 @@ function SqepIssues({ rows }) {
                 <td className="py-1.5 pr-2 text-right">{a.proj ? usd2(a.proj) : "—"}</td>
                 <td className="py-1.5 pr-2 text-right" style={{ color: a.free ? amber : undefined }}>{a.free ? F.int(a.free) : "—"}</td>
                 <td className="py-1.5 pr-2 text-right">{a.rate ? usd2(a.rate) : "—"}</td>
-                <td className="py-1.5 min-w-[260px] whitespace-normal">{a.rule.action}</td>
+                <td className="py-1.5 min-w-[220px] whitespace-normal opacity-80">{a.rule.dispute}</td>
               </tr>
             ))}
           </tbody>
@@ -149,7 +148,7 @@ function SqepIssues({ rows }) {
           <thead><tr>
             <th className={thead}>Wk</th><th className={thead}>PO</th><th className={thead}>Cortina SO / invoice</th>
             <th className={thead}>SKU · DC</th><th className={thead}>Walmart's issue</th>
-            <th className={thead + " text-right"}>Impact</th><th className={thead}>Owner</th><th className={thead}>Suggested action</th>
+            <th className={thead + " text-right"}>Impact</th><th className={thead}>Owner</th>
           </tr></thead>
           <tbody>
             {shown.slice(0, limit).map((r, i) => {
@@ -172,9 +171,7 @@ function SqepIssues({ rows }) {
                     <div className="font-bold" style={{ color: notCharged(r) ? amber : "#C2185B" }}>{notCharged(r) ? "$0" : usd2(r.charge)}</div>
                     <div className="opacity-60" title={t.note}>{t.label}</div>
                   </td>
-                  <td className="py-1.5 pr-2 whitespace-nowrap">{r.rule.ownerLabel}</td>
-                  <td className="py-1.5 min-w-[220px] max-w-[320px] whitespace-normal" title={r.rule.action}>{firstSentence(r.rule.action)}
-                    <div className="opacity-60 mt-0.5">{t.note}</div></td>
+                  <td className="py-1.5 whitespace-nowrap">{r.rule.ownerLabel}<div className="opacity-60 whitespace-normal max-w-[260px]">{t.note}</div></td>
                 </tr>
               );
             })}
@@ -190,7 +187,7 @@ function SqepIssues({ rows }) {
   );
 }
 
-/* ── OTIF: every PO that missed, why, the fine and the action ──────────── */
+/* ── OTIF: every PO that missed, why and the fine ──────────────────────── */
 function OtifIssues({ rows, cpc }) {
   const [span, setSpan] = useState("13");
   const [cause, setCause] = useState("");
@@ -208,7 +205,7 @@ function OtifIssues({ rows, cpc }) {
 
   return (
     <div className="mt-6">
-      <h3 className="cc-serif text-base mb-1">Every PO that missed OTIF — why, the fine and what to do</h3>
+      <h3 className="cc-serif text-base mb-1">Every PO that missed OTIF — why and the fine</h3>
       <p className="text-[11px] opacity-60 mb-3 max-w-3xl">
         From Walmart's OTIF PO details joined to DOT's shipments. "Late" compares DOT's ship date with the PO's must-arrive-by
         date. The fine is an estimate (3% of ~{cpc != null ? "$" + cpc.toFixed(2) : "—"}/cs on every non-compliant case); OTIF
@@ -224,7 +221,7 @@ function OtifIssues({ rows, cpc }) {
         <table className="w-full text-[11px] tabular-nums">
           <thead><tr>
             <th className={thead}>Cause</th><th className={thead}>Owner</th><th className={thead + " text-right"}>POs</th>
-            <th className={thead + " text-right"}>Cases</th><th className={thead + " text-right"}>Est. fine</th><th className={thead}>Suggested action</th>
+            <th className={thead + " text-right"}>Cases</th><th className={thead + " text-right"}>Est. fine</th>
           </tr></thead>
           <tbody>
             {byCause.map(c => (
@@ -234,7 +231,6 @@ function OtifIssues({ rows, cpc }) {
                 <td className="py-1.5 pr-2 text-right">{F.int(c.pos.size)}</td>
                 <td className="py-1.5 pr-2 text-right">{F.int(c.cases)}</td>
                 <td className="py-1.5 pr-2 text-right">{fine(c.cases) != null ? usd2(fine(c.cases)) : "—"}</td>
-                <td className="py-1.5 min-w-[260px] whitespace-normal">{c.action}</td>
               </tr>
             ))}
           </tbody>
@@ -248,7 +244,7 @@ function OtifIssues({ rows, cpc }) {
             <th className={thead}>MABD · DOT ship</th><th className={thead}>SKU</th>
             <th className={thead + " text-right"}>Ordered</th><th className={thead + " text-right"}>Cut</th>
             <th className={thead + " text-right"}>Late</th><th className={thead + " text-right"}>Early</th>
-            <th className={thead + " text-right"}>Est. fine</th><th className={thead}>Why · owner · action</th>
+            <th className={thead + " text-right"}>Est. fine</th><th className={thead}>Why · owner</th>
           </tr></thead>
           <tbody>
             {shown.slice(0, limit).map(r => (
@@ -264,7 +260,7 @@ function OtifIssues({ rows, cpc }) {
                 <td className="py-1.5 pr-2 text-right">{r.early ? F.int(r.early) : "—"}</td>
                 <td className="py-1.5 pr-2 text-right">{fine(r.missed) != null ? usd2(fine(r.missed)) : "—"}</td>
                 <td className="py-1.5 min-w-[220px] max-w-[340px] whitespace-normal">
-                  {r.causes.map(c => <div key={c.key} title={c.action}><b>{c.cause}</b> · {c.ownerLabel} — {firstSentence(c.action)}</div>)}
+                  {r.causes.map(c => <div key={c.key}><b>{c.cause}</b> · {c.ownerLabel}</div>)}
                 </td>
               </tr>
             ))}
@@ -280,8 +276,8 @@ function OtifIssues({ rows, cpc }) {
   );
 }
 
-/* ── Actions: SQEP + OTIF, grouped by owner, ranked by dollars ─────────── */
-function ActionsTab({ sqepRows, otifRows, cpc }) {
+/* ── By owner: SQEP + OTIF, grouped by owner, ranked by dollars ────────── */
+function OwnersTab({ sqepRows, otifRows, cpc }) {
   const items = [];
   // SQEP: one item per issue rule — charged dollars and the recent weekly rate.
   for (const [key, rs] of sqepRows.reduce((m, r) => m.set(r.rule.key, [...(m.get(r.rule.key) || []), r]), new Map())) {
@@ -290,7 +286,7 @@ function ActionsTab({ sqepRows, otifRows, cpc }) {
     const proj = charged.filter(r => r.status === "projected").reduce((a, r) => a + (r.charge ?? 0), 0);
     const rate = runRate(rs).perWk;
     if (!charged.length) continue;
-    items.push({ src: "SQEP", key, owner: rs[0].rule.owner, title: rs[0].rule.issue, action: rs[0].rule.action, dispute: rs[0].rule.dispute,
+    items.push({ src: "SQEP", key, owner: rs[0].rule.owner, title: rs[0].rule.issue, dispute: rs[0].rule.dispute,
       dollars: inv + proj, detail: `${F.int(countDefects(charged))} charged defects · ${usd2(inv)} invoiced · ${usd2(proj)} projected` + (rate ? ` · ~${usd2(rate)}/wk lately` : ""),
       projected: proj });
   }
@@ -300,7 +296,7 @@ function ActionsTab({ sqepRows, otifRows, cpc }) {
   const recent = otifRows.filter(r => idx(lastWk) - idx(r.wk) < 13);
   for (const [key, cs] of recent.flatMap(r => r.causes.map(c => ({ ...c, po: r.po }))).reduce((m, c) => m.set(c.key, [...(m.get(c.key) || []), c]), new Map())) {
     const cases = cs.reduce((a, c) => a + c.cases, 0);
-    items.push({ src: "OTIF", key, owner: cs[0].owner, title: cs[0].cause, action: cs[0].action,
+    items.push({ src: "OTIF", key, owner: cs[0].owner, title: cs[0].cause,
       dollars: cpc != null ? cases * cpc * WMT_OTIF.fineRate : 0,
       detail: `${F.int(new Set(cs.map(c => c.po)).size)} POs · ${F.int(cases)} cases · last 13 OTIF weeks · est. fine` });
   }
@@ -327,7 +323,6 @@ function ActionsTab({ sqepRows, otifRows, cpc }) {
                 <span className="text-[10px] px-1.5 py-0.5 rounded mr-1.5" style={{ background: "#F7F1F4" }}>{it.src}</span>
                 <b>{it.title}</b> — <b style={{ color: "#C2185B" }}>{usd2(it.dollars)}</b>
                 <div className="text-[11px] opacity-70">{it.detail}</div>
-                <div className="text-[11px] mt-0.5">{it.action}</div>
                 {it.dispute && <div className="text-[11px] opacity-60">Dispute: {it.dispute}{it.projected ? ` — ${usd2(it.projected)} is still projected, so dispute before Walmart's monthly invoice.` : ""}</div>}
               </li>
             ))}
@@ -382,7 +377,7 @@ export default function WalmartCompliance() {
         <h1 className="cc-serif text-2xl">Walmart Compliance</h1>
         <p className="text-xs opacity-60 max-w-3xl">
           How Walmart grades and charges us — SQEP (Supplier Quality Excellence Program) charges and OTIF (On-Time In-Full) —
-          with every issue tied to its PO and Cortina invoice, Walmart's own reason, the money, and a suggested action.
+          with every issue tied to its PO and Cortina invoice, Walmart's own reason and the money.
           Sources: SQEP Total Compliance Table (Uploads 10–11), Retail Link OTIF PO details (Uploads 3–4), DOT Consignment
           Sales History (8), NetSuite / Cortina orders and invoices.
         </p>
@@ -407,7 +402,7 @@ export default function WalmartCompliance() {
             <OtifSummary feeds={feeds} />
             <OtifIssues rows={otifRows} cpc={cpc} />
           </>}
-          {tab === "actions" && <ActionsTab sqepRows={sqepRows} otifRows={otifRows} cpc={cpc} />}
+          {tab === "owners" && <OwnersTab sqepRows={sqepRows} otifRows={otifRows} cpc={cpc} />}
         </section>
       )}
       {extra.errors?.length > 0 && <p className="text-[11px] mt-2" style={{ color: "#C2185B" }}>Some data did not load: {extra.errors.join("; ")}</p>}
