@@ -1004,7 +1004,9 @@ function SqepHealth({ sqep }) {
   }
 
   // Weekly roll-up, every Walmart week from the first to the last loaded, so a
-  // week with nothing loaded shows as a gap rather than disappearing.
+  // week with no defects shows as a row rather than disappearing. That can mean
+  // Walmart recorded none (May 2026, wk 14–17: Caroline's export came back
+  // header-only; wk 33) or that a month was not pulled.
   const byWkMap = sqep.reduce((m, r) => {
     const a = m.get(r.wk) || { wk: r.wk, month: r.month, projected: [], invoiced: [] };
     a[r.status].push(r);
@@ -1098,7 +1100,7 @@ function SqepHealth({ sqep }) {
               if (w.gap) return (
                 <tr key={w.wk} style={{ borderTop: "1px solid #F1E7EC" }} className="opacity-50">
                   <td className="py-1 pr-2">{wmtWk(w.wk)}</td>
-                  <td className="py-1 pr-2 italic" colSpan={6}>nothing loaded for this week</td>
+                  <td className="py-1 pr-2 italic" colSpan={6}>no defects in the files loaded</td>
                 </tr>
               );
               const pB = w.projected.filter(r => !notCharged(r)), iB = w.invoiced.filter(r => !notCharged(r));
