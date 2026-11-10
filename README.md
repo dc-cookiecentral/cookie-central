@@ -32,7 +32,7 @@ Operational dashboard for Dirty Cookie's white-label retail business (Walmart + 
 
 **Also in this repo — a third project.** The **EOS Tracker** at `/eos`, the standing record for the weekly Level 10 leadership meeting (Scorecard, Issues, Rocks, To-Dos, Accountability Chart, V/TO). Built August 17–19, 2026 (ADR-047), **live since August 21**. 13 measurables with goals set, To-Dos that hang off a measurable and carry forward until ticked. Internal roles only — the `cortina` login cannot see any of it. See `docs/EOS.md`.
 
-**And a new module in the main project.** The **Walmart Demand Planner** at `/demand-planner` — **Service health** (OTIF On-Time / In-Full and store In-Stock %, graded the way Walmart's Supplier One scorecard grades them — Nov 2026), S&OP summary, chain-flow charts, DOT cut-recovery and tracker, for WC / PBG / CCF. Live since August 21; wired to live data August 24 (ADR-053→056).
+**And a new module in the main project.** The **Walmart Demand Planner** at `/demand-planner` — **Service health** (OTIF On-Time / In-Full and store In-Stock %, graded the way Walmart's Supplier One scorecard grades them — Nov 2026; plus SQEP charges, projected vs invoiced, from the SQEP Total Compliance Table — Nov 9 2026), S&OP summary, chain-flow charts, DOT cut-recovery and tracker, for WC / PBG / CCF. Live since August 21; wired to live data August 24 (ADR-053→056).
 
 **Five of its six series are live** *(as of Aug 24 2026 — migrations applied, all six exports uploaded)* — POS, Walmart forecast, OTIF, DOT cut recovery and NetSuite orders, fed by the six weekly uploads at `/uploads`. Only `production` is still `SEED`. DOT on-hand became a live upload on Oct 28 2026 (card 7, DOT Inventory Snapshot → `dot_on_hand`), but weeks after the latest reading are modelled on that frozen production — which is why days-on-hand and recommended production are **not trustworthy** (see the warning above). Each series falls back to SEED independently, so the banner reports which source won rather than claiming the page is simply "live" or "static". Start from **`docs/DEMAND_PLANNER_KNOWN_ISSUES.md`**, then `docs/DEMAND_PLANNER_FORMULAS.md` ("As built") and `docs/DATA_MODEL.md`.
 
@@ -149,7 +149,7 @@ cookie-central/
 | `/reference` | Products + Raw Materials + Transitions | Walmart item master + `raw_materials` + `transitions` |
 | `/audit` | Audit log viewer (admin/finance only) | `audit_log` |
 | `/uploads` | Drag-drop pipeline (**six weekly exports** first, legacy feeds collapsed — ADR-057) + upload history + **systems@ Inbox** | `upload_log`, `gmail_sync_state` |
-| `/demand-planner` | Walmart Demand Planner — Service health (in-store fill + OTIF), S&OP summary, flow charts, cut recovery, tracker | `retail_link_pos_weekly` + `retail_link_forecast` + `retail_link_otif` + `dot_order_history` + `po_line_items`/`purchase_orders` (+ `retail_link_supply_plan`, ingested not wired); + `dot_on_hand`; `production` from `SEED` |
+| `/demand-planner` | Walmart Demand Planner — Service health (OTIF, store In-Stock %, SQEP), S&OP summary, flow charts, cut recovery, tracker | `retail_link_pos_weekly` + `retail_link_forecast` + `retail_link_otif` + `dot_order_history` + `po_line_items`/`purchase_orders` (+ `retail_link_supply_plan`, ingested not wired); + `dot_on_hand`; + `walmart_sqep_defects`; `production` from `SEED` |
 
 ## Phase 2
 

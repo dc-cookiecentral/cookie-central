@@ -735,9 +735,13 @@ Source: `SQEP Total Compliance Table, <date>.csv` (upload cards 10–11), parsed
 | `occurrence` | int | nth identical defect within one file (keeps true duplicates) |
 | `processed_date`, `walmart_week`, `wmt_month` | | Walmart's own week (`202640`) and billing month (`NOV FYE 27`) |
 | `supplier_6digit`, `supplier_9digit`, `department`, `network`, `dc_number`, … | text | Supplier is **127224 NATIONAL FOOD TRADING CORP.**; dept 90 Dairy = GDC (WC/PBG/CCF), 95 Snacks = RDC (BC) |
+| `applicable_for_score`, `applicable_for_charge` | boolean | Walmart's own flags. **`applicable_for_charge = false`** = counted against the score but not billed: every invoiced defect Mar – wk 32 2026 (636); charging began wk 202634. Such rows carry `charge = 0` (Walmart writes " - ") |
 | `charge` | numeric | Potential or invoiced $, per `charge_status` |
 
 Key: `(charge_status, po_number, defect_category, defect_type, defect_sub_type, item_number, ticket_number, occurrence)`; re-pulls upsert. A projected defect Walmart later drops is **not** deleted by a newer pull — read `last_seen_at`.
+
+⚠️ **`item_number` holds a literal `-`** on pallet defects (Walmart's " - "), as the first uploads stored it. Do not normalise it to `''` in the parser: it is part of the key, so re-uploads would duplicate those rows.
+⚠️ **Counting defects:** Supplier One counts **one defect per PO × ticket** within a category; the export can list several sub-defects under one ticket (wk 202637: 3 barcode lines on one case ticket). `count(DISTINCT (defect_category, po_number, ticket_number))`, not `count(*)`.
 
 ✅ **Validated Nov 9 2026:** projected wk 202640 = 62 ASN defects, $1,378.40; invoiced wk 202635 = 55 ASN defects, $1,375.00; every PO matched DOT shipments. Charge observed: **$10.17 per case, capped at $25.00 per PO**.
 
