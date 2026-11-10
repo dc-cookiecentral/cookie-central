@@ -44,6 +44,7 @@ import EomSnapshot from './pages/EomSnapshot';
 import AuditLog from './pages/AuditLog';
 import PageStub from './pages/PageStub';
 import DemandPlanner from './pages/DemandPlanner';
+import WalmartCompliance from './pages/WalmartCompliance';
 
 export default function App() {
   return (
@@ -76,6 +77,8 @@ export default function App() {
                 {/* Internal-only routes — Cortina role is redirected to Sample Central */}
                 <Route element={<InternalOnly />}>
                   <Route path="demand-planner" element={<DemandPlanner />} />
+                  {/* Internal only until complete; Caroline will open it to the cortina login later (Nov 9 2026). */}
+                  <Route path="walmart-compliance" element={<WalmartCompliance />} />
                   <Route path="orders" element={<ProductOrders />} />
                   <Route path="orders/:poNumber" element={<PurchaseOrderDetail />} />
                   <Route path="weekly" element={<WeeklyReport />} />

@@ -79,7 +79,7 @@ const packOf = sku => ({
 // the header ("Walmart week 40"). Everywhere else a week is named by its
 // calendar date, "wk ending Nov 1" — never W39 or 202639. Use the helpers
 // below rather than slicing `wk` so the rule holds in one place.
-function weekEndingDate(wk) {
+export function weekEndingDate(wk) {
   if (!wk) return null;
   const n = (Math.floor(wk / 100) - 2026) * 52 + (wk % 100) - 5;
   return new Date(Date.UTC(2026, 1, 28 + n * 7 + 8));
@@ -89,12 +89,12 @@ function weekEndingSunday(wk) {
   return d ? d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) : null;
 }
 // "11/1" — for tight axis and column labels.
-const weekEndingNumeric = wk => {
+export const weekEndingNumeric = wk => {
   const d = weekEndingDate(wk);
   return d ? `${d.getUTCMonth() + 1}/${d.getUTCDate()}` : "—";
 };
 // "wk ending Nov 1" — for prose and tooltips.
-const wkEnding = wk => (wk ? "wk ending " + weekEndingSunday(wk) : "—");
+export const wkEnding = wk => (wk ? "wk ending " + weekEndingSunday(wk) : "—");
 // Store counts on the bar labels (Caroline, Oct 29): 2,609 → "2.6K". The hover
 // keeps the full ###,### figure.
 const abbrK = v => (v == null ? "" : v >= 1000 ? (v / 1000).toFixed(1) + "K" : String(Math.round(v)));
@@ -313,7 +313,7 @@ const monthBands = cells => {
 };
 
 /* ---------------- ui helpers ---------------- */
-const F = {
+export const F = {
   int: v => (v == null ? "—" : Math.round(v).toLocaleString()),
   pct: v => (v == null ? "—" : (v * 100).toFixed(1) + "%"),
   pct0: v => (v == null ? "" : (v * 100).toFixed(0) + "%"),
@@ -351,7 +351,7 @@ const gapColor = g => {
 // copied into plans. A placeholder Stat now shows NO value — a dash in a dashed
 // box — and `src` says what it is waiting for. The modelled figure is still in
 // the Tracker for anyone inspecting the cascade.
-function Stat({ label, value, tone, src, placeholder }) {
+export function Stat({ label, value, tone, src, placeholder }) {
   const color = tone === "bad" ? "#C2185B" : tone === "warn" ? "#B87514" : "#2D2235";
   return (
     <div>
@@ -782,7 +782,7 @@ function InventoryByWeek({ s, feeds }) {
 // row all read WMT_OTIF / WMT_INSTOCK (below), deliberately — the same metric
 // flagged at two different cut-offs on one page is a bug, not a nuance.
 const tone = (v, bad, warn) => (v == null ? undefined : v < bad ? "bad" : v < warn ? "warn" : undefined);
-const barColor = (v, bad, warn) =>
+export const barColor = (v, bad, warn) =>
   v == null ? "#EFE4E9" : v < bad ? "#C2185B" : v < warn ? "#E8A33D" : "#3E8E5A";
 
 // A compact week-by-week bar strip. Shared by both halves so the two metrics
@@ -811,7 +811,7 @@ function withMissingWeeks(rows) {
 }
 
 const PHONE_WEEKS = 8;
-function ServiceBars({ rows: data, bad, warn, fmt }) {
+export function ServiceBars({ rows: data, bad, warn, fmt }) {
   if (!data.length) return <div className="text-[11px] opacity-60">No weekly history yet.</div>;
   const rows = withMissingWeeks(data);
   // Phones show the last PHONE_WEEKS slots only: 14 value labels do not fit
@@ -873,21 +873,21 @@ function ServiceBars({ rows: data, bad, warn, fmt }) {
 // OTIF export. Targets are the scorecard's: In full 95%, On time 90%. Its
 // "On time collect ready" (98%) and eCom cards read 0% with no volume — our
 // freight is prepaid to stores via DOT — so they are not shown here.
-const WMT_OTIF = { onTime: 0.9, inFull: 0.95, fineRate: 0.03, nearPts: 0.02 };
+export const WMT_OTIF = { onTime: 0.9, inFull: 0.95, fineRate: 0.03, nearPts: 0.02 };
 // In-Stock % is Retail Link's own "Instock" measure (share of traited stores
 // with stock), rolled up across items weighted by traited stores. It is not on
 // the Supplier One scorecard, so these are page thresholds, not Walmart's.
 const WMT_INSTOCK = { warn: 0.97, bad: 0.95 };
 
 // Red below target, amber within nearPts above it, green otherwise.
-const toneVsTarget = (v, target) =>
+export const toneVsTarget = (v, target) =>
   v == null ? undefined : v < target ? "bad" : v < target + WMT_OTIF.nearPts ? "warn" : undefined;
 
 // Walmart fiscal quarter of a week: 13 weeks each, week 53 in Q4.
-const fiscalQuarter = wk => ({ fy: Math.floor(wk / 100), q: Math.min(4, Math.ceil((wk % 100) / 13)) });
+export const fiscalQuarter = wk => ({ fy: Math.floor(wk / 100), q: Math.min(4, Math.ceil((wk % 100) / 13)) });
 
 // Sum OTIF buckets over a set of weekly rows and grade them.
-function gradeOtif(rows) {
+export function gradeOtif(rows) {
   const t = rows.reduce((a, r) => ({
     ordered: a.ordered + (r.ordered || 0), early: a.early + (r.early || 0), onTime: a.onTime + (r.onTime || 0),
     late: a.late + (r.late || 0), unfilled: a.unfilled + (r.unfilled || 0), pos: a.pos + (r.pos || 0),
@@ -906,7 +906,7 @@ function gradeOtif(rows) {
 // Walmart's cost per case, for the fine estimate: the MEDIAN NetSuite price per
 // delivered case over the last 13 weeks. Median, because some dough lines carry
 // a ~10× price (KNOWN_ISSUES §9) that a mean would pass straight through.
-function costPerCase(orders) {
+export function costPerCase(orders) {
   const rows = (orders ?? []).filter(r => r.dlv > 0 && r.rev > 0);
   if (!rows.length) return null;
   const last = Math.max(...rows.map(r => r.wk));
@@ -915,7 +915,7 @@ function costPerCase(orders) {
 }
 
 // Weekly OTIF rows with the three grades. Shared with the actions panel.
-const otifWeeks = (otif) => (otif ?? []).filter(r => r.ordered > 0).map(r => ({ ...gradeOtif([r]), wk: r.wk }));
+export const otifWeeks = (otif) => (otif ?? []).filter(r => r.ordered > 0).map(r => ({ ...gradeOtif([r]), wk: r.wk }));
 
 // In-Stock % per week: Retail Link's own Instock column, traited-store
 // weighted across items. An item-week reporting exactly 0 while it sold is a
@@ -934,235 +934,6 @@ function instockRows(pos) {
     .map(a => ({ wk: a.wk, v: a.num / a.den, bySku: a.bySku })).slice(-14);
 }
 
-// ── SQEP — Walmart's Supplier Quality Excellence Program (Nov 9 2026) ──────
-// From the SQEP Total Compliance Table export (upload cards 10–11): one row per
-// defect, PROJECTED (not yet billed, still disputable) or INVOICED (on the
-// monthly SQEP bill). Supplier One's scorecard shows six cards, each scored
-// against 100%. The export lists only the DEFECTS, not everything Walmart
-// checked, so the score itself cannot be computed here: the cards show defects
-// and charges, the same two lines Supplier One prints under each score.
-// Each defect is joined to DOT by Walmart PO (padded to 10 digits) for SKU and
-// ship date.
-const SQEP_CARDS = [
-  { key: "asn", label: "Advance shipment notice (ASN) compliance", test: c => /ASN/i.test(c) },
-  { key: "poline", label: "PO line accuracy", test: c => /PO\s*(LINE\s*)?ACCURACY|LINE\s*ACCURACY/i.test(c) },
-  { key: "case", label: "Case compliance", test: c => /CASE/i.test(c) },
-  { key: "pack", label: "Packaging compliance", test: c => /PACKAG/i.test(c) },
-  { key: "pallet", label: "Pallet compliance", test: c => /PALLET/i.test(c) },
-  { key: "load", label: "Load compliance", test: c => /LOAD/i.test(c) },
-];
-const sqepCard = cat => SQEP_CARDS.find(c => c.test(cat || "")) ?? { key: "other:" + cat, label: cat || "Other" };
-const usd2 = v => (v == null ? "—" : "$" + v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-const wmtWk = wk => "Wk " + String(wk).slice(4) + " · " + weekEndingNumeric(wk);
-
-// Supplier One counts ONE defect per PO × ticket within a category; the export
-// can list several sub-defects under one ticket (wk 37: three barcode problems
-// on PO 1935234281, ticket …4679-0000 — 4 rows, Supplier One says 2 defects,
-// same $372.60). Counted the same way here so the cards match the scorecard.
-const sqepDefectKey = r => r.category + "|" + r.po + "|" + (r.ticket || "");
-const countDefects = xs => new Set(xs.map(sqepDefectKey)).size;
-// Walmart's own flag: "Applicable for Charge" = N → counted against the score,
-// not billed. Mar–mid-Sep 2026 invoices are all N; charging began wk 202634.
-const notCharged = r => r.chargeable === false;
-// Inverse of wkIndex (defined with the Tracker helpers): 1 → 202601.
-const weekFromIndex = i => (2026 + Math.floor((i - 1) / 52)) * 100 + (((i - 1) % 52) + 52) % 52 + 1;
-
-function SqepHealth({ sqep }) {
-  const hasProjected = (sqep ?? []).some(r => r.status === "projected");
-  const [view, setView] = useState(null);
-  const status = view ?? (hasProjected ? "projected" : "invoiced");
-  const thead = "text-[11px] uppercase tracking-wider opacity-60 font-normal";
-
-  if (!sqep?.length) {
-    return (
-      <p className="text-[11px] opacity-60">
-        Upload Walmart's "SQEP Total Compliance Table" export at Uploads &rarr; 10 (projected) or 11 (invoiced).
-      </p>
-    );
-  }
-  const sum = xs => xs.reduce((a, r) => a + (r.charge ?? 0), 0);
-  const rows = sqep.filter(r => r.status === status);
-  const billed = rows.filter(r => !notCharged(r));
-  const free = rows.filter(notCharged);
-  const wks = [...new Set(rows.map(r => r.wk))].sort((a, b) => a - b);
-  const span = wks.length ? (wks.length > 1 ? wmtWk(wks[0]) + " – " + wmtWk(wks.at(-1)) : wmtWk(wks[0])) : "—";
-
-  // When charging started, and the stretch Walmart scored without billing —
-  // across both statuses, from Walmart's own flag.
-  const allFree = sqep.filter(notCharged);
-  const firstBilledWk = Math.min(...sqep.filter(r => !notCharged(r) && (r.charge ?? 0) > 0).map(r => r.wk));
-  const freeWks = allFree.map(r => r.wk);
-  const freeMonths = [...new Set(allFree.sort((a, b) => a.wk - b.wk).map(r => (r.month || "").split(" ")[0]).filter(Boolean))];
-
-  // Cards: Supplier One's six, plus any category the export adds.
-  const cards = SQEP_CARDS.map(c => ({ ...c, rows: [] }));
-  for (const r of rows) {
-    const c = sqepCard(r.category);
-    let card = cards.find(x => x.key === c.key);
-    if (!card) { card = { ...c, rows: [] }; cards.push(card); }
-    card.rows.push(r);
-  }
-
-  // Weekly roll-up, every Walmart week from the first to the last loaded, so a
-  // week with no defects shows as a row rather than disappearing. That can mean
-  // Walmart recorded none (May 2026, wk 14–17: Caroline's export came back
-  // header-only; wk 33) or that a month was not pulled.
-  const byWkMap = sqep.reduce((m, r) => {
-    const a = m.get(r.wk) || { wk: r.wk, month: r.month, projected: [], invoiced: [] };
-    a[r.status].push(r);
-    m.set(r.wk, a);
-    return m;
-  }, new Map());
-  const allWks = [...byWkMap.keys()].sort((a, b) => a - b);
-  const byWk = [];
-  for (let i = wkIndex(allWks.at(-1)); i >= wkIndex(allWks[0]); i--) {
-    const wk = allWks.find(w => wkIndex(w) === i) ?? weekFromIndex(i);
-    byWk.push(byWkMap.get(wk) ?? { wk, gap: true });
-  }
-
-  const types = [...billed.reduce((m, r) => m.set(r.type, (m.get(r.type) || 0) + 1), new Map())].sort((a, b) => b[1] - a[1]);
-  const top = types[0];
-  const suppliers = [...new Set(rows.map(r => r.supplier).filter(Boolean))];
-  const unmatched = rows.filter(r => !r.sku).length;
-  const amber = "#B87514";
-
-  return (
-    <div>
-      {allFree.length > 0 && Number.isFinite(firstBilledWk) && (
-        <div className="rounded-lg px-3 py-2 mb-3 text-[11px]" style={{ background: "#FFF7EA", border: "1px solid #F1D9AE" }}>
-          <b>Scored but not charged:</b> Walmart recorded <b>{F.int(countDefects(allFree))}</b> SQEP defects in
-          {" "}{wmtWk(Math.min(...freeWks))} – {wmtWk(Math.max(...freeWks))}
-          {freeMonths.length ? <> (billing months {freeMonths.join(", ")})</> : null} and marked every one
-          "Applicable for Charge = N" — they count against the score but were not billed.
-          Charging starts in <b>{wmtWk(firstBilledWk)}</b>; every defect since is billed.
-        </div>
-      )}
-
-      <div className="flex flex-wrap items-center gap-2 mb-3">
-        {["projected", "invoiced"].map(k => {
-          const n = countDefects(sqep.filter(r => r.status === k));
-          return (
-            <button key={k} onClick={() => setView(k)} disabled={!n}
-              className="text-[11px] px-3 py-1 rounded-full border disabled:opacity-40"
-              style={{ borderColor: status === k ? "#2D2235" : "#E5D9DE", background: status === k ? "#2D2235" : "white", color: status === k ? "white" : "#2D2235" }}>
-              {k === "projected" ? "Projected" : "Invoiced"} ({n})
-            </button>
-          );
-        })}
-        <span className="text-[11px] opacity-60">
-          {status === "projected" ? "Not billed yet — can still be disputed." : "From Walmart's monthly SQEP invoices."} Walmart weeks loaded: {span}
-        </span>
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3 max-w-2xl">
-        <Stat label={status === "projected" ? "Projected charges" : "Invoiced charges"} value={usd2(sum(billed))} tone={sum(billed) > 0 ? "bad" : undefined}
-          src={status === "projected" ? "potential, not yet invoiced" : "billed"} />
-        <Stat label="Defects charged" value={F.int(countDefects(billed))} tone={billed.length ? "bad" : undefined}
-          src={"one per PO × ticket, as Supplier One counts"} />
-        <Stat label="Scored, not charged" value={F.int(countDefects(free))} tone={free.length ? "warn" : undefined}
-          src={'"Applicable for Charge" = N'} />
-      </div>
-
-      <div className="grid gap-2 mb-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
-        {cards.map(c => {
-          const $ = sum(c.rows.filter(r => !notCharged(r)));
-          const nFree = countDefects(c.rows.filter(notCharged));
-          return (
-            <div key={c.key} className="rounded-lg border p-3 min-w-0" style={{ borderColor: "#E5D9DE" }}>
-              <div className="text-[11px] font-semibold leading-tight mb-1" style={{ minHeight: "2.4em" }}>{c.label}</div>
-              <div className="text-[11px] tabular-nums">Targeted score: 100%</div>
-              <div className="text-[11px] tabular-nums">Defects: <b>{F.int(countDefects(c.rows))}</b></div>
-              <div className="text-[11px] tabular-nums">Total charges: <b style={{ color: $ > 0 ? "#C2185B" : "#3E8E5A" }}>{usd2($)}</b></div>
-              {nFree > 0 && <div className="text-[11px] tabular-nums" style={{ color: amber }}>Not charged: <b>{F.int(nFree)}</b></div>}
-            </div>
-          );
-        })}
-      </div>
-
-      {top && (
-        <p className="text-[11px] mb-3">
-          <b>{F.int(top[1])} of {F.int(billed.length)}</b> charged {status} defect lines are <b>{top[0]}</b>
-          {billed.length ? <> · average <b>{usd2(sum(billed) / countDefects(billed))}</b> per defect</> : null}
-          {suppliers.length > 0 && <> · Walmart supplier on these POs: <b>{suppliers.join(", ")}</b></>}
-        </p>
-      )}
-
-      <div className="overflow-x-auto mb-3">
-        <table className="w-full text-[11px] tabular-nums">
-          <thead><tr className="text-left">
-            <th className={thead}>Walmart week</th><th className={thead}>Billing month</th>
-            <th className={thead + " text-right"}>Projected defects</th><th className={thead + " text-right"}>Projected $</th>
-            <th className={thead + " text-right"}>Invoiced defects</th><th className={thead + " text-right"}>Invoiced $</th>
-            <th className={thead + " text-right"}>Scored, not charged</th>
-          </tr></thead>
-          <tbody>
-            {byWk.map(w => {
-              if (w.gap) return (
-                <tr key={w.wk} style={{ borderTop: "1px solid #F1E7EC" }} className="opacity-50">
-                  <td className="py-1 pr-2">{wmtWk(w.wk)}</td>
-                  <td className="py-1 pr-2 italic" colSpan={6}>no defects in the files loaded</td>
-                </tr>
-              );
-              const pB = w.projected.filter(r => !notCharged(r)), iB = w.invoiced.filter(r => !notCharged(r));
-              const nFree = countDefects([...w.projected, ...w.invoiced].filter(notCharged));
-              return (
-                <tr key={w.wk} style={{ borderTop: "1px solid #F1E7EC" }}>
-                  <td className="py-1 pr-2">{wmtWk(w.wk)}</td>
-                  <td className="py-1 pr-2 opacity-70">{w.month ?? "—"}</td>
-                  <td className="py-1 text-right">{pB.length ? F.int(countDefects(pB)) : "—"}</td>
-                  <td className="py-1 text-right">{pB.length ? usd2(sum(pB)) : "—"}</td>
-                  <td className="py-1 text-right">{iB.length ? F.int(countDefects(iB)) : "—"}</td>
-                  <td className="py-1 text-right font-bold">{iB.length ? usd2(sum(iB)) : "—"}</td>
-                  <td className="py-1 text-right" style={{ color: nFree ? amber : undefined }}>{nFree ? F.int(nFree) : "—"}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      <details>
-        <summary className="text-[11px] cursor-pointer font-semibold">
-          {F.int(rows.length)} {status} defect lines by PO{unmatched ? " · " + unmatched + " not found in DOT's records" : ""}
-        </summary>
-        <div className="overflow-x-auto mt-2">
-          <table className="w-full text-[11px] tabular-nums">
-            <thead><tr className="text-left">
-              <th className={thead}>Wk</th><th className={thead}>Processed</th><th className={thead}>Defect</th>
-              <th className={thead}>PO</th><th className={thead}>DC</th><th className={thead}>SKU</th>
-              <th className={thead}>DOT ship / status</th><th className={thead + " text-right"}>Charge</th>
-            </tr></thead>
-            <tbody>
-              {rows.map((r, i) => (
-                <tr key={r.po + "|" + r.type + "|" + i} style={{ borderTop: "1px solid #F1E7EC" }}>
-                  <td className="py-1 pr-2 whitespace-nowrap">{String(r.wk).slice(4)}</td>
-                  <td className="py-1 pr-2 whitespace-nowrap">{r.processed ?? "—"}</td>
-                  <td className="py-1 pr-2">{sqepCard(r.category).label.replace(" compliance", "")}: {r.type}{r.subType ? " · " + r.subType : ""}{r.ticket ? " · ticket " + r.ticket : ""}</td>
-                  <td className="py-1 pr-2 cc-mono whitespace-nowrap">{r.po}</td>
-                  <td className="py-1 pr-2 whitespace-nowrap">{r.network} {r.dc}</td>
-                  <td className="py-1 pr-2">{r.sku ?? <span className="opacity-50">not in DOT</span>}</td>
-                  <td className="py-1 pr-2 whitespace-nowrap">{r.shipDate || r.dotStatus || "—"}</td>
-                  <td className="py-1 text-right whitespace-nowrap" style={{ color: notCharged(r) ? amber : undefined }}>
-                    {notCharged(r) ? "not charged" : usd2(r.charge)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </details>
-
-      <p className="text-[11px] opacity-60 mt-2">
-        Source: Walmart's SQEP Total Compliance Table (projected and invoiced exports). Defects are counted one per PO ×
-        ticket, as Supplier One counts them; the export can list several sub-defects under one ticket. The export lists
-        defects only, not everything Walmart graded, so Supplier One's score % is not computed here. "Scored, not charged"
-        is Walmart's own "Applicable for Charge = N". SKU and ship date come from DOT; DOT's records start in March, so
-        older POs may show as not in DOT.
-      </p>
-    </div>
-  );
-}
-
 function ServiceHealth({ series, feeds }) {
   // ── In-Stock % ──
   const isRows = instockRows(feeds.pos ?? SEED.pos);
@@ -1173,113 +944,35 @@ function ServiceHealth({ series, feeds }) {
   const is4 = isRows.slice(-4);
   const is4Avg = is4.length ? is4.reduce((a, r) => a + r.v, 0) / is4.length : null;
 
-  // ── OTIF ──
-  const weeks = otifWeeks(feeds.otif);
-  const l4 = weeks.length ? gradeOtif((feeds.otif ?? []).filter(r => r.ordered > 0).slice(-4)) : null;
-  const cpc = costPerCase(feeds.orders);
-  const fine = g => (cpc != null ? g.missed * cpc * WMT_OTIF.fineRate : null);
-  const quarters = [...(feeds.otif ?? []).filter(r => r.ordered > 0).reduce((m, r) => {
-    const { fy, q } = fiscalQuarter(r.wk);
-    const k = fy * 10 + q;
-    if (!m.has(k)) m.set(k, { k, fy, q, rows: [] });
-    m.get(k).rows.push(r);
-    return m;
-  }, new Map()).values()].sort((a, b) => b.k - a.k).slice(0, 3).map(x => ({ ...x, g: gradeOtif(x.rows) }));
-  const why = l4 && l4.missed > 0 ? [
-    { l: "Unfilled (cut)", v: l4.unfilled, c: "#C2185B" },
-    { l: "Late", v: l4.late, c: "#E8A33D" },
-    { l: "Early", v: l4.early, c: "#6B3F8C" },
-  ] : [];
-  const thead = "text-[11px] uppercase tracking-wider opacity-60 font-normal";
+  // ── OTIF and SQEP: summary only (Nov 9 2026). The detail moved to the
+  // Walmart Compliance page (/walmart-compliance); In-Stock stays here because
+  // it is a demand measure, not a compliance charge.
+  const l4 = (feeds.otif ?? []).some(r => r.ordered > 0) ? gradeOtif((feeds.otif ?? []).filter(r => r.ordered > 0).slice(-4)) : null;
+  const sq = feeds.sqep ?? [];
+  const sqSum = st => sq.filter(r => r.status === st && r.chargeable !== false).reduce((a, r) => a + (r.charge ?? 0), 0);
+  const sqProj = sqSum("projected"), sqInv = sqSum("invoiced");
 
   return (
     <section className="bg-white rounded-2xl border p-5" style={{ borderColor: "#E5D9DE" }}>
       <header className="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
         <h2 className="cc-serif text-lg">Service health — how Walmart grades us</h2>
         <span className="text-xs opacity-60">
-          OTIF (On-Time and In-Full, on cases), store In-Stock % and SQEP charges, as Walmart measures them.
-          Source: Retail Link OTIF PO details, weekly item detail and the SQEP Total Compliance Table.
+          Store In-Stock % from Retail Link. OTIF and SQEP charges are on the Walmart Compliance page.
         </span>
       </header>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* ── OTIF ── */}
-        <div className="min-w-0">
-          <div className="text-[11px] uppercase tracking-wider font-semibold mb-2" style={{ color: "#C2185B" }}>
-            OTIF{l4 ? " · last 4 weeks loaded, " + weekEndingNumeric(l4.first) + "–" + weekEndingNumeric(l4.last) : ""}
-          </div>
-          {l4 ? (
-            <>
-              <div className="grid grid-cols-3 gap-3 mb-3">
-                <Stat label="On-Time" value={F.pct(l4.onTimePct)} tone={toneVsTarget(l4.onTimePct, WMT_OTIF.onTime)}
-                  src={"target " + F.pct0(WMT_OTIF.onTime) + " · in window ÷ arrived"} />
-                <Stat label="In-Full" value={F.pct(l4.inFullPct)} tone={toneVsTarget(l4.inFullPct, WMT_OTIF.inFull)}
-                  src={"target " + F.pct0(WMT_OTIF.inFull) + " · received ÷ ordered"} />
-                <Stat label="OTIF" value={F.pct(l4.otifPct)}
-                  src="on time ÷ ordered (Walmart's OTIF %)" />
-              </div>
-              {why.length > 0 && (
-                <div className="mb-3">
-                  <div className="text-[11px] opacity-70 mb-1">
-                    <b>{F.int(l4.missed)} of {F.int(l4.ordered)} cs</b> non-compliant
-                    {fine(l4) != null && <> · est. fine <b>${F.int(fine(l4))}</b> (3% of ~${cpc.toFixed(2)}/cs)</>}
-                  </div>
-                  <div className="flex h-2.5 rounded overflow-hidden" style={{ background: "#F1E7EC" }}>
-                    {why.filter(w => w.v > 0).map(w => (
-                      <div key={w.l} style={{ width: (w.v / l4.missed) * 100 + "%", background: w.c }} title={w.l + ": " + F.int(w.v) + " cs"} />
-                    ))}
-                  </div>
-                  <div className="flex flex-wrap gap-x-3 mt-1 text-[11px]">
-                    {why.map(w => (
-                      <span key={w.l}><span className="inline-block w-2 h-2 rounded-sm mr-1" style={{ background: w.c }} />
-                        {w.l} {F.int(w.v)} cs ({F.pct0(w.v / l4.missed)})</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <div className="text-[11px] opacity-60 mb-0.5">In-Full by week (target {F.pct0(WMT_OTIF.inFull)})</div>
-              <ServiceBars rows={weeks.map(w => ({ wk: w.wk, v: w.inFullPct, note: F.int(w.unfilled) + " cs unfilled of " + F.int(w.ordered) }))}
-                bad={WMT_OTIF.inFull} warn={WMT_OTIF.inFull + WMT_OTIF.nearPts} fmt={F.pct} />
-              <div className="text-[11px] opacity-60 mb-0.5 mt-3">On-Time by week (target {F.pct0(WMT_OTIF.onTime)})</div>
-              <ServiceBars rows={weeks.map(w => ({ wk: w.wk, v: w.onTimePct, note: F.int(w.late) + " cs late, " + F.int(w.early) + " early" }))}
-                bad={WMT_OTIF.onTime} warn={WMT_OTIF.onTime + WMT_OTIF.nearPts} fmt={F.pct} />
-              {quarters.length > 0 && (
-                <div className="overflow-x-auto mt-3">
-                  <table className="w-full text-[11px] tabular-nums">
-                    <thead><tr className="text-left">
-                      <th className={thead}>Walmart quarter</th><th className={thead + " text-right"}>On-Time</th>
-                      <th className={thead + " text-right"}>In-Full</th><th className={thead + " text-right"}>OTIF</th>
-                      <th className={thead + " text-right"}>Missed cs</th><th className={thead + " text-right"}>Est. fine</th>
-                    </tr></thead>
-                    <tbody>
-                      {quarters.map(x => (
-                        <tr key={x.k} style={{ borderTop: "1px solid #F1E7EC" }}>
-                          <td className="py-1 pr-2">FY{String(x.fy + 1).slice(2)} Q{x.q} <span className="opacity-50">({weekEndingNumeric(x.g.first)}–{weekEndingNumeric(x.g.last)})</span></td>
-                          <td className="py-1 text-right font-bold" style={{ color: barColor(x.g.onTimePct, WMT_OTIF.onTime, WMT_OTIF.onTime + WMT_OTIF.nearPts) }}>{F.pct(x.g.onTimePct)}</td>
-                          <td className="py-1 text-right font-bold" style={{ color: barColor(x.g.inFullPct, WMT_OTIF.inFull, WMT_OTIF.inFull + WMT_OTIF.nearPts) }}>{F.pct(x.g.inFullPct)}</td>
-                          <td className="py-1 text-right">{F.pct(x.g.otifPct)}</td>
-                          <td className="py-1 text-right">{F.int(x.g.missed)}</td>
-                          <td className="py-1 text-right">{fine(x.g) != null ? "$" + F.int(fine(x.g)) : "—"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              <p className="text-[11px] opacity-60 mt-2">
-                Same formulas and targets as Walmart's Supplier One scorecard (In full / On time, store) — checked
-                to the hundredth of a point on week ending 10/25. Graded per PO, on cases; the export has no item
-                number, so OTIF cannot be split by SKU. Walmart's fiscal year starts in February (FY27 = Feb 2026 – Jan 2027).
-                The fine is an estimate: 3% of cost of goods per non-compliant case, as supplier guides describe it.
-              </p>
-            </>
-          ) : (
-            <p className="text-[11px] opacity-60">
-              Upload an "OTIF STORE Performance PO DETAILS" export at Uploads &rarr; Retail Link OTIF.
-            </p>
-          )}
-        </div>
+      <a href="/walmart-compliance" className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg px-3 py-2 mb-4 text-[12px] no-underline"
+        style={{ background: "#F7F1F4", color: "#2D2235" }}>
+        <b>Walmart Compliance</b>
+        {l4 && <>
+          <span>On-Time <b style={{ color: barColor(l4.onTimePct, WMT_OTIF.onTime, WMT_OTIF.onTime + WMT_OTIF.nearPts) }}>{F.pct(l4.onTimePct)}</b></span>
+          <span>In-Full <b style={{ color: barColor(l4.inFullPct, WMT_OTIF.inFull, WMT_OTIF.inFull + WMT_OTIF.nearPts) }}>{F.pct(l4.inFullPct)}</b> <span className="opacity-60">(last 4 OTIF weeks)</span></span>
+        </>}
+        {sq.length > 0 && <span>SQEP <b style={{ color: "#C2185B" }}>{F.money(sqProj)}</b> projected · <b>{F.money(sqInv)}</b> invoiced</span>}
+        <span className="ml-auto font-semibold" style={{ color: "#C2185B" }}>Open &rarr;</span>
+      </a>
 
+      <div className="max-w-2xl">
         {/* ── In-Stock % ── */}
         <div className="min-w-0">
           <div className="text-[11px] uppercase tracking-wider font-semibold mb-2" style={{ color: "#C2185B" }}>Store In-Stock %</div>
@@ -1321,14 +1014,6 @@ function ServiceHealth({ series, feeds }) {
           </p>
 
         </div>
-      </div>
-
-      {/* ── SQEP ── full width: six cards don't fit half the panel. */}
-      <div className="mt-6 pt-4 min-w-0" style={{ borderTop: "1px solid #F1E7EC" }}>
-        <div className="text-[11px] uppercase tracking-wider font-semibold mb-2" style={{ color: "#C2185B" }}>
-          SQEP · Supplier Quality Excellence Program charges
-        </div>
-        <SqepHealth sqep={feeds.sqep} />
       </div>
     </section>
   );
@@ -1742,7 +1427,7 @@ function fcstGap(m) {
 const STALE_WEEKS = 2;
 const CUT_WARN = 0.05, CUT_BAD = 0.15; // share of ordered cases DOT cut, last 4 ship weeks
 // Weeks apart, across the fiscal year end (52 weeks; live POS also carries 53).
-const wkIndex = wk => (Math.floor(wk / 100) - 2026) * 52 + (wk % 100);
+export const wkIndex = wk => (Math.floor(wk / 100) - 2026) * 52 + (wk % 100);
 const wkTag = wkEnding;
 // The Walmart week three weeks before `wk` (a 4-week window ending at wk).
 const s4Back = wk => {

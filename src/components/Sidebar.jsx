@@ -27,6 +27,7 @@ const NAV = [
   { to: '/weekly',     label: 'Weekly Report', hidden: true },
   { to: '/eos',        label: 'EOS' },
   { to: '/demand-planner', label: 'Demand Planner' },
+  { to: '/walmart-compliance', label: 'Walmart Compliance' },
   { kind: 'divider' },
   { to: '/orders',     label: 'Product Orders', hidden: true },
   { to: '/payments',   label: 'Payments', hidden: true },
