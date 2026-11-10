@@ -22,6 +22,9 @@ import { walmartWeekOf } from './retailLinkSupplyPlan.js';
 //   Invoiced, wk 202635 ("SEP FYE 27"): 55 rows, all ASN, GDC, $1,375.00.
 //   Every PO matched DOT's Consignment Sales History / Customer Order Details.
 //   Charges seen: $10.17 per case, capped at $25.00 per PO.
+//   Invoiced "JUN FYE 27" (wk 202618–202622): 172 defects, every one
+//   "Applicable for Score" = Y, "Applicable for Charge" = N, charge " - " —
+//   counted against the score but not billed. Stored with charge 0.
 //
 // ⚠️ PO numbers: GDC POs are 9 digits here ("122308039"); DOT and OTIF store
 // them zero-padded to 10 ("0122308039"). Stored as given — pad to 10 to join.
@@ -57,6 +60,11 @@ export function parseCsv(text) {
 
 const NA = (v) => {
   const t = String(v ?? '').trim();
+  // Walmart writes "NA" for a field that does not apply. " - " (item number
+  // on pallet defects, charge when not billed) is deliberately KEPT as "-":
+  // item_number is part of the key and the first uploads stored "-", so
+  // reading it as empty now would duplicate those rows on re-upload. The
+  // charge column handles " - " itself (money() → null → 0 when not billed).
   return t === '' || t.toUpperCase() === 'NA' ? null : t;
 };
 const money = (v) => {
@@ -152,6 +160,10 @@ export function parseRows(rows) {
     rec.applicable_for_score = yn(get('applicable_for_score'));
     rec.applicable_for_charge = yn(get('applicable_for_charge'));
     rec.charge = money(r[chargeIdx]);
+    // Scored but not billed: Walmart marks "Applicable for Charge" = N and
+    // writes " - " for the charge (the June 2026 invoice: 172 such defects).
+    // That is a real $0, not a missing amount.
+    if (rec.charge == null && rec.applicable_for_charge === false) rec.charge = 0;
     if (rec.charge == null) noCharge++;
     for (const f of KEY_TEXT) rec[f] = rec[f] ?? '';
     if (!rec.walmart_week) { errors.push({ row: i + 1, message: `PO ${po}: no WMT Week — skipped` }); continue; }
@@ -169,6 +181,7 @@ export function parseRows(rows) {
   if (dupes) errors.push({ row: 0, message: `${dupes} row(s) repeat a defect already in this file (same PO, type, item, ticket) — kept as separate defects` });
 
   const total = records.reduce((a, x) => a + (x.charge ?? 0), 0);
+  const notCharged = records.filter((x) => x.applicable_for_charge === false).length;
   const weeks = [...new Set(records.map((x) => x.walmart_week))].sort();
   const byCat = records.reduce((m, x) => ((m[x.defect_category ?? '—'] = (m[x.defect_category ?? '—'] || 0) + 1), m), {});
   return {
@@ -178,7 +191,8 @@ export function parseRows(rows) {
     summary:
       `${status.toUpperCase()} · ${records.length} defect(s) · $${total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · ` +
       `wk ${weeks.length ? (weeks.length > 1 ? `${weeks[0]}–${weeks[weeks.length - 1]}` : weeks[0]) : '—'} · ` +
-      Object.entries(byCat).map(([k, v]) => `${k} ${v}`).join(', '),
+      Object.entries(byCat).map(([k, v]) => `${k} ${v}`).join(', ') +
+      (notCharged ? ` · ${notCharged} scored but NOT charged (Applicable for Charge = N)` : ''),
   };
 }
 

@@ -255,6 +255,10 @@ export function shapeSqep(sqRows, csRows, coRows) {
       item: r.item_number || null,
       ticket: r.ticket_number || null,
       charge: r.charge == null ? null : Number(r.charge),
+      // Walmart's own flags. chargeable === false = counted against the score
+      // but not billed (the June 2026 invoice). null = not stated.
+      scored: r.applicable_for_score,
+      chargeable: r.applicable_for_charge,
       supplier: r.supplier_6digit,
       lastSeen: r.last_seen_at,
       sku: d ? [...d.skus].join('/') || null : null,
@@ -343,7 +347,7 @@ export function useDemandFeeds() {
         // so pages cannot overlap.
         fetchAll(() => supabase
           .from('walmart_sqep_defects')
-          .select('charge_status, walmart_week, wmt_month, processed_date, defect_category, defect_type, defect_sub_type, po_number, oms_po_number, network, dc_number, item_number, ticket_number, occurrence, charge, supplier_6digit, last_seen_at')
+          .select('charge_status, walmart_week, wmt_month, processed_date, defect_category, defect_type, defect_sub_type, po_number, oms_po_number, network, dc_number, item_number, ticket_number, occurrence, charge, applicable_for_score, applicable_for_charge, supplier_6digit, last_seen_at')
           .order('charge_status').order('po_number').order('defect_category').order('defect_type')
           .order('defect_sub_type').order('item_number').order('ticket_number').order('occurrence')),
       ]);
