@@ -12,13 +12,22 @@
 // pages are wrapped into one PDF and uploaded (upsert) at its `path` —
 // the same path the seed writes into quotes.doc_path.
 //
+//   node scripts/upload-supply-docs.mjs --local [--dry]   # batch files (below)
+//
+// --local: upload the files on this Mac that the local data file points at —
+// every quote `doc` and every DOCUMENTS entry carrying `local: '<file>'` goes to
+// its `path` in the bucket (upsert: a re-run replaces the same object). --dry
+// lists what would go, checks each file exists, and uploads nothing. Use the
+// same data file as the seed (--data <file>, default the gitignored
+// scripts/supplies-data.local.mjs).
+//
 // Run AFTER the migration (creates the bucket). Service role bypasses the
 // bucket's admin/ops write policy, so keep that key out of .env.local.
 // Override the catalogue location with --catalogue <path>.
 // ─────────────────────────────────────────────────────────────────────────
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createClient } from '@supabase/supabase-js';
 import { SUPPLY_DOCS } from './supplies-docs.mjs';
 
@@ -95,7 +104,54 @@ function jpegsToPdf(jpegs) {
   return Buffer.concat(chunks);
 }
 
+const CONTENT_TYPES = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', heic: 'image/heic' };
+
+// Every { path, local } the data file names: quote docs + library DOCUMENTS.
+async function localFiles() {
+  const data = await import(pathToFileURL(arg('--data') ?? join(ROOT, 'scripts/supplies-data.local.mjs')).href);
+  const out = new Map();
+  for (const i of data.REV6_ITEMS ?? []) for (const s of i.skus ?? []) for (const q of s.quotes ?? []) {
+    if (q.doc?.local) out.set(q.doc.path, q.doc.local);
+  }
+  for (const d of data.DOCUMENTS ?? []) if (d.local) out.set(d.path, d.local);
+  return out;
+}
+
+async function uploadLocal() {
+  const files = await localFiles();
+  const dry = process.argv.includes('--dry');
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!dry && (!url || !key)) {
+    console.error('Set SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY to upload, or pass --dry to check only.');
+    process.exit(1);
+  }
+  const supabase = dry ? null : createClient(url, key, { auth: { persistSession: false } });
+  let failed = 0;
+  for (const [path, local] of files) {
+    if (!existsSync(local)) {
+      console.error(`✗ ${path}: local file not found: ${local}`);
+      failed++;
+      continue;
+    }
+    const body = readFileSync(local);
+    const ext = (path.split('.').pop() || '').toLowerCase();
+    if (dry) {
+      console.log(`· ${path}  ←  ${local} (${Math.round(body.length / 1024)} KB)`);
+      continue;
+    }
+    const { error } = await supabase.storage.from('supply-docs').upload(path, body, { contentType: CONTENT_TYPES[ext] ?? 'application/octet-stream', upsert: true });
+    if (error) {
+      console.error(`✗ ${path}: ${error.message}`);
+      failed++;
+    } else console.log(`✓ supply-docs/${path}`);
+  }
+  console.log(`${files.size} file(s)${dry ? ' checked' : ''}, ${failed} problem(s).`);
+  if (failed) process.exit(1);
+}
+
 async function main() {
+  if (process.argv.includes('--local')) return uploadLocal();
   const pages = loadPages(CATALOGUE);
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
