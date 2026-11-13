@@ -154,7 +154,7 @@ Each phase = one branch/PR (ERP deploys via GitHub integration — no CLI deploy
   - **+ New PO** with a file now also files it in the library, assigned to the PO's items; Delete PO removes that entry with the file.
   - The page still loads if the app deploys before the migration (library tables optional in `useSupplies`, empty until applied).
   - Verified in PGlite on the real seed (backfill, idempotency, assign / reassign, duplicate link refused, item delete leaves the document unassigned) and by server renders. Not yet clicked through live.
-  - Found: three tray items exist — PT206 Cookie Pie Tray, Plastic Tray 3.0 Dough Pucks (4-pk WMT), and one named just **"Tray"** (from Marc's sheet). No ALDI tray item yet.
+  - Found: three tray items exist — PT206 Cookie Pie Tray, Plastic Tray 3.0 Dough Pucks (4-pk WMT), and one named just **"Tray"** (from Marc's sheet). No ALDI tray item yet. *Caroline: "Tray" is the Walmart tray — merged in the seed (`ITEM_MERGES`); applied with the next seed paste.*
 - [ ] Phase V3a, V3b — not started
 
 ### V1 build notes — Oct 28 2026

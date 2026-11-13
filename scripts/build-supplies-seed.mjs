@@ -100,6 +100,10 @@ const ITEM_MERGES = {
   'White Chocolate Chips 4000ct': { into: 'White Chocolate Chips', count: '4K ct' },
   'Peanut Butter Chips 1000ct': { into: 'Peanut Butter Chips', count: '1K ct' },
   'Peanut Butter Chips 4000ct': { into: 'Peanut Butter Chips', count: '4K ct' },
+  // Marc's "Tray" (Five Star Packaging, ERP 120001, "Tray (OSP) - Kroger") is
+  // the Walmart 4-pk dough-puck tray — Caroline, Nov 13 2026. No count: the
+  // order unit stays as it is.
+  'Tray': { into: 'Plastic Tray — 3.0 Dough Pucks (4-pk WMT)' },
 };
 const MERGED_NOTE = 'Merged from the Assembler sheet’s 1000ct and 4000ct items (Nov 2 ’26). 1K / 4K is the chip count per lb, shown on each SKU’s order unit — compare on $/lb.';
 const ITEM_NOTES = {
@@ -236,7 +240,7 @@ function mergeSheet(items, vendors, skipped) {
     }
     if (merged) {
       sku.idKey = `${sheetItem}|${vendor ?? ''}|${sku.brand ?? ''}|${sku.order_unit}`;
-      sku.order_unit = `${sku.order_unit} · ${merged.count}`;
+      if (merged.count) sku.order_unit = `${sku.order_unit} · ${merged.count}`;
     }
 
     const facts = [
