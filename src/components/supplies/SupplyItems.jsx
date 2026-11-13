@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { openSupplyDoc } from '../../hooks/useSupplies';
+import { openSupplyDoc, deleteRow } from '../../hooks/useSupplies';
 import SpecTable from '../specsheet/SpecTable';
 import { useThumbs, DocThumb } from './docUi';
 import { Empty, Code } from '../specsheet/pills';
@@ -18,12 +18,17 @@ import {
 //       → dblclick a line: terms & notes, PO pickup/freight, 📄 original document
 //     and the item's documents (renderings, drawings, specs …) under its lines
 // The selected item lives in ?item= so the Vendors tab can link straight to it.
-// Edit controls render only while the page's edit lock is open (`editing`).
+// Edit controls render only while the page's edit lock is open (`editing`):
+// + Item; in the drill-down Edit item, + SKU, + Quote; per line Edit SKU,
+// + Quote for that SKU, Edit / Delete price (not PO lines — the POs tab owns
+// those), Delete SKU (only once it has no prices).
+
+const SMALL_BTN = 'px-2 py-0.5 rounded text-[10px] border border-lt text-pk hover:bg-pc';
 
 // Current price points first: on PO / active, then preliminary, expired, closed.
 const STATUS_RANK = { on_po: 0, active: 1, preliminary: 2, expired: 3, closed: 4 };
 
-export default function SupplyItems({ data, maps, editing, setModal }) {
+export default function SupplyItems({ data, maps, editing, setModal, onChanged }) {
   const [params, setParams] = useSearchParams();
   const itemId = params.get('item');
   const [lineId, setLineId] = useState(null);
@@ -97,7 +102,7 @@ export default function SupplyItems({ data, maps, editing, setModal }) {
           isRowSelected={(r) => r.id === itemId}
           renderRowDetail={(r) =>
             r.id === itemId && (
-              <ItemDrill item={r} maps={maps} lineId={lineId} setLineId={setLineId} onClose={() => selectItem(null)} editing={editing} setModal={setModal} />
+              <ItemDrill item={r} maps={maps} lineId={lineId} setLineId={setLineId} onClose={() => selectItem(null)} editing={editing} setModal={setModal} onChanged={onChanged} />
             )}
         />
       </div>
@@ -106,6 +111,11 @@ export default function SupplyItems({ data, maps, editing, setModal }) {
 
   return (
     <div>
+      {editing && (
+        <div className="flex justify-end mb-2">
+          <button onClick={() => setModal({ kind: 'item' })} className="px-3 py-1.5 rounded text-[11px] font-bold bg-pk text-white hover:opacity-90">+ Item</button>
+        </div>
+      )}
       <div className="text-[11px] text-gr mb-3 bg-cd border border-lt rounded-lg p-2.5">
         <b>Double-click an item</b> for its vendors and price points. <b>Double-click a price line</b> for terms, notes and the original document.
         Prices in <b className="text-dk">black</b> come from a PO or invoice; prices in <b>grey</b> are quotes; prices in <i className="text-gr/60">faint italic</i> are recorded on {REF_LABEL} — no document behind them, so they never count as the best quote. <b className="text-pk">⚑ get a quote</b> marks items priced only from {REF_LABEL}. The list shows the latest PO and the best open quote — <b>▸</b> expands the history.
@@ -285,7 +295,7 @@ function PoBlock({ quote, item, maps, editing, onEdit }) {
 }
 
 // ── item drill-down: one line per price point (SKUs with none get one line) ──
-function ItemDrill({ item, maps, lineId, setLineId, onClose, editing, setModal }) {
+function ItemDrill({ item, maps, lineId, setLineId, onClose, editing, setModal, onChanged }) {
   const ref = useRef(null);
   useEffect(() => {
     ref.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -381,7 +391,16 @@ function ItemDrill({ item, maps, lineId, setLineId, onClose, editing, setModal }
           <div className="text-[15px] font-bold text-dk">{item.name}</div>
           {item.notes && <div className="text-[11px] text-md max-w-[900px]">{item.notes}</div>}
         </div>
-        <button onClick={onClose} className="text-[10px] font-semibold px-2 py-0.5 rounded border border-lt text-gr hover:text-pk">✕ Close</button>
+        <div className="flex gap-1.5 items-center shrink-0">
+          {editing && (
+            <>
+              <button onClick={() => setModal({ kind: 'item', item })} className={SMALL_BTN}>Edit item</button>
+              <button onClick={() => setModal({ kind: 'sku', item })} className={SMALL_BTN}>+ SKU</button>
+              <button onClick={() => setModal({ kind: 'quote', item })} className={SMALL_BTN}>+ Quote</button>
+            </>
+          )}
+          <button onClick={onClose} className="text-[10px] font-semibold px-2 py-0.5 rounded border border-lt text-gr hover:text-pk">✕ Close</button>
+        </div>
       </div>
       <SpecTable
         key={item.id}
@@ -393,7 +412,7 @@ function ItemDrill({ item, maps, lineId, setLineId, onClose, editing, setModal }
         onRowDoubleClick={(l) => setLineId(l.id === lineId ? null : l.id)}
         isRowSelected={(l) => l.id === lineId}
         renderRowDetail={(l) =>
-          l.id === lineId && <LineDetail line={l} item={item} maps={maps} onClose={() => setLineId(null)} editing={editing} setModal={setModal} />}
+          l.id === lineId && <LineDetail line={l} item={item} maps={maps} onClose={() => setLineId(null)} editing={editing} setModal={setModal} onChanged={onChanged} />}
       />
       <ItemDocuments item={item} maps={maps} editing={editing} setModal={setModal} />
     </div>
@@ -441,8 +460,16 @@ function ItemDocuments({ item, maps, editing, setModal }) {
 }
 
 // ── line detail: terms, notes, the original document ────────────────────────
-function LineDetail({ line, item, maps, onClose, editing, setModal }) {
+function LineDetail({ line, item, maps, onClose, editing, setModal, onChanged }) {
   const { quote, sku, vendor } = line;
+  const onPo = quote && (quote.doc_type === 'po' || quote.po_id);
+  const skuQuotes = maps.quotesBySku.get(sku.id) || [];
+  const remove = async (what, table, id, msg) => {
+    if (!window.confirm(msg)) return;
+    const { error } = await deleteRow(table, id);
+    if (error) window.alert(`Couldn't delete the ${what}: ${error.message}`);
+    else { onClose(); onChanged(); }
+  };
   const contacts = maps.contactsByVendor.get(vendor?.id) || [];
   const fields = [
     ['MOQ', quote?.moq],
@@ -469,7 +496,32 @@ function LineDetail({ line, item, maps, onClose, editing, setModal }) {
             </div>
           )}
         </div>
-        <div className="flex gap-1.5 items-center">
+        <div className="flex gap-1.5 items-center flex-wrap justify-end">
+          {editing && (
+            <>
+              <button onClick={() => setModal({ kind: 'sku', item, sku })} className={SMALL_BTN}>Edit SKU</button>
+              <button onClick={() => setModal({ kind: 'quote', item, sku })} className={SMALL_BTN}>+ Quote for this SKU</button>
+              {quote && !onPo && (
+                <>
+                  <button onClick={() => setModal({ kind: 'quote', item, sku, quote })} className={SMALL_BTN}>Edit price</button>
+                  <button
+                    onClick={() => remove('price', 'quotes', quote.id, `Delete this ${docLabel(quote)} price for ${vendor?.name || 'this vendor'}? The original file stays in Documents.`)}
+                    className="px-2 py-0.5 rounded text-[10px] border border-red-200 text-red-600 hover:bg-red-50"
+                  >
+                    Delete price
+                  </button>
+                </>
+              )}
+              {!skuQuotes.length && (
+                <button
+                  onClick={() => remove('SKU', 'supply_skus', sku.id, `Delete the ${vendor?.name || ''} SKU “${sku.brand_name || sku.order_unit}”? It has no prices.`)}
+                  className="px-2 py-0.5 rounded text-[10px] border border-red-200 text-red-600 hover:bg-red-50"
+                >
+                  Delete SKU
+                </button>
+              )}
+            </>
+          )}
           {quote?.doc_path && (
             <button onClick={() => openSupplyDoc(quote.doc_path)} className="text-[11px] font-semibold px-3 py-1 rounded border border-pk text-pk hover:bg-pc">
               📄 Open original{quote.doc_date ? ` (${fmtDate(quote.doc_date)})` : ''}
