@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { openSupplyDoc } from '../../hooks/useSupplies';
 import SpecTable from '../specsheet/SpecTable';
+import { useThumbs, DocThumb } from './docUi';
 import { Empty, Code } from '../specsheet/pills';
 import {
   fmtMoney, fmtQty, fmtDate, fmtUnit, fmtCost, fmtPct, priceTone, headlinePrices, isActual, isReference, sourceRank, DocDate, QuoteStatus, docLabel,
-  VendorLink, ContactName, RefTag, GetQuoteFlag, REF_LABEL,
+  VendorLink, ContactName, RefTag, GetQuoteFlag, REF_LABEL, docKindLabel,
 } from './supplyUi';
 
 // Supplies tab (docs/SUPPLIES_SPEC.md).
@@ -15,6 +16,7 @@ import {
 //   assumed cost with the actual landed cost under it, flagged at ±5%
 //     → dblclick an item: its price lines open directly under the item row
 //       → dblclick a line: terms & notes, PO pickup/freight, 📄 original document
+//     and the item's documents (renderings, drawings, specs …) under its lines
 // The selected item lives in ?item= so the Vendors tab can link straight to it.
 // Edit controls render only while the page's edit lock is open (`editing`).
 
@@ -393,6 +395,47 @@ function ItemDrill({ item, maps, lineId, setLineId, onClose, editing, setModal }
         renderRowDetail={(l) =>
           l.id === lineId && <LineDetail line={l} item={item} maps={maps} onClose={() => setLineId(null)} editing={editing} setModal={setModal} />}
       />
+      <ItemDocuments item={item} maps={maps} editing={editing} setModal={setModal} />
+    </div>
+  );
+}
+
+// ── the item's documents: renderings, drawings, specs, and every quote / PO /
+// invoice assigned to it in the library ─────────────────────────────────────
+function ItemDocuments({ item, maps, editing, setModal }) {
+  const docs = [...(maps.docsByItem.get(item.id) || [])]
+    .sort((a, b) => String(b.doc_date || '').localeCompare(String(a.doc_date || '')));
+  const thumbs = useThumbs(docs);
+  if (!docs.length && !editing) return null;
+  return (
+    <div className="mt-3 pt-2 border-t border-pk/30">
+      <div className="flex items-center gap-2 mb-1.5">
+        <div className="text-[9px] font-bold uppercase tracking-wider text-dk">Documents · {docs.length}</div>
+        {editing && (
+          <button onClick={() => setModal({ kind: 'doc', itemIds: [item.id] })} className="px-2 py-0.5 rounded text-[10px] border border-lt text-pk hover:bg-pc">
+            + Add document
+          </button>
+        )}
+      </div>
+      {docs.length ? (
+        <div className="flex flex-wrap gap-3">
+          {docs.map((d) => (
+            <div key={d.id} className="flex gap-2 items-start w-[260px]">
+              <DocThumb doc={d} url={thumbs[d.doc_path]} size={64} />
+              <div className="min-w-0">
+                <div className="text-[11px] font-semibold text-dk leading-tight">{d.title}</div>
+                <div className="text-[9px] text-gr">{docKindLabel(d.doc_kind)}{d.doc_date ? ` · ${fmtDate(d.doc_date)}` : ''}</div>
+                {(maps.itemIdsByDoc.get(d.id) || []).length > 1 && (
+                  <div className="text-[9px] text-gr">also on {(maps.itemIdsByDoc.get(d.id) || []).length - 1} other item{(maps.itemIdsByDoc.get(d.id) || []).length > 2 ? 's' : ''}</div>
+                )}
+                {editing && (
+                  <button onClick={() => setModal({ kind: 'doc', doc: d })} className="text-[9px] font-semibold text-pk hover:underline">Edit / reassign</button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : <div className="text-[11px] text-gr italic">No documents for this item yet.</div>}
     </div>
   );
 }

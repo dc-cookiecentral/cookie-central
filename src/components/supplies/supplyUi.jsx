@@ -73,7 +73,22 @@ export function buildSupplyMaps(data) {
   // Items with any document at all, priced or not (a PO awaiting its price counts).
   const documentedItems = new Set(data.quotes.filter((q) => !isReference(q)).map((q) => skusById.get(q.sku_id)?.item_id));
 
+  // Document library: which items each document belongs to, and the reverse.
+  const documents = data.documents || [];
+  const itemIdsByDoc = new Map(documents.map((d) => [d.id, []]));
+  const docsByItem = new Map();
+  const docsById = new Map(documents.map((d) => [d.id, d]));
+  (data.docItems || []).forEach((x) => {
+    itemIdsByDoc.get(x.document_id)?.push(x.item_id);
+    const d = docsById.get(x.document_id);
+    if (!d) return;
+    if (!docsByItem.has(x.item_id)) docsByItem.set(x.item_id, []);
+    docsByItem.get(x.item_id).push(d);
+  });
+  const unassignedDocs = documents.filter((d) => !itemIdsByDoc.get(d.id)?.length);
+
   return {
+    itemIdsByDoc, docsByItem, unassignedDocs,
     vendorsById, skusById, itemsById, skusByItem, quotesBySku, contactsByVendor, breaksByQuote, lastOrderByItem, itemsByVendor,
     pricePointsByItem, posById, lineCostByQuote, itemCostById, freightPendingItems, documentedVendors, documentedItems,
   };
@@ -271,3 +286,17 @@ export function ContactName({ contact }) {
     </span>
   );
 }
+
+// ── documents ───────────────────────────────────────────────────────────────
+export const DOC_KINDS = [
+  ['rendering', 'Rendering / drawing'],
+  ['spec', 'Spec sheet'],
+  ['quote', 'Quote'],
+  ['po', 'PO'],
+  ['invoice', 'Invoice'],
+  ['packing_slip', 'Packing slip'],
+  ['coa', 'COA'],
+  ['other', 'Other'],
+];
+export const docKindLabel = (k) => DOC_KINDS.find(([v]) => v === k)?.[1] || k;
+export const isImagePath = (p) => /\.(png|jpe?g|gif|webp)$/i.test(p || '');

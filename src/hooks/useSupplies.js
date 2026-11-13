@@ -16,7 +16,12 @@ const SOURCES = [
   ['pos', 'supply_pos'],
   ['lineCost', 'v_po_line_cost'],
   ['itemCost', 'v_item_cost'],
+  ['documents', 'supply_documents'],
+  ['docItems', 'supply_document_items'],
 ];
+// Added after launch: if their migration isn't applied yet, the page still
+// loads, with an empty library, instead of failing on the missing table.
+const OPTIONAL = new Set(['documents', 'docItems']);
 
 export function useSupplies() {
   const [data, setData] = useState(null);
@@ -26,7 +31,7 @@ export function useSupplies() {
   const refresh = useCallback(async () => {
     setLoading(true);
     const results = await Promise.all(SOURCES.map(([, table]) => supabase.from(table).select('*')));
-    const failed = results.find((r) => r.error);
+    const failed = results.find((r, i) => r.error && !OPTIONAL.has(SOURCES[i][0]));
     if (failed) {
       setError(failed.error.message);
       setLoading(false);
@@ -34,7 +39,7 @@ export function useSupplies() {
     }
     const next = {};
     SOURCES.forEach(([key], i) => {
-      next[key] = results[i].data ?? [];
+      next[key] = results[i].error ? [] : results[i].data ?? [];
     });
     setData(next);
     setError(null);
@@ -80,7 +85,7 @@ export async function saveAssumedCost(itemId, value) {
 // SKUs → the uploaded file).
 //
 //   po:    { po_number, vendor_id, po_date, terms, lead_time, fulfillment, freight_cost, notes }
-//   lines: [{ sku_id | newSku: { item_id, brand_name, order_unit, unit_weight_lbs, units_per_order_unit, units_per_thousand },
+//   lines: [{ item_id, sku_id | newSku: { item_id, brand_name, order_unit, unit_weight_lbs, units_per_order_unit, units_per_thousand },
 //             qty, unit_price }]
 //   file:  optional File (the PO PDF) → supply-docs/<vendor-slug>/<date>_po-<number>.<ext>
 export async function createPurchaseOrder({ po, lines, file, vendorName }) {
@@ -153,6 +158,18 @@ export async function createPurchaseOrder({ po, lines, file, vendorName }) {
   })));
   if (bErr) return fail(bErr);
 
+  // The PO file also goes in the document library, assigned to its items.
+  if (docPath) {
+    const { data: doc, error: dErr } = await supabase.from('supply_documents').insert({
+      doc_path: docPath, title: `PO ${po.po_number}`, doc_kind: 'po', vendor_id: po.vendor_id, doc_date: po.po_date,
+    }).select('id').single();
+    if (dErr) return fail(dErr);
+    undo.push(() => supabase.from('supply_documents').delete().eq('id', doc.id));
+    const itemIds = [...new Set(lines.map((l) => l.item_id))];
+    const { error: lErr } = await supabase.from('supply_document_items').insert(itemIds.map((item_id) => ({ document_id: doc.id, item_id })));
+    if (lErr) return fail(lErr);
+  }
+
   return { error: null };
 }
 
@@ -169,7 +186,76 @@ export async function deletePurchaseOrder(po, quotes) {
   if (error) return { error };
   const paths = [...new Set(lines.map((q) => q.doc_path).filter(Boolean))]
     .filter((p) => !quotes.some((q) => q.po_id !== po.id && q.doc_path === p));
-  if (paths.length) await supabase.storage.from('supply-docs').remove(paths);
+  if (paths.length) {
+    await supabase.from('supply_documents').delete().in('doc_path', paths);
+    await supabase.storage.from('supply-docs').remove(paths);
+  }
+  return { error: null };
+}
+
+// ── document library (supply_documents + supply_document_items) ───────────
+const slug = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48);
+
+// Signed URLs for many paths at once (image thumbnails). { path → url }
+export async function signedUrls(paths) {
+  if (!paths.length) return {};
+  const { data } = await supabase.storage.from('supply-docs').createSignedUrls(paths, 3600);
+  return Object.fromEntries((data || []).filter((d) => d.signedUrl).map((d) => [d.path, d.signedUrl]));
+}
+
+// Add (with a file) or edit a document, and set exactly which items it
+// belongs to. An empty itemIds leaves it unassigned.
+//   doc: { id?, title, doc_kind, vendor_id, doc_date, notes }
+export async function saveDocument({ doc, file, itemIds, vendorName }) {
+  let id = doc.id;
+  let uploaded = null;
+  if (!id) {
+    if (!file) return { error: { message: 'Choose the file to upload.' } };
+    const ext = (file.name.split('.').pop() || 'pdf').toLowerCase();
+    const rand = Math.random().toString(36).slice(2, 6);
+    uploaded = `${slug(vendorName) || 'unsorted'}/${doc.doc_date || 'undated'}_${doc.doc_kind}-${slug(doc.title) || 'document'}-${rand}.${ext}`;
+    const { error: upErr } = await supabase.storage.from('supply-docs').upload(uploaded, file, { contentType: file.type || undefined });
+    if (upErr) return { error: { message: `Couldn't upload the file: ${upErr.message}` } };
+    const { data, error } = await supabase.from('supply_documents').insert({ ...doc, doc_path: uploaded }).select('id').single();
+    if (error) {
+      await supabase.storage.from('supply-docs').remove([uploaded]);
+      return { error };
+    }
+    id = data.id;
+  } else {
+    const { id: _, ...fields } = doc;
+    const { error } = await supabase.from('supply_documents').update(fields).eq('id', id);
+    if (error) return { error };
+  }
+  return assignDocument(id, itemIds);
+}
+
+// Make the document's items exactly `itemIds` (adds the new, removes the rest).
+export async function assignDocument(documentId, itemIds) {
+  const { data: cur, error } = await supabase.from('supply_document_items').select('item_id').eq('document_id', documentId);
+  if (error) return { error };
+  const have = new Set(cur.map((r) => r.item_id));
+  const want = new Set(itemIds);
+  const add = [...want].filter((i) => !have.has(i));
+  const drop = [...have].filter((i) => !want.has(i));
+  if (add.length) {
+    const { error: e } = await supabase.from('supply_document_items').insert(add.map((item_id) => ({ document_id: documentId, item_id })));
+    if (e) return { error: e };
+  }
+  if (drop.length) {
+    const { error: e } = await supabase.from('supply_document_items').delete().eq('document_id', documentId).in('item_id', drop);
+    if (e) return { error: e };
+  }
+  return { error: null };
+}
+
+// Remove a document from the library. The file is deleted too unless a price
+// line still opens it (quotes.doc_path), in which case only the library entry
+// goes and the line's 📄 keeps working.
+export async function deleteDocument(doc, quotes) {
+  const { error } = await supabase.from('supply_documents').delete().eq('id', doc.id);
+  if (error) return { error };
+  if (!quotes.some((q) => q.doc_path === doc.doc_path)) await supabase.storage.from('supply-docs').remove([doc.doc_path]);
   return { error: null };
 }
 
