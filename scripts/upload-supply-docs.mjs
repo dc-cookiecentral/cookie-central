@@ -27,7 +27,7 @@ const arg = (name) => {
   const i = process.argv.indexOf(name);
   return i > -1 ? process.argv[i + 1] : null;
 };
-const CATALOGUE = arg('--catalogue') ?? join(ROOT, '../dc-supplies/index.html');
+const CATALOGUE = arg('--catalogue') ?? join(ROOT, 'archive/dc-supplies/index.html');
 const OUT = arg('--out');
 
 function loadPages(file) {

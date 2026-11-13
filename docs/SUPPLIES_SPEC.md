@@ -119,7 +119,7 @@ Extract the config-driven modal → `src/components/shared/EditModal.jsx` (Spec 
 ---
 
 ## Sequencing & delivery
-Each phase = one branch/PR (ERP deploys via GitHub integration — no CLI deploys). V1 ships the schema + seeded read-only pages; V2 adds the lock + forms; V3a/V3b each their own PR. dc-supplies static catalogue stays live until V1 reaches parity, then frozen as archive.
+Each phase = one branch/PR (ERP deploys via GitHub integration — no CLI deploys). V1 ships the schema + seeded read-only pages; V2 adds the lock + forms; V3a/V3b each their own PR. dc-supplies static catalogue stays live until V1 reaches parity, then frozen as archive. *Done Nov 12 2026: the catalogue (rev 7) is frozen at `archive/dc-supplies/` and its public Vercel site is deleted.*
 
 ---
 
@@ -149,7 +149,7 @@ Each phase = one branch/PR (ERP deploys via GitHub integration — no CLI deploy
 **Apply order after merge** (done Oct 29 2026 — the migration needed `--include-all` because `20261028150000` reached the live DB first, and the upload script didn't land the PDFs, so they were uploaded in the dashboard):
 1. `npx supabase db push --dry-run` → expect only `20261028120000_supplies.sql` → `db push --yes`
 2. Put `scripts/supplies-data.local.mjs` in place (gitignored), run `node scripts/build-supplies-seed.mjs`, then paste the generated `supabase/seeds/supplies_seed.sql` into the SQL editor (idempotent — safe to re-run)
-3. `SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… node scripts/upload-supply-docs.mjs` (reads `../dc-supplies/index.html`; `--out <dir>` builds the PDFs locally without uploading)
+3. `SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… node scripts/upload-supply-docs.mjs` (reads `archive/dc-supplies/index.html`; `--out <dir>` builds the PDFs locally without uploading)
    - To keep the key out of shell history: run `read -s "KEY?Service role key: "` **on its own**, paste the key, press Enter, then run the upload with `SUPABASE_SERVICE_ROLE_KEY="$KEY"` and `unset KEY` afterwards. Pasted together, the prompt takes the next line as the key and every file fails with "Invalid Compact JWS". The key must be the project's service_role key (`eyJ…`, two dots) or a `sb_secret_…` key, not the JWT secret. (Re-uploaded this way 2026-11-05.)
 
 **Verified locally (PGlite, Oct 28):** migration applies twice cleanly; seed loads 32 vendors · 18 contacts · 49 items (38 ingredient / 11 packaging) · 95 SKUs · 88 price points · 103 breaks; a seed re-run writes zero rows and zero audit entries. Acceptance check passes: Light Brown Sugar shows Dawn and St Charles side by side with computed $/lb; the LallyPak pouch shows $/1,000 falling across its four breaks; Batory's $/lb matches its SO. All 11 PDFs build and open. Pages were server-rendered against the seeded data and screenshotted.
@@ -202,5 +202,5 @@ Each phase = one branch/PR (ERP deploys via GitHub integration — no CLI deploy
 
 ### Standing rails for the build (so future sessions don't relearn them)
 - cookie-central deploys via **GitHub integration** — never run the Vercel CLI in that folder; each phase ships as its own branch/PR
-- dc-supplies deploys via CLI from `~/Projects/dirty-cookie/dc-supplies` (`npx vercel --prod`); if Vercel asks setup questions there, STOP — create new project, never accept a suggested existing one
+- dc-supplies is **retired** (Nov 12 2026): its Vercel project is deleted and the folder is a local, gitignored archive at `archive/dc-supplies/`. Never redeploy it — Supplies & Vendors in Cookie Central is the only place supplies data lives. New quotes/vendors go into the ERP.
 - $/lb and per-1,000 prices are always computed, never stored/typed
