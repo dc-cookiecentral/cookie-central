@@ -25,11 +25,13 @@ export default function PurchaseOrders({ data, maps, editing, setModal, onChange
   const rows = (data.pos || [])
     .map((po) => {
       const lines = linesByPo.get(po.id) || [];
+      const current = currentLines(lines);
       return {
         ...po,
         vendor: maps.vendorsById.get(po.vendor_id) || null,
         lines,
-        total: lines.reduce((s, q) => s + lineTotal(q), 0),
+        current,
+        total: lines.filter((q) => current.has(q.id)).reduce((s, q) => s + lineTotal(q), 0),
         docPath: lines.find((q) => q.doc_path)?.doc_path || null,
       };
     })
@@ -55,7 +57,7 @@ export default function PurchaseOrders({ data, maps, editing, setModal, onChange
       render: (r) =>
         r.lines.length ? (
           <div className="space-y-0.5">
-            {r.lines.map((q) => {
+            {r.lines.filter((q) => r.current.has(q.id)).map((q) => {
               const item = maps.itemsById.get(maps.skusById.get(q.sku_id)?.item_id);
               return <div key={q.id} className="whitespace-nowrap">{item?.name || 'item?'}</div>;
             })}
@@ -116,6 +118,23 @@ export default function PurchaseOrders({ data, maps, editing, setModal, onChange
   );
 }
 
+// A PO can carry several lines for the same SKU: the PO itself plus the
+// vendor's SO or invoice confirming it (SP026: PO + SO-1758307). Only the
+// latest per SKU counts — the same rule as v_po_line_cost (doc_date desc,
+// nulls last, then quote id) — so the PO total isn't doubled.
+function currentLines(lines) {
+  const best = new Map();
+  lines.forEach((q) => {
+    const cur = best.get(q.sku_id);
+    const newer = !cur
+      || (q.doc_date && !cur.doc_date)
+      || (q.doc_date && cur.doc_date && q.doc_date > cur.doc_date)
+      || (q.doc_date === cur.doc_date && q.id < cur.id);
+    if (newer) best.set(q.sku_id, q);
+  });
+  return new Set([...best.values()].map((q) => q.id));
+}
+
 const Pending = ({ children }) => (
   <span className="inline-block px-1.5 py-px rounded text-[9px] font-bold bg-amber-100 text-amber-700">⚑ {children}</span>
 );
@@ -155,11 +174,13 @@ function PoDetail({ po, maps, editing, onClose, onEdit, onDelete }) {
               const breaks = maps.breaksByQuote.get(q.id) || [];
               const c = maps.lineCostByQuote.get(q.id);
               const ing = item?.kind === 'ingredient';
+              const superseded = !po.current.has(q.id);
               return (
-                <tr key={q.id} className="border-t border-lt align-top">
+                <tr key={q.id} className={`border-t border-lt align-top ${superseded ? 'opacity-50' : ''}`}>
                   <td className="py-1 pr-3">
                     {item ? <Link to={`/supplies?item=${item.id}`} className="font-semibold text-pk hover:underline">{item.name}</Link> : <Empty />}
                     <div className="text-[9px] text-gr">{docLabel(q)}</div>
+                    {superseded && <div className="text-[9px] text-gr italic">superseded by a later document for this item: not counted in the PO total</div>}
                   </td>
                   <td className="py-1 pr-3 text-md">{[sku?.brand_name, sku?.order_unit].filter(Boolean).join(' · ') || <Empty />}</td>
                   <td className="py-1 pr-3">{breaks.length ? breaks.map((b) => <div key={b.break_id}>{fmtQty(b.qty)}</div>) : <Empty />}</td>
