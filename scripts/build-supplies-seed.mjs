@@ -32,8 +32,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as XLSX from 'xlsx';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const OUT = join(ROOT, 'supabase/seeds/supplies_seed.sql');
 const arg = (flag, dflt) => (process.argv.includes(flag) ? process.argv[process.argv.indexOf(flag) + 1] : dflt);
+// --out <file> writes elsewhere (tests, previews); default is the seed path.
+const OUT = arg('--out', join(ROOT, 'supabase/seeds/supplies_seed.sql'));
 const SHEET = arg('--sheet', join(ROOT, 'scripts/marc-supplies.local.xlsx'));
 if (!existsSync(SHEET)) {
   console.error(`Missing ${SHEET} — Marc's item-by-supplier sheet (local only: it carries contacts and pricing). See the header of this script.`);
@@ -51,7 +52,12 @@ if (!existsSync(DATA)) {
   console.error(`Missing ${DATA} — the local-only rev 6 vendor data. See the header of this script.`);
   process.exit(1);
 }
-const { VENDORS, REV6_ITEMS, PURCHASE_ORDERS = [], RETIRED_ITEMS = [] } = await import(pathToFileURL(DATA).href);
+// DOCUMENTS (optional): library-only files — renderings, drawings, spec
+// sheets, and documents whose item isn't clear yet. { path, title, kind,
+// vendor?, date?, notes?, items: [item names] } — items [] = unassigned.
+// `local` (optional) is the file on this Mac that upload-supply-docs.mjs
+// --local uploads to `path`; quotes' `doc` objects can carry `local` too.
+const { VENDORS, REV6_ITEMS, PURCHASE_ORDERS = [], RETIRED_ITEMS = [], DOCUMENTS = [] } = await import(pathToFileURL(DATA).href);
 
 // ── Marc's sheet → items ────────────────────────────────────────────────────
 const VENDOR_ALIASES = {
@@ -407,6 +413,35 @@ function legacySheetSql(emitted) {
     (items.length ? `DELETE FROM supply_items i WHERE assumed_cost IS NULL AND NOT EXISTS (SELECT 1 FROM supply_skus s WHERE s.item_id = i.id) AND id IN (\n  ${list(items)});\n` : '');
 }
 
+// A corrected quantity gets a new break id (ids include the qty), so the old
+// break would linger and double the line total. Delete breaks on SEEDED quotes
+// that the seed no longer emits. App-created quotes are never touched.
+function staleBreaksSql(qrows, brows) {
+  if (!qrows.length) return '';
+  return '\n-- Breaks on seeded quotes that the seed no longer emits (corrected quantities)\n' +
+    `DELETE FROM quote_breaks WHERE quote_id IN (\n  ${qrows.map((r) => r[0]).join(',\n  ')})\n` +
+    `  AND id NOT IN (\n  ${brows.map((r) => r[0]).join(',\n  ')});\n`;
+}
+
+// Library rows are INSERT-ONLY, keyed by file path: once a document exists,
+// its title, type and item assignments belong to the app (someone may have
+// reassigned it), so a re-run never changes them. Item links are created only
+// together with a newly inserted document.
+function librarySql(lib) {
+  if (!lib.size) return '';
+  let sql = '\n-- Document library (supply_documents) — insert-only; links only for new rows\n';
+  for (const [path, d] of lib) {
+    const links = d.items.map((n) => `(${id('item', n)})`).join(', ');
+    sql += `WITH ins AS (\n  INSERT INTO supply_documents (doc_path, title, doc_kind, vendor_id, doc_date, notes)\n` +
+      `  VALUES (${q(path)}, ${q(d.title)}, ${q(d.kind)}, ${d.vendor ? id('vendor', d.vendor) : 'NULL'}, ${q(d.date)}, ${q(d.notes)})\n` +
+      `  ON CONFLICT (doc_path) DO NOTHING RETURNING id)\n` +
+      (links
+        ? `INSERT INTO supply_document_items (document_id, item_id) SELECT ins.id, x.item_id FROM ins, (VALUES ${links}) AS x(item_id) ON CONFLICT (document_id, item_id) DO NOTHING;\n`
+        : 'SELECT count(*) FROM ins;\n');
+  }
+  return sql;
+}
+
 function build() {
   const items = structuredClone(REV6_ITEMS);
   const vendors = structuredClone(VENDORS);
@@ -428,6 +463,18 @@ function build() {
       crows.push([id('contact', `${v.name}|${c.name}`), id('vendor', v.name), q(c.name), q(c.role), q(c.phone_office), q(c.phone_cell), q(c.email), q(!!c.is_primary), q(c.source ?? null)]);
     }
   }
+  // Library documents (supply_documents), keyed by file path. A file several
+  // price lines open is one document assigned to each of their items.
+  const lib = new Map();
+  const libDoc = (path, d) => {
+    const cur = lib.get(path);
+    if (cur) {
+      d.items.forEach((n) => { if (!cur.items.includes(n)) cur.items.push(n); });
+      if (d.date && (!cur.date || d.date < cur.date)) Object.assign(cur, { date: d.date, title: d.title, kind: d.kind });
+      return;
+    }
+    lib.set(path, { ...d, items: [...d.items] });
+  };
   const skuKeys = new Set();
   for (const i of items) {
     if (i.primary && !vendorNames.has(i.primary)) throw new Error(`unknown primary vendor ${i.primary}`);
@@ -449,21 +496,38 @@ function build() {
         for (const [qty, price] of qt.breaks ?? []) {
           brows.push([id('break', `${qkey}|${qty}`), id('quote', qkey), q(qty), q(price)]);
         }
+        if (qt.doc?.path) {
+          libDoc(qt.doc.path, {
+            title: qt.doc.title ?? qt.doc_ref ?? qt.doc_type,
+            kind: qt.doc.kind ?? (/_ps-/.test(qt.doc.path) ? 'packing_slip' : { po: 'po', invoice: 'invoice', quote: 'quote', verbal: 'quote' }[qt.doc_type] ?? 'other'),
+            vendor: s.vendor, date: qt.doc_date, items: [i.name],
+          });
+        }
       });
     }
   }
 
+  const itemNames = new Set(items.map((i) => i.name));
+  for (const d of DOCUMENTS) {
+    if (d.vendor && !vendorNames.has(d.vendor)) throw new Error(`unknown vendor ${d.vendor} on document ${d.path}`);
+    for (const n of d.items ?? []) if (!itemNames.has(n)) throw new Error(`unknown item ${n} on document ${d.path}`);
+    if (!['rendering', 'spec', 'quote', 'po', 'invoice', 'packing_slip', 'coa', 'other'].includes(d.kind)) throw new Error(`bad kind ${d.kind} on ${d.path}`);
+    libDoc(d.path, { title: d.title, kind: d.kind, vendor: d.vendor, date: d.date, notes: d.notes, items: d.items ?? [] });
+  }
+  const unassignedDocs = [...lib.values()].filter((d) => !d.items.length).length;
+
   const header = `-- Cookie Central — Supplies seed (catalogue rev 6 + Marc’s sheet)
 --
 -- GENERATED by scripts/build-supplies-seed.mjs — edit the script, not this file.
--- docs/SUPPLIES_SPEC.md §V1.2. Applied manually via the SQL editor AFTER
--- 20261028120000_supplies.sql (seeds live in supabase/seeds/, per ADR-019).
+-- docs/SUPPLIES_SPEC.md §V1.2. Applied manually via the SQL editor AFTER the
+-- supplies migrations through 20261113120000_supply_documents.sql (seeds live
+-- in supabase/seeds/, per ADR-019). One transaction: any error rolls it all back.
 -- Then upload the original documents: node scripts/upload-supply-docs.mjs
 --
 -- Idempotent: ids are md5('<kind>:<natural key>')::uuid and every INSERT is
 -- ON CONFLICT (id) DO UPDATE, so re-running refreshes in place.
 --
--- Counts: ${vrows.length} vendors, ${crows.length} contacts, ${irows.length} items (${items.filter((i) => i.kind === 'ingredient').length} ingredient / ${items.filter((i) => i.kind === 'packaging').length} packaging), ${srows.length} SKUs, ${qrows.length} price points, ${brows.length} breaks.
+-- Counts: ${vrows.length} vendors, ${crows.length} contacts, ${irows.length} items (${items.filter((i) => i.kind === 'ingredient').length} ingredient / ${items.filter((i) => i.kind === 'packaging').length} packaging), ${srows.length} SKUs, ${qrows.length} price points, ${brows.length} breaks, ${lib.size} library documents (${unassignedDocs} unassigned).
 -- Not imported / skipped: ${skipped.join('; ')}.
 
 BEGIN;
@@ -477,6 +541,8 @@ BEGIN;
     upsert('supply_pos', ['id', 'po_number', 'vendor_id', 'po_date', 'fulfillment', 'packing_slip_ref', 'ship_date', 'freight_cost', 'notes'], porows, { insertOnly: true }) + '\n' +
     upsert('quotes', ['id', 'sku_id', 'vendor_id', 'doc_type', 'doc_ref', 'doc_date', 'valid_until', 'moq', 'lead_time', 'terms', 'one_time_costs', 'status', 'notes', 'doc_path', 'po_id'], qrows, { keep: ['po_id'] }) + '\n' +
     upsert('quote_breaks', ['id', 'quote_id', 'qty', 'price_per_order_qty'], brows) +
+    staleBreaksSql(qrows, brows) +
+    librarySql(lib) +
     mergedItemsSql() +
     legacySheetSql(new Set([...qrows, ...srows, ...irows].map((r) => r[0]))) +
     // Items the seed used to create under another name (their SKUs and quotes cascade).
