@@ -7,13 +7,15 @@ import SupplyItems from '../components/supplies/SupplyItems';
 import VendorRolodex from '../components/supplies/VendorRolodex';
 import PurchaseOrders from '../components/supplies/PurchaseOrders';
 import PoForm from '../components/supplies/PoForm';
+import SupplyDocuments from '../components/supplies/SupplyDocuments';
+import DocumentModal from '../components/supplies/DocumentModal';
 import EditModal from '../components/shared/EditModal';
 import { supplyForm } from '../components/supplies/supplyForms';
 
 // Supplies & Vendors (docs/SUPPLIES_SPEC.md).
-// One window, three tabs over the same data: Supplies (items → vendor price
-// lines → terms/docs), POs (purchase orders → their lines) and Vendors (the
-// rolodex). The tab lives in ?tab= so
+// One window, four tabs over the same data: Supplies (items → vendor price
+// lines → terms/docs), POs (purchase orders → their lines), Documents (the
+// document library, unassigned first) and Vendors (the rolodex). The tab lives in ?tab= so
 // vendor names can link across (?tab=vendors&vendor=<id>) and items back
 // (?item=<id>). /vendors redirects here.
 //
@@ -24,6 +26,7 @@ import { supplyForm } from '../components/supplies/supplyForms';
 const TABS = [
   { key: 'supplies', label: 'Supplies' },
   { key: 'pos', label: 'POs' },
+  { key: 'docs', label: 'Documents' },
   { key: 'vendors', label: 'Vendors' },
 ];
 
@@ -32,7 +35,7 @@ export default function Supplies() {
   const canEdit = ['admin', 'ops'].includes(profile?.role);
   const [editMode, setEditMode] = useState(false);
   const editing = canEdit && editMode;
-  const [modal, setModal] = useState(null); // { kind: 'assumed', item } | { kind: 'po', quote, po, item } | { kind: 'newPo' }
+  const [modal, setModal] = useState(null); // { kind: 'assumed', item } | { kind: 'po', quote, po, item } | { kind: 'newPo' } | { kind: 'doc', doc?, itemIds? }
   const { data, loading, error, refresh } = useSupplies();
   const [params, setParams] = useSearchParams();
   const tab = TABS.some((t) => t.key === params.get('tab')) ? params.get('tab') : 'supplies';
@@ -67,6 +70,11 @@ export default function Supplies() {
             }
           >
             {t.label}
+            {t.key === 'docs' && maps?.unassignedDocs.length > 0 && (
+              <span className={`ml-1 px-1.5 rounded-full text-[9px] font-bold ${tab === t.key ? 'bg-white text-pk' : 'bg-amber-100 text-amber-700'}`}>
+                {maps.unassignedDocs.length} unassigned
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -80,6 +88,8 @@ export default function Supplies() {
         </div>
       ) : tab === 'vendors' ? (
         <VendorRolodex data={data} maps={maps} />
+      ) : tab === 'docs' ? (
+        <SupplyDocuments data={data} maps={maps} editing={editing} setModal={setModal} onChanged={refresh} />
       ) : tab === 'pos' ? (
         <PurchaseOrders data={data} maps={maps} editing={editing} setModal={setModal} onChanged={refresh} />
       ) : (
@@ -97,7 +107,20 @@ export default function Supplies() {
           }}
         />
       )}
-      {modal && modal.kind !== 'newPo' && (
+      {modal?.kind === 'doc' && (
+        <DocumentModal
+          data={data}
+          maps={maps}
+          doc={modal.doc || null}
+          presetItemIds={modal.itemIds}
+          onClose={() => setModal(null)}
+          onSaved={() => {
+            setModal(null);
+            refresh();
+          }}
+        />
+      )}
+      {modal && !['newPo', 'doc'].includes(modal.kind) && (
         <EditModal
           {...supplyForm(modal)}
           data={data}

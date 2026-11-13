@@ -101,7 +101,7 @@ export default function PoForm({ data, maps, onClose, onSaved }) {
       if (!(qty > 0)) return setErr(`${where}: quantity must be more than 0.`);
       if (price == null || !(price >= 0)) return setErr(`${where}: enter the price per order unit from the PO.`);
       if (l.sku_id && l.sku_id !== NEW) {
-        out.push({ sku_id: l.sku_id, qty, unit_price: price });
+        out.push({ sku_id: l.sku_id, item_id: item.id, qty, unit_price: price });
         continue;
       }
       if (!l.order_unit.trim()) return setErr(`${where}: enter the order unit, e.g. "50 lb bag".`);
@@ -110,7 +110,7 @@ export default function PoForm({ data, maps, onClose, onSaved }) {
       if (item.kind === 'ingredient' && !(lbs > 0)) return setErr(`${where}: enter the lb per order unit, so $/lb can be worked out.`);
       if (item.kind === 'packaging' && pcs != null && !(pcs > 0)) return setErr(`${where}: pieces per order unit must be more than 0.`);
       out.push({
-        qty, unit_price: price,
+        item_id: item.id, qty, unit_price: price,
         newSku: {
           item_id: item.id,
           brand_name: l.brand_name.trim() || null,
