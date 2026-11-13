@@ -1,7 +1,7 @@
 # Cookie Central — Build Plan
 
 ## Timeline
-*(current as of November 9, 2026)*
+*(current as of November 13, 2026)*
 - **Start:** Wednesday May 21, 2026
 - **Phase 1 demo:** delivered June 2026 (Marc + David) ✅
 - **Phase 1 ship:** largely live. AI email reader (Day 10) ✅ and lot-traceability chain UI (Day 11) ✅ done. Remaining: Cortina NetSuite real-file reconciliation (waiting on Harshita's sample); DOT/QBO real-file reconciliation non-blocking.
@@ -93,7 +93,7 @@
   - [x] `po_line_items.cut_reason` / `.actual_delivery_date` were NULL on all 1,858 rows — fixed 2026-10-27/28. The nightly `gmail-extract` bundle predated migration 20260824150000, so delivery dates landed in `metadata` only and Cut Reason nowhere. Fixes: trigger + backfill migration `20261027160000_po_line_promoted_cols_guard.sql`, and `gmail-extract` redeployed (Caroline, 10-27 evening). **Deviation:** the migration was applied to prod via the dashboard SQL editor on 10-27, ahead of any `supabase db push` — it is idempotent, so a later `db push` is safe. Verified 2026-10-28 after the 7 AM run (`Walmart_Orders_2026-10-27.xlsx`, complete): **268 lines now carry cut_reason** (was 0), 1,557 a column-level delivery date.
   - [x] Weekly Retail Link restatements were ERASING `store_on_hand` history — fixed 2026-10-27. The workbook restates every week but carries on-hand only for its own week; the single bulk upsert wrote the union of payload columns, nulling all earlier weeks' readings (after the WK38 upload, only wk 202638 had one left). Fixed in `src/parsers/retailLink.js`: rows without a reading now upsert without those columns. Branch `fix/ingest-promoted-cols-and-oh`, PR merged 10-27.
   - [x] **The DOT on-hand report exists** — received 2026-10-27, overturning `DEMAND_PLANNER_KNOWN_ISSUES.md` §3. DOT's **Inventory Snapshot** (three tabs: Inventory Summary per lot with RG/EX status + Loaded/Picked; WH Summary per location — Mt. Sterling IL and Dyersburg; Aggregated Orders in-transit) carries real on-hand. First reading: good stock WC 1,531 / PBG 743 / CCF 1,544 / BC 1,257 cases; **1,086 expired cases sitting at DOT** (PBG 458) needing disposition; 1,005 cases committed to POs.
-  - [x] Standalone prototype moved onto disk + Vercel — 2026-10-28. `~/Projects/dirty-cookie/demand-planner` (Vite app, own Vercel project): the claude.ai iteration surface, deliberately separate from `/demand-planner` in this app.
+  - [x] Standalone prototype moved onto disk + Vercel — 2026-10-28. `~/Projects/dirty-cookie/demand-planner` (Vite app, own Vercel project): the claude.ai iteration surface, deliberately separate from `/demand-planner` in this app. *2026-11-12: retired — its Vercel project deleted (it was public), the folder moved to the gitignored `cookie-central/archive/demand-planner`.*
 
   *To do*
   - [x] Inventory Snapshot parser + upload card → a real DOT on-hand feed — built 2026-10-28/29 on `feat/dot-on-hand` (see below). §1 still needs the production feed
@@ -409,6 +409,35 @@
   - [ ] Open `/walmart-compliance` to the cortina login once complete (route group + sidebar `CORTINA_NAV`); decide what of our cost data Cortina may see first
   - [ ] Optional: CSV download of the issue lists (for sending to Cortina / DOT); an SQEP item in the planner's actions panel
 
+  **November 12–13 2026 — Old sites retired, Vercel cleaned up; Supplies: new PO entry + POs tab.** Two releases, both merged to `main`, pushed and live: `af7e70f` (archive, docs only) and `da5d6c8` (PO entry). Supplies notes in `docs/SUPPLIES_SPEC.md` status log.
+
+  *Done*
+  - [x] **Six retired Vercel projects deleted** (Caroline: "everything should be secured and protected"): `dc-supplies`, `dc_packaging`, `demand-planner`, `vercel-app`, `sample_central`, `sample_central-1`. Five were **public with no login** — including dc-supplies, which carried vendor pricing and scanned invoices/POs. All now return `DEPLOYMENT_NOT_FOUND`; only `cookie-central` remains. No secrets were exposed (dc-packaging's `.env.local` was never uploaded) — 2026-11-12
+  - [x] **Local copies kept first**, in the gitignored `cookie-central/archive/`: `dc-supplies` (rev 7, byte-identical to what was live), `dc-packaging` (identical), `demand-planner` moved there from `~/Projects/dirty-cookie/`; downloaded from the live sites before deleting: `vercel-app` (the only one with no source anywhere), `sample_central-1` + its Cookulator page, and the built `demand-planner` — 2026-11-12
+  - [x] `~/Projects/dirty-cookie/` now holds only `cookie-central`. `.gitignore`: `archive/` replaces `dc-packaging/`; `upload-supply-docs.mjs` reads `archive/dc-supplies/index.html`; Supplies spec records dc-supplies as retired (commit `4259b72`, merged `af7e70f`) — 2026-11-12
+  - [x] **New PO entry + POs tab** (Caroline: "add PO for ingredients and for it to update Supplies and Vendors"): `+ New PO` (vendor, PO #, date, terms, pickup/delivered, freight, PO file; one line per item with the vendor's SKU or a new one, qty, $ per order unit) writes `supply_pos` + a `po` quote line + a break per line, so last PO price, Last Order, actual landed cost, the ±5% flag and the vendor's card update through the existing views. POs tab lists every PO with its lines; Edit PO / Delete PO behind the lock. No migration. Verified in PGlite against the three supplies migrations and by server renders (commit `04b61b4`, merged `da5d6c8`); **live 2026-11-12**, bundle checked for the new form
+  - [x] Packing slip 522657 (from Caroline's email, Nov 13) checked: **duplicate**, every detail already filed on Oct 29 (PO SP029-2026, MoisturLOK 12 × 55 lb, lot, Prism pickup); not re-added — 2026-11-13
+
+  *Decisions* (Caroline, Nov 12)
+  - **One app, pages together.** The six areas (EOS, Demand Planner, Walmart Compliance, Spec Sheet, Supplies & Vendors, Sample Central) stay as pages of the one `cookie-central` app — shared login, database, sidebar and deploy. Not split into per-page folders or apps. Old prototypes live in the gitignored `archive/`.
+  - **Nothing is public for now.** Hobby can't password-protect a production URL, so a static page is made private by deleting it. Public sharing to be worked out later (through the app's login, or Pro password protection).
+  - **Supplies data lives only in Cookie Central.** dc-supplies is frozen; new quotes and vendors go into the ERP.
+
+  *Deviations*
+  - **The spec's "freeze dc-supplies once V1 reaches parity" was done by deleting its site**, not by leaving it up as a read-only archive — it was public and held vendor pricing.
+  - **V2.2 order changed:** Nov 2 planned Add quote + PDF upload first. PO entry came first because Caroline asked for it; it covers PDF upload for PO documents only.
+  - **PO form is its own component** (`PoForm.jsx`), not an `EditModal` config, because a PO has repeating lines. Same look.
+  - **No client-side transaction in Supabase**, so a failed PO save undoes what already landed in reverse order rather than using a database function — chosen to avoid a migration.
+  - Couldn't delete the old `.vercel/` links and dc-packaging's `.env.local` (a Vercel OIDC token) inside `archive/` — the permission check refused the `rm`. Their projects no longer exist, so they are inert.
+
+  *To do*
+  - [ ] Caroline: **turn on 2FA** on the Vercel account
+  - [ ] Caroline: cookie-central → Settings → Deployment Protection — confirm **Vercel Authentication = Standard Protection** (the CLI doesn't show it)
+  - [ ] Caroline: enter the first real PO and check the item's last PO price, Last Order and actual cost update; delete and re-enter if anything is off (not yet clicked through against the live database)
+  - [ ] Optional: delete `archive/*/.vercel/` and `archive/dc-packaging/.env.local`
+  - [ ] Delete the merged local branches `chore/archive-old-sites` and `feat/supplies-new-po`
+  - [ ] Supplies, next: add a new vendor / new item from the app (needed before a PO to a first-time vendor), edit a saved PO's lines, file an invoice against a PO
+
   **October 28–29 2026 — Supplies & Vendors (`docs/SUPPLIES_SPEC.md`).** PRs #67 (V1), #68 (V1.1), #69 (V1.2), all merged and live. Full build notes in the spec's status log.
 
   *Done*
@@ -432,11 +461,11 @@
   - [x] Back up `scripts/supplies-data.local.mjs` outside the repo (it exists only on this Mac) — *Nov 2: now also `scripts/marc-supplies.local.xlsx`* — 2026-11-05: both copied by Caroline to the **systems@dirtycookie.com** Google Drive (unshared folder). Not via the Drive connector, which is signed into her personal Gmail. Re-copy after either file changes
   - [ ] Enter freight on Batory SP026 and AAI SP029 once the trucks are booked; McCormick SP028 pickup / delivered + freight (all three yellow-flagged)
   - [ ] Set assumed costs per item
-  - [ ] AAI Moisturlok unit price off PO SP029 (slip has none); who books the EXW Stockton cold-storage pickup
+  - [ ] AAI Moisturlok unit price off PO SP029 (slip has none); who books the EXW Stockton cold-storage pickup — *Nov 13: still open; the slip was re-sent and is a duplicate. Needs the PO itself or AAI's invoice. Ship date Nov 2 has passed, so SP029's freight can likely be entered*
   - [x] ~~Confirm ERP 121002 = Great River dough-puck tray; decide whether the undated Assembler-sheet prices stay "active" quotes~~ — superseded 2026-11-02: the Assembler sheet was replaced by Marc's sheet, whose prices are a de-emphasized "reference" tier, not quotes; 121002 isn't on Marc's sheet, so the code was dropped (see Nov 2 below)
   - [ ] Click through `/supplies` in the real app (verified only by server renders); compare against the v13 prototype — *Nov 5: still to do; the PDFs are now in `supply-docs`, so the quote document links can be checked too*
   - [x] Find why `upload-supply-docs.mjs` didn't upload on Caroline's run — 2026-11-05: the script was fine (all 11 PDFs build with `--out`). Pasting the `read -s` key prompt together with the next command line made the prompt take that line as the key, so Storage answered "Invalid Compact JWS" for every file. With `read -s` run on its own and the service_role key checked (`eyJ…`, 2 dots), Caroline re-ran it and reports all 11 uploaded to `supply-docs`
-  - [ ] Rest of V2 — *Nov 2: V2.1 shared EditModal done (#71); V2.2 add/edit vendors, items, SKUs, quotes, PDF upload still to do* — then V3a / V3b
+  - [ ] Rest of V2 — *Nov 2: V2.1 shared EditModal done (#71); V2.2 add/edit vendors, items, SKUs, quotes, PDF upload still to do* — *Nov 12: new PO entry (with new SKUs and the PO file) + POs tab done, see Nov 12–13* — then V3a / V3b
 
   **November 2 2026 — Supplies: chip merge, V2.1 shared modal, Marc's sheet as the base.** Notes in `docs/SUPPLIES_SPEC.md` status log.
 

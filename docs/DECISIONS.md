@@ -316,7 +316,7 @@ Supersedes the interim design in which the salesperson picked from a curated six
 
 ## ADR-030: Sample Central adopts the prototype's shell (own chrome, 3 tabs, builder drawer)
 **Date:** July 28, 2026
-**Status:** Accepted. Realizes the visual design in `prototype/sample_central_prototype.html` (deployed at `samplecentral-1.vercel.app`), which had been the reference for Phase 2 but was only loosely followed by the React build.
+**Status:** Accepted. Realizes the visual design in `prototype/sample_central_prototype.html` (deployed at `samplecentral-1.vercel.app` — *that deployment deleted Nov 12 2026; the file is still in `prototype/`*), which had been the reference for Phase 2 but was only loosely followed by the React build.
 
 **Decision.** Sample Central is routed **outside the shared `Layout`** and carries the prototype's own chrome instead of the app sidebar:
 - **Aubergine top nav** (60px, sticky, `--aubergine` = `dk`) with the pink brand dot, `Sample Central / DIRTY COOKIE`, the waffle app-switcher, and a wide pink **Build Shipment** button carrying a cart-count badge.
