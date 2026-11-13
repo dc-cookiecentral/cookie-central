@@ -5,21 +5,25 @@ import { useSupplies } from '../hooks/useSupplies';
 import { buildSupplyMaps } from '../components/supplies/supplyUi';
 import SupplyItems from '../components/supplies/SupplyItems';
 import VendorRolodex from '../components/supplies/VendorRolodex';
+import PurchaseOrders from '../components/supplies/PurchaseOrders';
+import PoForm from '../components/supplies/PoForm';
 import EditModal from '../components/shared/EditModal';
 import { supplyForm } from '../components/supplies/supplyForms';
 
-// Supplies & Vendors (docs/SUPPLIES_SPEC.md, Phase V1 — READ-ONLY).
-// One window, two tabs over the same data: Supplies (items → vendor price
-// lines → terms/docs) and Vendors (the rolodex). The tab lives in ?tab= so
+// Supplies & Vendors (docs/SUPPLIES_SPEC.md).
+// One window, three tabs over the same data: Supplies (items → vendor price
+// lines → terms/docs), POs (purchase orders → their lines) and Vendors (the
+// rolodex). The tab lives in ?tab= so
 // vendor names can link across (?tab=vendors&vendor=<id>) and items back
 // (?item=<id>). /vendors redirects here.
 //
 // Editing follows the Spec Sheet lock: admin/ops get the 🔒/🔓 toggle, and
-// only while unlocked do the edit controls show (assumed cost per item; PO
-// fulfillment, packing slip and pickup freight per PO line).
+// only while unlocked do the edit controls show (assumed cost per item; new
+// POs with their lines; PO fulfillment, packing slip and freight; delete PO).
 
 const TABS = [
   { key: 'supplies', label: 'Supplies' },
+  { key: 'pos', label: 'POs' },
   { key: 'vendors', label: 'Vendors' },
 ];
 
@@ -28,10 +32,10 @@ export default function Supplies() {
   const canEdit = ['admin', 'ops'].includes(profile?.role);
   const [editMode, setEditMode] = useState(false);
   const editing = canEdit && editMode;
-  const [modal, setModal] = useState(null); // { kind: 'assumed', item } | { kind: 'po', quote, po, item }
+  const [modal, setModal] = useState(null); // { kind: 'assumed', item } | { kind: 'po', quote, po, item } | { kind: 'newPo' }
   const { data, loading, error, refresh } = useSupplies();
   const [params, setParams] = useSearchParams();
-  const tab = params.get('tab') === 'vendors' ? 'vendors' : 'supplies';
+  const tab = TABS.some((t) => t.key === params.get('tab')) ? params.get('tab') : 'supplies';
   const maps = useMemo(() => (data ? buildSupplyMaps(data) : null), [data]);
 
   return (
@@ -76,11 +80,24 @@ export default function Supplies() {
         </div>
       ) : tab === 'vendors' ? (
         <VendorRolodex data={data} maps={maps} />
+      ) : tab === 'pos' ? (
+        <PurchaseOrders data={data} maps={maps} editing={editing} setModal={setModal} onChanged={refresh} />
       ) : (
         <SupplyItems data={data} maps={maps} editing={editing} setModal={setModal} />
       )}
 
-      {modal && (
+      {modal?.kind === 'newPo' && (
+        <PoForm
+          data={data}
+          maps={maps}
+          onClose={() => setModal(null)}
+          onSaved={() => {
+            setModal(null);
+            refresh();
+          }}
+        />
+      )}
+      {modal && modal.kind !== 'newPo' && (
         <EditModal
           {...supplyForm(modal)}
           data={data}
