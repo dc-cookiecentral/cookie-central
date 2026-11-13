@@ -57,7 +57,10 @@ if (!existsSync(DATA)) {
 // vendor?, date?, notes?, items: [item names] } — items [] = unassigned.
 // `local` (optional) is the file on this Mac that upload-supply-docs.mjs
 // --local uploads to `path`; quotes' `doc` objects can carry `local` too.
-const { VENDORS, REV6_ITEMS, PURCHASE_ORDERS = [], RETIRED_ITEMS = [], DOCUMENTS = [] } = await import(pathToFileURL(DATA).href);
+// DOC_RETITLES (optional): [{ path, from, title, notes? }] — one-off retitle of
+// a library document (e.g. a draft marked superseded), applied only while its
+// title is still `from`, so a title changed in the app is never overwritten.
+const { VENDORS, REV6_ITEMS, PURCHASE_ORDERS = [], RETIRED_ITEMS = [], DOCUMENTS = [], DOC_RETITLES = [] } = await import(pathToFileURL(DATA).href);
 
 // ── Marc's sheet → items ────────────────────────────────────────────────────
 const VENDOR_ALIASES = {
@@ -442,6 +445,12 @@ function librarySql(lib) {
   return sql;
 }
 
+function retitlesSql() {
+  if (!DOC_RETITLES.length) return '';
+  return '\n-- Library retitles (only while the title is unchanged)\n' + DOC_RETITLES.map((r) =>
+    `UPDATE supply_documents SET title = ${q(r.title)}${r.notes ? `, notes = ${q(r.notes)}` : ''} WHERE doc_path = ${q(r.path)} AND title = ${q(r.from)};\n`).join('');
+}
+
 function build() {
   const items = structuredClone(REV6_ITEMS);
   const vendors = structuredClone(VENDORS);
@@ -543,6 +552,7 @@ BEGIN;
     upsert('quote_breaks', ['id', 'quote_id', 'qty', 'price_per_order_qty'], brows) +
     staleBreaksSql(qrows, brows) +
     librarySql(lib) +
+    retitlesSql() +
     mergedItemsSql() +
     legacySheetSql(new Set([...qrows, ...srows, ...irows].map((r) => r[0]))) +
     // Items the seed used to create under another name (their SKUs and quotes cascade).
