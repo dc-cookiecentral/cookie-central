@@ -114,6 +114,52 @@ const ITEM_MERGES = {
   // order unit stays as it is.
   'Tray': { into: 'Plastic Tray — 3.0 Dough Pucks (4-pk WMT)' },
 };
+// ── packaging names + tags (Caroline, Nov 13 2026) ──────────────────────────
+// Display names follow  Type · Private label (if any) · Product.  The item
+// keeps its ORIGINAL name as its key inside this script (ids, SKU keys, Marc's
+// sheet matching, the local data file all use it) — only the `name` column
+// written to the database changes, so prices, POs and documents stay attached.
+// Private label goes in the name; a Dirty Cookie branded item has none.
+const ITEM_RENAMES = {
+  'Film - Kroger WCCB': 'Flowwrap · Kroger · WCCB',
+  'Film - Walmart CCF': 'Flowwrap · Walmart · CCF',
+  'Film - Walmart PBJ': 'Flowwrap · Walmart · PBJ',
+  'Film - Walmart WCCB': 'Flowwrap · Walmart · WCCB',
+  'SUP Pouch — Black Currant': 'Pouch · Walmart · Black Currant',
+  'Master Case — Black Currant': 'Secondary Packaging - Mastercase · Walmart · Black Currant',
+  'Plastic Tray — 3.0 Dough Pucks (4-pk WMT)': 'Tray · 3.0 Dough Pucks 4-pk',
+  'PT206 — Cookie Pie Tray': 'Tray · Cookie Pie (PT206)',
+  'SRP Case — 8-CT': 'Secondary Packaging - SRP 8 pack',
+  'SRP - 12 CT': 'Secondary Packaging - SRP 12 pack',
+};
+// Where an item is used, for the Supplies tab's filter. A shared item carries
+// every program it serves (the clear tray and the SRP cases: Walmart + Kroger).
+const ITEM_TAGS = {
+  'Film - Kroger WCCB': ['Kroger'],
+  'Film - Walmart CCF': ['Walmart'],
+  'Film - Walmart PBJ': ['Walmart'],
+  'Film - Walmart WCCB': ['Walmart'],
+  'SUP Pouch — Black Currant': ['Walmart'],
+  'Master Case — Black Currant': ['Walmart'],
+  'Plastic Tray — 3.0 Dough Pucks (4-pk WMT)': ['Walmart', 'Kroger'],
+  'SRP Case — 8-CT': ['Walmart', 'Kroger'],
+  'SRP - 12 CT': ['Walmart', 'Kroger'],
+};
+// Private-label brand, put at the front of the item's notes.
+const BETTERGOODS = 'Brand: bettergoods (Walmart private label).';
+const ITEM_BRAND = {
+  'Film - Walmart CCF': BETTERGOODS,
+  'Film - Walmart PBJ': BETTERGOODS,
+  'Film - Walmart WCCB': BETTERGOODS,
+  'SUP Pouch — Black Currant': BETTERGOODS,
+  'Master Case — Black Currant': BETTERGOODS,
+};
+const displayName = (n) => ITEM_RENAMES[n] ?? n;
+// Documents in the local data file may name an item by either name.
+const KEY_BY_DISPLAY = Object.fromEntries(Object.entries(ITEM_RENAMES).map(([k, v]) => [v, k]));
+const itemKey = (n) => KEY_BY_DISPLAY[n] ?? n;
+const sqlTags = (t) => (t?.length ? `ARRAY[${t.map(q).join(', ')}]::text[]` : `'{}'::text[]`);
+
 const MERGED_NOTE = 'Merged from the Assembler sheet’s 1000ct and 4000ct items (Nov 2 ’26). 1K / 4K is the chip count per lb, shown on each SKU’s order unit — compare on $/lb.';
 const ITEM_NOTES = {
   'Film - Walmart CCF': RF_FILM_NOTE('Dec 8 ’26'),
@@ -501,7 +547,8 @@ function build() {
   const skuKeys = new Set();
   for (const i of items) {
     if (i.primary && !vendorNames.has(i.primary)) throw new Error(`unknown primary vendor ${i.primary}`);
-    irows.push([id('item', i.name), q(i.name), q(i.kind), i.primary ? id('vendor', i.primary) : 'NULL', q(i.notes)]);
+    const notes = ITEM_BRAND[i.name] ? [ITEM_BRAND[i.name], i.notes].filter(Boolean).join(' ') : i.notes;
+    irows.push([id('item', i.name), q(displayName(i.name)), q(i.kind), i.primary ? id('vendor', i.primary) : 'NULL', q(notes), sqlTags(ITEM_TAGS[i.name])]);
     for (const s of i.skus) {
       if (s.vendor && !vendorNames.has(s.vendor)) throw new Error(`unknown vendor ${s.vendor}`);
       let skey = s.idKey ?? `${i.name}|${s.vendor ?? ''}|${s.brand ?? ''}|${s.order_unit}`;
@@ -533,7 +580,8 @@ function build() {
   const itemNames = new Set(items.map((i) => i.name));
   for (const d of DOCUMENTS) {
     if (d.vendor && !vendorNames.has(d.vendor)) throw new Error(`unknown vendor ${d.vendor} on document ${d.path}`);
-    for (const n of d.items ?? []) if (!itemNames.has(n)) throw new Error(`unknown item ${n} on document ${d.path}`);
+    d.items = (d.items ?? []).map(itemKey);
+    for (const n of d.items) if (!itemNames.has(n)) throw new Error(`unknown item ${n} on document ${d.path}`);
     if (!['rendering', 'spec', 'quote', 'po', 'invoice', 'packing_slip', 'coa', 'other'].includes(d.kind)) throw new Error(`bad kind ${d.kind} on ${d.path}`);
     libDoc(d.path, { title: d.title, kind: d.kind, vendor: d.vendor, date: d.date, notes: d.notes, items: d.items ?? [] });
   }
@@ -561,7 +609,7 @@ BEGIN;
   const sql = header +
     upsert('vendors', ['id', 'name', 'category', 'status', 'address', 'website', 'phone_main', 'account_number', 'fob', 'default_terms', 'freight_notes', 'billing_entity', 'notes'], vrows) + '\n' +
     upsert('vendor_contacts', ['id', 'vendor_id', 'name', 'role', 'phone_office', 'phone_cell', 'email', 'is_primary', 'source'], crows) + '\n' +
-    upsert('supply_items', ['id', 'name', 'kind', 'primary_vendor_id', 'notes'], irows) + '\n' +
+    upsert('supply_items', ['id', 'name', 'kind', 'primary_vendor_id', 'notes', 'tags'], irows) + '\n' +
     upsert('supply_skus', ['id', 'item_id', 'vendor_id', 'brand_name', 'item_code', 'vendor_item_code', 'order_unit', 'unit_weight_lbs', 'units_per_order_unit', 'units_per_thousand', 'spec_note'], srows) + '\n' +
     upsert('supply_pos', ['id', 'po_number', 'vendor_id', 'po_date', 'fulfillment', 'packing_slip_ref', 'ship_date', 'freight_cost', 'notes'], porows, { insertOnly: true }) + '\n' +
     upsert('quotes', ['id', 'sku_id', 'vendor_id', 'doc_type', 'doc_ref', 'doc_date', 'valid_until', 'moq', 'lead_time', 'terms', 'one_time_costs', 'status', 'notes', 'doc_path', 'po_id'], qrows, { keep: ['po_id'] }) + '\n' +

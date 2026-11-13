@@ -147,23 +147,62 @@ function contactForm({ contact, vendor }) {
   };
 }
 
+// Packaging names follow  Type · Private label (if any) · Product  — Caroline,
+// Nov 13 2026. A Dirty Cookie branded item has no private label in its name.
+// For a new packaging item the name is BUILT from those three fields; tags
+// (where it is used: Walmart, Kroger …) drive the Supplies tab filter, and the
+// private label is added to them automatically.
+export const PACKAGING_TYPES = ['Tray', 'Flowwrap', 'Pouch', 'Secondary Packaging - Mastercase', 'Secondary Packaging - SRP 8 pack', 'Secondary Packaging - SRP 12 pack'];
+const PRIVATE_LABELS = ['Walmart', 'Kroger'];
+const OTHER = '__other__';
+const pick = (sel, other) => (sel === OTHER ? String(other || '').trim() : sel || '');
+export const packagingName = (f) =>
+  [pick(f.pkg_type, f.pkg_type_other), pick(f.private_label, f.private_label_other), String(f.product || '').trim()].filter(Boolean).join(' · ');
+
 function itemForm({ item, data }) {
+  const isNew = !item;
+  const isPkg = (f) => f.kind === 'packaging';
+  const tagHint = 'Where it is used, comma-separated (e.g. Walmart, Kroger). Drives the Supplies tab filter; a shared item gets every program.';
+  const fields = isNew ? [
+    { name: 'kind', label: 'Ingredient or packaging', type: 'select', required: true, wide: true,
+      options: [{ value: '', label: '— pick one' }, { value: 'ingredient', label: 'Ingredient (priced per lb)' }, { value: 'packaging', label: 'Packaging (priced per 1,000)' }] },
+    { name: 'name', label: 'Ingredient name', wide: true, disabled: (f) => isPkg(f) || !f.kind, clearWhenDisabled: true,
+      hint: 'e.g. “Light Brown Sugar”. Check the list first — near-duplicates are hard to untangle.',
+      validate: (v, f) => (f.kind === 'ingredient' && !String(v || '').trim() ? 'Ingredient name is required.' : null) },
+    { name: 'pkg_type', label: 'Packaging type', type: 'select', disabled: (f) => !isPkg(f), clearWhenDisabled: true,
+      options: [{ value: '', label: '— pick the type' }, ...PACKAGING_TYPES.map((t) => ({ value: t, label: t })), { value: OTHER, label: 'Other (type it)…' }],
+      validate: (v, f) => (isPkg(f) && !pick(f.pkg_type, f.pkg_type_other) ? 'Pick the packaging type.' : null) },
+    { name: 'pkg_type_other', label: 'Other type', disabled: (f) => !isPkg(f) || f.pkg_type !== OTHER, clearWhenDisabled: true },
+    { name: 'private_label', label: 'Private label for', type: 'select', disabled: (f) => !isPkg(f), clearWhenDisabled: true,
+      options: [{ value: '', label: 'None — Dirty Cookie branded' }, ...PRIVATE_LABELS.map((t) => ({ value: t, label: t })), { value: OTHER, label: 'Other retailer…' }] },
+    { name: 'private_label_other', label: 'Other retailer', disabled: (f) => !isPkg(f) || f.private_label !== OTHER, clearWhenDisabled: true },
+    { name: 'product', label: 'Product', wide: true, disabled: (f) => !isPkg(f), clearWhenDisabled: true,
+      hint: (f) => (isPkg(f) ? `Name will be:  ${packagingName(f) || '…'}` : null) },
+  ] : [
+    { name: 'name', label: 'Item name', required: true, wide: true, hint: NAME_LOCK },
+    { name: 'kind', label: 'Ingredient or packaging', type: 'select', required: true,
+      options: [{ value: 'ingredient', label: 'Ingredient (priced per lb)' }, { value: 'packaging', label: 'Packaging (priced per 1,000)' }] },
+  ];
   return {
-    row: item ?? null,
+    row: item ? { ...item, tags: item.tags || [] } : null,
     config: {
       title: 'item', key: 'name', keyNote: false,
       fields: [
-        { name: 'name', label: 'Item name', required: true, wide: true, autoFocus: !item,
-          hint: (_, { isEdit }) => (isEdit ? NAME_LOCK : 'e.g. “Light Brown Sugar”, “ALDI tray”. Check the list first — near-duplicates are hard to untangle.') },
-        { name: 'kind', label: 'Ingredient or packaging', type: 'select', required: true,
-          options: [{ value: 'ingredient', label: 'Ingredient (priced per lb)' }, { value: 'packaging', label: 'Packaging (priced per 1,000)' }] },
+        ...fields,
         { name: 'primary_vendor_id', label: 'Primary vendor', type: 'select', options: vendorOptions(data, '— none selected') },
+        { name: 'tags', label: 'Tags', type: 'csv', hint: tagHint },
         { name: 'notes', label: 'Notes', type: 'textarea' },
       ],
     },
-    onSave: async (p) => friendly('item')(await saveItem(item?.id, {
-      name: p.name.trim(), kind: p.kind, primary_vendor_id: p.primary_vendor_id || null, notes: trimOrNull(p.notes),
-    })),
+    onSave: async (p) => {
+      const label = isNew && p.kind === 'packaging' ? pick(p.private_label, p.private_label_other) : '';
+      const name = isNew ? (p.kind === 'packaging' ? packagingName(p) : String(p.name || '').trim()) : p.name.trim();
+      if (!name) return { error: { message: 'The item needs a name.' } };
+      const tags = [...new Set([...(p.tags || []), ...(label ? [label] : [])])];
+      return friendly('item')(await saveItem(item?.id, {
+        name, kind: p.kind, primary_vendor_id: p.primary_vendor_id || null, notes: trimOrNull(p.notes), tags,
+      }));
+    },
   };
 }
 

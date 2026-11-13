@@ -31,6 +31,15 @@ const STATUS_RANK = { on_po: 0, active: 1, preliminary: 2, expired: 3, closed: 4
 export default function SupplyItems({ data, maps, editing, setModal, onChanged }) {
   const [params, setParams] = useSearchParams();
   const itemId = params.get('item');
+  // Tag filter (?tag=Walmart): items carrying that tag — a shared item, like
+  // the clear tray used for Walmart and Kroger, shows under both.
+  const tag = params.get('tag');
+  const allTags = [...new Set(data.items.flatMap((i) => i.tags || []))].sort();
+  const setTag = (t) => setParams((p) => {
+    const next = new URLSearchParams(p);
+    if (t) next.set('tag', t); else next.delete('tag');
+    return next;
+  }, { replace: true });
   const [lineId, setLineId] = useState(null);
 
   const selectItem = (id) => {
@@ -54,10 +63,23 @@ export default function SupplyItems({ data, maps, editing, setModal, onChanged }
       cost: maps.itemCostById.get(i.id) || null,
       freightPending: maps.freightPendingItems.has(i.id),
     }))
+    .filter((r) => !tag || (r.tags || []).includes(tag))
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const cols = [
-    { key: 'name', label: 'Item', render: (r) => <span className="font-semibold text-dk">{r.name}</span> },
+    {
+      key: 'name', label: 'Item',
+      render: (r) => (
+        <div>
+          <span className="font-semibold text-dk">{r.name}</span>
+          {(r.tags || []).length > 0 && (
+            <div className="mt-0.5 flex flex-wrap gap-1">
+              {r.tags.map((t) => <span key={t} className="px-1.5 py-px rounded-full text-[8px] font-bold bg-pc text-pk">{t}</span>)}
+            </div>
+          )}
+        </div>
+      ),
+    },
     {
       key: 'primary', label: 'Primary Vendor', value: (r) => r.primary?.name || '',
       render: (r) =>
@@ -88,6 +110,7 @@ export default function SupplyItems({ data, maps, editing, setModal, onChanged }
 
   const section = (kind, label, color) => {
     const kindRows = rows.filter((r) => r.kind === kind);
+    if (tag && !kindRows.length) return null;
     return (
       <div className="mb-5">
         <div className="text-[11px] font-bold uppercase tracking-wide mt-1 mb-1" style={{ color }}>{label}</div>
@@ -111,11 +134,27 @@ export default function SupplyItems({ data, maps, editing, setModal, onChanged }
 
   return (
     <div>
-      {editing && (
-        <div className="flex justify-end mb-2">
-          <button onClick={() => setModal({ kind: 'item' })} className="px-3 py-1.5 rounded text-[11px] font-bold bg-pk text-white hover:opacity-90">+ Item</button>
+      <div className="flex justify-between items-center mb-2 gap-2 flex-wrap">
+        <div className="flex flex-wrap gap-1 items-center">
+          {allTags.length > 0 && <span className="text-[9px] font-bold uppercase tracking-wider text-gr mr-1">Filter</span>}
+          {allTags.length > 0 && [null, ...allTags].map((t) => {
+            const n = t ? data.items.filter((i) => (i.tags || []).includes(t)).length : data.items.length;
+            const on = (tag || null) === t;
+            return (
+              <button
+                key={t ?? 'all'}
+                onClick={() => setTag(t)}
+                className={`px-2.5 py-1 rounded-full text-[10px] font-semibold border ${on ? 'bg-pk text-white border-pk' : 'bg-cd border-lt text-md hover:border-pk hover:text-pk'}`}
+              >
+                {t ?? 'All'} <span className={on ? 'text-white/80' : 'text-gr'}>{n}</span>
+              </button>
+            );
+          })}
         </div>
-      )}
+        {editing && (
+          <button onClick={() => setModal({ kind: 'item' })} className="px-3 py-1.5 rounded text-[11px] font-bold bg-pk text-white hover:opacity-90">+ Item</button>
+        )}
+      </div>
       <div className="text-[11px] text-gr mb-3 bg-cd border border-lt rounded-lg p-2.5">
         <b>Double-click an item</b> for its vendors and price points. <b>Double-click a price line</b> for terms, notes and the original document.
         Prices in <b className="text-dk">black</b> come from a PO or invoice; prices in <b>grey</b> are quotes; prices in <i className="text-gr/60">faint italic</i> are recorded on {REF_LABEL} — no document behind them, so they never count as the best quote. <b className="text-pk">⚑ get a quote</b> marks items priced only from {REF_LABEL}. The list shows the latest PO and the best open quote — <b>▸</b> expands the history.
