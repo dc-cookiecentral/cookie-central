@@ -66,13 +66,13 @@ function poForm({ po, quote }) {
     onSave: (p) => savePo({
       po_number: p.po_number.trim(),
       vendor_id: po?.vendor_id ?? quote.vendor_id,
-      po_date: po?.po_date ?? quote.doc_date ?? null,
+      po_date: po?.po_date ?? quote?.doc_date ?? null,
       fulfillment: p.fulfillment,
       packing_slip_ref: trimOrNull(p.packing_slip_ref),
       ship_date: p.ship_date,
       freight_cost: p.fulfillment ? p.freight_cost : null,
       notes: trimOrNull(p.notes),
-    }, quote.id),
+    }, quote?.id),
   };
 }
 
