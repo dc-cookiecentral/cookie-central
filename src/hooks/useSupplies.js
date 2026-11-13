@@ -267,3 +267,88 @@ export async function savePo(po, quoteId) {
   const { error: linkErr } = await supabase.from('quotes').update({ po_id: data.id }).eq('id', quoteId);
   return { error: linkErr };
 }
+
+// ── V2.2: vendors, contacts, items, SKUs, quotes ───────────────────────────
+// Every write stamps app_edited_at, so the supplies seed never reverts an app
+// edit (migration 20261113130000). Each save returns { error } like the rest.
+const stamp = () => ({ app_edited_at: new Date().toISOString() });
+
+async function saveRow(table, id, fields) {
+  const row = { ...fields, ...stamp() };
+  const res = id
+    ? await supabase.from(table).update(row).eq('id', id).select('id').single()
+    : await supabase.from(table).insert(row).select('id').single();
+  return { id: res.data?.id ?? id, error: res.error };
+}
+
+export const saveVendor = (id, fields) => saveRow('vendors', id, fields);
+export const saveItem = (id, fields) => saveRow('supply_items', id, fields);
+export const saveSku = (id, fields) => saveRow('supply_skus', id, fields);
+
+// One primary contact per vendor: ticking primary clears it on the others.
+export async function saveContact(id, fields) {
+  const res = await saveRow('vendor_contacts', id, fields);
+  if (res.error || !fields.is_primary) return res;
+  const { error } = await supabase.from('vendor_contacts')
+    .update({ is_primary: false, ...stamp() })
+    .eq('vendor_id', fields.vendor_id).eq('is_primary', true).neq('id', res.id);
+  return { id: res.id, error };
+}
+
+export async function deleteRow(table, id) {
+  const { error } = await supabase.from(table).delete().eq('id', id);
+  return { error };
+}
+
+// Quote with its price breaks and (optionally) its original file.
+//   quote:  { id?, sku_id, vendor_id, doc_type, doc_ref, doc_date, valid_until, moq,
+//             lead_time, terms, one_time_costs, status, notes }
+//   breaks: [{ qty, unit_price }] → stored as (qty, line total)
+//   file:   optional File → supply-docs/<vendor-slug>/<date>_<type>-<ref>.<ext>,
+//           also filed in the document library, assigned to `itemId`
+// Editing replaces the quote's breaks. A failed new quote is undone.
+export async function saveQuote({ quote, breaks, file, itemId, vendorName }) {
+  const isNew = !quote.id;
+  let docPath = null;
+  if (file) {
+    const ext = (file.name.split('.').pop() || 'pdf').toLowerCase();
+    const rand = Math.random().toString(36).slice(2, 6);
+    docPath = `${slug(vendorName) || 'unsorted'}/${quote.doc_date || 'undated'}_${quote.doc_type}-${slug(quote.doc_ref) || 'doc'}-${rand}.${ext}`;
+    const { error } = await supabase.storage.from('supply-docs').upload(docPath, file, { contentType: file.type || undefined });
+    if (error) return { error: { message: `Couldn't upload the file: ${error.message}` } };
+  }
+  const { id: _, ...fields } = quote;
+  const res = await saveRow('quotes', quote.id, docPath ? { ...fields, doc_path: docPath } : fields);
+  if (res.error) {
+    if (docPath) await supabase.storage.from('supply-docs').remove([docPath]);
+    return { error: res.error };
+  }
+  const quoteId = res.id;
+  const undo = async () => {
+    if (isNew) await supabase.from('quotes').delete().eq('id', quoteId);
+    if (docPath) await supabase.storage.from('supply-docs').remove([docPath]);
+  };
+
+  if (!isNew) {
+    const { error } = await supabase.from('quote_breaks').delete().eq('quote_id', quoteId);
+    if (error) return { error };
+  }
+  if (breaks.length) {
+    const { error } = await supabase.from('quote_breaks').insert(breaks.map((b) => ({
+      quote_id: quoteId, qty: b.qty, price_per_order_qty: Math.round(b.qty * b.unit_price * 100) / 100,
+    })));
+    if (error) {
+      await undo();
+      return { error };
+    }
+  }
+  if (docPath) {
+    const { data: doc, error } = await supabase.from('supply_documents').insert({
+      doc_path: docPath, title: quote.doc_ref || `${quote.doc_type} ${quote.doc_date || ''}`.trim(),
+      doc_kind: ['quote', 'verbal'].includes(quote.doc_type) ? 'quote' : quote.doc_type === 'invoice' ? 'invoice' : 'other',
+      vendor_id: quote.vendor_id, doc_date: quote.doc_date,
+    }).select('id').single();
+    if (!error && itemId) await supabase.from('supply_document_items').insert({ document_id: doc.id, item_id: itemId });
+  }
+  return { id: quoteId, error: null };
+}

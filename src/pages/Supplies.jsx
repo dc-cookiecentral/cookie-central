@@ -10,7 +10,8 @@ import PoForm from '../components/supplies/PoForm';
 import SupplyDocuments from '../components/supplies/SupplyDocuments';
 import DocumentModal from '../components/supplies/DocumentModal';
 import EditModal from '../components/shared/EditModal';
-import { supplyForm } from '../components/supplies/supplyForms';
+import { supplyForm, EDIT_MODAL_KINDS } from '../components/supplies/supplyForms';
+import QuoteForm from '../components/supplies/QuoteForm';
 
 // Supplies & Vendors (docs/SUPPLIES_SPEC.md).
 // One window, four tabs over the same data: Supplies (items → vendor price
@@ -20,8 +21,9 @@ import { supplyForm } from '../components/supplies/supplyForms';
 // (?item=<id>). /vendors redirects here.
 //
 // Editing follows the Spec Sheet lock: admin/ops get the 🔒/🔓 toggle, and
-// only while unlocked do the edit controls show (assumed cost per item; new
-// POs with their lines; PO fulfillment, packing slip and freight; delete PO).
+// only while unlocked do the edit controls show: vendors, contacts, items,
+// SKUs and quotes (V2.2); assumed cost; new POs with their lines; PO
+// fulfillment, packing slip and freight; documents.
 
 const TABS = [
   { key: 'supplies', label: 'Supplies' },
@@ -36,6 +38,7 @@ export default function Supplies() {
   const [editMode, setEditMode] = useState(false);
   const editing = canEdit && editMode;
   const [modal, setModal] = useState(null); // { kind: 'assumed', item } | { kind: 'po', quote, po, item } | { kind: 'newPo' } | { kind: 'doc', doc?, itemIds? }
+  // | { kind: 'vendor'|'contact'|'item'|'sku', … } | { kind: 'quote', item, sku?, quote? }
   const { data, loading, error, refresh } = useSupplies();
   const [params, setParams] = useSearchParams();
   const tab = TABS.some((t) => t.key === params.get('tab')) ? params.get('tab') : 'supplies';
@@ -87,13 +90,13 @@ export default function Supplies() {
           <div className="text-[11px] text-gr mt-1">If tables are missing, apply the supplies migration + seed first.</div>
         </div>
       ) : tab === 'vendors' ? (
-        <VendorRolodex data={data} maps={maps} />
+        <VendorRolodex data={data} maps={maps} editing={editing} setModal={setModal} onChanged={refresh} />
       ) : tab === 'docs' ? (
         <SupplyDocuments data={data} maps={maps} editing={editing} setModal={setModal} onChanged={refresh} />
       ) : tab === 'pos' ? (
         <PurchaseOrders data={data} maps={maps} editing={editing} setModal={setModal} onChanged={refresh} />
       ) : (
-        <SupplyItems data={data} maps={maps} editing={editing} setModal={setModal} />
+        <SupplyItems data={data} maps={maps} editing={editing} setModal={setModal} onChanged={refresh} />
       )}
 
       {modal?.kind === 'newPo' && (
@@ -120,9 +123,22 @@ export default function Supplies() {
           }}
         />
       )}
-      {modal && !['newPo', 'doc'].includes(modal.kind) && (
+      {modal?.kind === 'quote' && (
+        <QuoteForm
+          maps={maps}
+          item={modal.item}
+          sku={modal.sku}
+          quote={modal.quote}
+          onClose={() => setModal(null)}
+          onSaved={() => {
+            setModal(null);
+            refresh();
+          }}
+        />
+      )}
+      {modal && EDIT_MODAL_KINDS.has(modal.kind) && (
         <EditModal
-          {...supplyForm(modal)}
+          {...supplyForm(modal, data)}
           data={data}
           onClose={() => setModal(null)}
           onSaved={() => {
