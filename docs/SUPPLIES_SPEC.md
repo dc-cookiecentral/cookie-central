@@ -194,6 +194,8 @@ Each phase = one branch/PR (ERP deploys via GitHub integration — no CLI deploy
 ### V1 build notes — Oct 28 2026
 **Shipped on the branch:** migration `20261028120000_supplies.sql` (6 tables, `v_sku_pricing`, private `supply-docs` bucket, RLS, audit) · seed generator `scripts/build-supplies-seed.mjs` (the rev 6 vendor data it reads and the seed it writes are local-only — see below) · `scripts/upload-supply-docs.mjs` (catalogue page scans → PDFs → bucket) · `/supplies` + `/vendors` pages, `useSupplies`, Sidebar entries · `SpecTable` gained optional `onRowDoubleClick` / `isRowSelected` (no change for Spec Sheet).
 
+*Since Nov 13 2026, batches go live through the Supabase CLI with a read-only pre-flight. See `docs/RUNBOOK.md` §4.4. The Oct 29 steps below are history.*
+
 **Apply order after merge** (done Oct 29 2026 — the migration needed `--include-all` because `20261028150000` reached the live DB first, and the upload script didn't land the PDFs, so they were uploaded in the dashboard):
 1. `npx supabase db push --dry-run` → expect only `20261028120000_supplies.sql` → `db push --yes`
 2. Put `scripts/supplies-data.local.mjs` in place (gitignored), run `node scripts/build-supplies-seed.mjs`, then paste the generated `supabase/seeds/supplies_seed.sql` into the SQL editor (idempotent — safe to re-run)

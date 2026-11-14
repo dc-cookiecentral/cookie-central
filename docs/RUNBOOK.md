@@ -187,6 +187,27 @@ Registered types are in `src/parsers/index.js` (`PARSERS`); `assemblers` and `pr
 2. Add the card to `src/pages/Uploads.jsx`
 3. Add the value to the `upload_log.upload_type` CHECK constraint via a new migration
 
+### 4.4 · Supplies: apply a batch (seed + documents), no service key
+
+Supplier data (vendors, items, SKUs, quotes, POs, documents) that comes in as a batch lives in the gitignored `scripts/supplies-data.local.mjs` (the repo is public). `scripts/build-supplies-seed.mjs` turns it into `supabase/seeds/supplies_seed.sql` (gitignored too). Spec: `docs/SUPPLIES_SPEC.md`. Since Nov 13 2026 it goes live through the linked, logged-in Supabase CLI. Each write needs Caroline's go-ahead first.
+
+1. **Pre-flight (read-only).** These must all be clean before a seed:
+   ```bash
+   npx supabase db query --remote --read-only "SELECT
+     (SELECT count(*) FROM supply_items WHERE app_edited_at IS NOT NULL) items_edited,
+     (SELECT count(*) FROM audit_log WHERE action='DELETE' AND user_id IS NOT NULL
+        AND table_name IN ('vendors','vendor_contacts','supply_items','supply_skus','quotes')) app_deletes"
+   ```
+   - Rows edited in the app are safe: the seed never updates them.
+   - A row **deleted in the app** would be re-inserted by the seed. Drop it from the data file first.
+   - DELETEs with a NULL `user_id` are the seed's own clean-ups; ignore those.
+   - A vendor or item created in the app with a name the batch adds would make the seed fail on the unique name. Fold it into the data file instead.
+2. `node scripts/build-supplies-seed.mjs`. It stops on a typo in any rename, tag, category or move list, and it prints the counts. Test the result in PGlite against a copy of the last applied seed.
+3. **Documents:** `node scripts/upload-supply-docs.mjs --local --dry` lists every `local` file and its bucket path. Upload each with `npx supabase storage cp --experimental --remote --content-type application/pdf "<local file>" "ss:///supply-docs/<path>"`.
+4. **Migrations first, if any:** `npx supabase db push --remote --dry-run`, then `--yes`.
+5. **Seed:** `npx supabase db query --remote --yes --file supabase/seeds/supplies_seed.sql`. It runs as one transaction, so any error rolls all of it back.
+6. Verify with `--read-only` queries, then merge and deploy the app. Copy the data file and the batch's originals to the systems@ Drive folder **"Cookie Central - local backups"**.
+
 ---
 
 ## 5 · Troubleshooting
