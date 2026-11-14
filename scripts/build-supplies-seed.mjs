@@ -212,8 +212,8 @@ const sqlTags = (t) => (t?.length ? `ARRAY[${t.map(q).join(', ')}]::text[]` : `'
 // so its prices and links follow it; what stays behind is renamed below.
 const SKU_MOVES = {
   'Flour|General Mills All-purpose - H & R': 'Flour, AP Unbleached',
-  'Flour|Gold Medal - Pureasnow': 'Flour, Soft Wheat',          // ⚑ confirm with Caroline
-  'Margarine Trans Free|Bunge - 504': "Margarine, Baker's NH 500", // ⚑ confirm (matched on price)
+  'Flour|Gold Medal - Pureasnow': 'Flour, Soft Wheat',          // confirmed by Caroline, Nov 13
+  'Margarine Trans Free|Bunge - 504': "Margarine, Baker's NH 500", // confirmed by Caroline, Nov 13
 };
 
 const MERGED_NOTE = 'Merged from the Assembler sheet’s 1000ct and 4000ct items (Nov 2 ’26). 1K / 4K is the chip count per lb, shown on each SKU’s order unit — compare on $/lb.';
