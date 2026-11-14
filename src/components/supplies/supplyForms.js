@@ -152,6 +152,8 @@ function contactForm({ contact, vendor }) {
 // For a new packaging item the name is BUILT from those three fields; tags
 // (where it is used: Walmart, Kroger …) drive the Supplies tab filter, and the
 // private label is added to them automatically.
+// Ingredient categories, from the DC x FC costing sheet (Caroline, Nov 13 2026).
+export const INGREDIENT_CATEGORIES = ['Chips', 'Fats, Butter, Oils', 'Fillings', 'Flour', 'Sugars', 'Misc'];
 export const PACKAGING_TYPES = ['Tray', 'Flowwrap', 'Pouch', 'Secondary Packaging - Mastercase', 'Secondary Packaging - SRP 8 pack', 'Secondary Packaging - SRP 12 pack'];
 const PRIVATE_LABELS = ['Walmart', 'Kroger'];
 const OTHER = '__other__';
@@ -167,7 +169,7 @@ function itemForm({ item, data }) {
     { name: 'kind', label: 'Ingredient or packaging', type: 'select', required: true, wide: true,
       options: [{ value: '', label: '— pick one' }, { value: 'ingredient', label: 'Ingredient (priced per lb)' }, { value: 'packaging', label: 'Packaging (priced per 1,000)' }] },
     { name: 'name', label: 'Ingredient name', wide: true, disabled: (f) => isPkg(f) || !f.kind, clearWhenDisabled: true,
-      hint: 'e.g. “Light Brown Sugar”. Check the list first — near-duplicates are hard to untangle.',
+      hint: '“Generic, variant”, e.g. “Sugar, Light Brown”, “Flour, Soft Wheat”. The brand goes on the SKU. Check the list first: near-duplicates are hard to untangle.',
       validate: (v, f) => (f.kind === 'ingredient' && !String(v || '').trim() ? 'Ingredient name is required.' : null) },
     { name: 'pkg_type', label: 'Packaging type', type: 'select', disabled: (f) => !isPkg(f), clearWhenDisabled: true,
       options: [{ value: '', label: '— pick the type' }, ...PACKAGING_TYPES.map((t) => ({ value: t, label: t })), { value: OTHER, label: 'Other (type it)…' }],
@@ -189,6 +191,8 @@ function itemForm({ item, data }) {
       title: 'item', key: 'name', keyNote: false,
       fields: [
         ...fields,
+        { name: 'category', label: 'Ingredient category', type: 'select', disabled: (f) => f.kind !== 'ingredient', clearWhenDisabled: true,
+          options: [{ value: '', label: '— none' }, ...INGREDIENT_CATEGORIES.map((c) => ({ value: c, label: c }))] },
         { name: 'primary_vendor_id', label: 'Primary vendor', type: 'select', options: vendorOptions(data, '— none selected') },
         { name: 'tags', label: 'Tags', type: 'csv', hint: tagHint },
         { name: 'notes', label: 'Notes', type: 'textarea' },
@@ -200,7 +204,8 @@ function itemForm({ item, data }) {
       if (!name) return { error: { message: 'The item needs a name.' } };
       const tags = [...new Set([...(p.tags || []), ...(label ? [label] : [])])];
       return friendly('item')(await saveItem(item?.id, {
-        name, kind: p.kind, primary_vendor_id: p.primary_vendor_id || null, notes: trimOrNull(p.notes), tags,
+        name, kind: p.kind, category: p.kind === 'ingredient' ? p.category || null : null,
+        primary_vendor_id: p.primary_vendor_id || null, notes: trimOrNull(p.notes), tags,
       }));
     },
   };
