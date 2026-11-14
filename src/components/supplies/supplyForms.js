@@ -154,8 +154,8 @@ function contactForm({ contact, vendor }) {
 // private label is added to them automatically.
 // Ingredient categories, from the DC x FC costing sheet (Caroline, Nov 13 2026).
 export const INGREDIENT_CATEGORIES = ['Chips', 'Fats, Butter, Oils', 'Fillings', 'Flour', 'Sugars', 'Misc'];
-export const PACKAGING_TYPES = ['Tray', 'Flowwrap', 'Pouch', 'Secondary Packaging - Mastercase', 'Secondary Packaging - SRP 8 pack', 'Secondary Packaging - SRP 12 pack'];
-const PRIVATE_LABELS = ['Walmart', 'Kroger'];
+export const PACKAGING_TYPES = ['Tray', 'Flowwrap', 'Pouch', 'Carton', 'Secondary Packaging - Mastercase', 'Secondary Packaging - SRP 8 pack', 'Secondary Packaging - SRP 12 pack', 'Pallet'];
+const PRIVATE_LABELS = ['Walmart', 'Kroger', 'ALDI'];
 const OTHER = '__other__';
 const pick = (sel, other) => (sel === OTHER ? String(other || '').trim() : sel || '');
 export const packagingName = (f) =>
