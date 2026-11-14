@@ -109,6 +109,10 @@ const ITEM_MERGES = {
   'White Chocolate Chips 4000ct': { into: 'White Chocolate Chips', count: '4K ct' },
   'Peanut Butter Chips 1000ct': { into: 'Peanut Butter Chips', count: '1K ct' },
   'Peanut Butter Chips 4000ct': { into: 'Peanut Butter Chips', count: '4K ct' },
+  // One Cookie Butter item; the Kof-K and Walmart versions stay as its two SKU
+  // lines, told apart by `variant` (added to the brand) — Caroline, Nov 13.
+  'DC Homemade Cookie Butter - KofK': { into: 'Cookie Butter', variant: 'Kof-K' },
+  'DC Homemade Cookie Butter - WMT': { into: 'Cookie Butter', variant: 'Walmart' },
   // Marc's "Tray" (Five Star Packaging, ERP 120001, "Tray (OSP) - Kroger") is
   // the Walmart 4-pk dough-puck tray — Caroline, Nov 13 2026. No count: the
   // order unit stays as it is.
@@ -131,7 +135,44 @@ const ITEM_RENAMES = {
   'PT206 — Cookie Pie Tray': 'Tray · Cookie Pie (PT206)',
   'SRP Case — 8-CT': 'Secondary Packaging - SRP 8 pack',
   'SRP - 12 CT': 'Secondary Packaging - SRP 12 pack',
+  // Ingredients: "Generic, variant", as on the DC x FC costing sheet (Nov 13).
+  'Semi-Sweet Chocolate Chips 1000ct': 'Chocolate Chips, Semi-Sweet',
+  'White Chocolate Chips': 'Chocolate Chips, White',
+  'GMO Free Canola Oil': 'Canola Oil, GMO Free',
+  'GMO Free Palm Shortening': 'Palm Shortening, GMO Free',
+  'Margarine Trans Free': 'Margarine, Trans Fat Free',
+  'Granulated Sugar': 'Sugar, Granulated',
+  'Light Brown Sugar': 'Sugar, Light Brown',
+  'Sugar, Powdered (Confectionary) 10X': 'Sugar, Powdered 10X',
+  'Flour': 'Flour, RTE Heat-Treated',
+  'Marshmellow Fluff': 'Marshmallow Fluff',
+  'Marshmellow Fluff - RTU': 'Marshmallow Fluff, RTU',
+  'Confectionery Cream': 'Confectionery Cream, White Chocolate',
+  'Table Salt': 'Salt',
+  'Liquid Eggs': 'Eggs, Liquid',
+  'Whole Milk, Powdered': 'Milk Powder, Whole',
+  'Vanilla Blend': 'Vanilla, Blend',
+  'Vanilla Pudding Powder': 'Pudding Powder, Vanilla',
+  'Sunflower Lecithin': 'Lecithin, Sunflower',
+  'Biscoff Crumble': 'Cookie Crumbs, Biscoff',
+  'Black Currant Flavor #FG0410': 'Flavor, Black Currant',
+  'Exberry Purple Plum Powder (colorant)': 'Color, Purple Plum',
+  'Moisturlok': 'Humectant Syrup, MoisturLOK',
+  'Novation Prima 340 (functional starch)': 'Starch, Novation Prima 340',
+  'Xtra Soft #50 (dough softener)': 'Dough Softener, Xtra Soft #50',
 };
+// Ingredient category — the costing sheet's sub-categories (Nov 13).
+const CATEGORY_OF = {
+  Chips: ['Semi-Sweet Chocolate Chips 1000ct', 'White Chocolate Chips', 'Peanut Butter Chips'],
+  'Fats, Butter, Oils': ['Butter, Unsalted', 'GMO Free Canola Oil', 'GMO Free Palm Shortening', 'Margarine Trans Free', "Margarine, Baker's NH 500"],
+  Fillings: ['Cookie Butter', 'Fudge Filling', 'Grape Jelly', 'Strawberry Jam', 'Peanut Butter Spread', 'Marshmellow Fluff', 'Marshmellow Fluff - RTU', 'Confectionery Cream'],
+  Flour: ['Flour', 'Flour, AP Unbleached', 'Flour, Soft Wheat'],
+  Sugars: ['Granulated Sugar', 'Light Brown Sugar', 'Sugar, Powdered (Confectionary) 10X', 'Invert Sugar, Congealed'],
+  Misc: ['Baking Soda', 'Citric Acid', 'Table Salt', 'Liquid Eggs', 'Whole Milk, Powdered', 'Vanilla Blend', 'Vanilla Pudding Powder', 'Sunflower Lecithin',
+    'Biscoff Crumble', 'Black Currant Flavor #FG0410', 'Exberry Purple Plum Powder (colorant)', 'Moisturlok', 'Novation Prima 340 (functional starch)',
+    'Xtra Soft #50 (dough softener)', 'CytoGuard OX-WST'],
+};
+const ITEM_CATEGORY = Object.fromEntries(Object.entries(CATEGORY_OF).flatMap(([c, names]) => names.map((n) => [n, c])));
 // Where an item is used, for the Supplies tab's filter. A shared item carries
 // every program it serves (the clear tray and the SRP cases: Walmart + Kroger).
 const ITEM_TAGS = {
@@ -144,10 +185,15 @@ const ITEM_TAGS = {
   'Plastic Tray — 3.0 Dough Pucks (4-pk WMT)': ['Walmart', 'Kroger'],
   'SRP Case — 8-CT': ['Walmart', 'Kroger'],
   'SRP - 12 CT': ['Walmart', 'Kroger'],
+  // Walmart bettergoods Black Currant, and the Walmart cookie butter line.
+  'Black Currant Flavor #FG0410': ['Walmart'],
+  'Exberry Purple Plum Powder (colorant)': ['Walmart'],
+  'Cookie Butter': ['Walmart'],
 };
-// Private-label brand, put at the front of the item's notes.
+// A line put at the front of the item's notes: private-label brand, or a flag.
 const BETTERGOODS = 'Brand: bettergoods (Walmart private label).';
 const ITEM_BRAND = {
+  'CytoGuard OX-WST': '⚑ Caroline to look into (Nov 13 ’26): what this is and whether it is still used.',
   'Film - Walmart CCF': BETTERGOODS,
   'Film - Walmart PBJ': BETTERGOODS,
   'Film - Walmart WCCB': BETTERGOODS,
@@ -159,6 +205,16 @@ const displayName = (n) => ITEM_RENAMES[n] ?? n;
 const KEY_BY_DISPLAY = Object.fromEntries(Object.entries(ITEM_RENAMES).map(([k, v]) => [v, k]));
 const itemKey = (n) => KEY_BY_DISPLAY[n] ?? n;
 const sqlTags = (t) => (t?.length ? `ARRAY[${t.map(q).join(', ')}]::text[]` : `'{}'::text[]`);
+
+// ── ingredient splits (Caroline, Nov 13 2026) ──────────────────────────────
+// One sheet item that is really several ingredients: move named SKUs (by
+// "<sheet item>|<brand>") into their own item. The SKU keeps its id (idKey),
+// so its prices and links follow it; what stays behind is renamed below.
+const SKU_MOVES = {
+  'Flour|General Mills All-purpose - H & R': 'Flour, AP Unbleached',
+  'Flour|Gold Medal - Pureasnow': 'Flour, Soft Wheat',          // confirmed by Caroline, Nov 13
+  'Margarine Trans Free|Bunge - 504': "Margarine, Baker's NH 500", // confirmed by Caroline, Nov 13
+};
 
 const MERGED_NOTE = 'Merged from the Assembler sheet’s 1000ct and 4000ct items (Nov 2 ’26). 1K / 4K is the chip count per lb, shown on each SKU’s order unit — compare on $/lb.';
 const ITEM_NOTES = {
@@ -247,6 +303,8 @@ function mergeSheet(items, vendors, skipped) {
     const sheetItem = r.item;
     const merged = ITEM_MERGES[sheetItem];
     if (merged) r.item = merged.into;
+    const moved = SKU_MOVES[`${sheetItem}|${r.brand}`];
+    if (moved) r.item = moved;
     const vendor = r.distributor in VENDOR_ALIASES ? VENDOR_ALIASES[r.distributor] : (r.distributor || null);
 
     if (SKIP_ITEM.test(r.item)) { skipped.push(`${r.item} (finished good)`); continue; }
@@ -293,9 +351,10 @@ function mergeSheet(items, vendors, skipped) {
       sku.order_unit = pkg ? `${pkg} (weight not on sheet)` : 'not on sheet';
       if (r.cost != null) breaks = [[1, r.cost]];
     }
-    if (merged) {
+    if (merged || moved) {
       sku.idKey = `${sheetItem}|${vendor ?? ''}|${sku.brand ?? ''}|${sku.order_unit}`;
-      if (merged.count) sku.order_unit = `${sku.order_unit} · ${merged.count}`;
+      if (merged?.count) sku.order_unit = `${sku.order_unit} · ${merged.count}`;
+      if (merged?.variant) sku.brand = [sku.brand, merged.variant].filter(Boolean).join(' · ');
     }
 
     const facts = [
@@ -548,7 +607,7 @@ function build() {
   for (const i of items) {
     if (i.primary && !vendorNames.has(i.primary)) throw new Error(`unknown primary vendor ${i.primary}`);
     const notes = ITEM_BRAND[i.name] ? [ITEM_BRAND[i.name], i.notes].filter(Boolean).join(' ') : i.notes;
-    irows.push([id('item', i.name), q(displayName(i.name)), q(i.kind), i.primary ? id('vendor', i.primary) : 'NULL', q(notes), sqlTags(ITEM_TAGS[i.name])]);
+    irows.push([id('item', i.name), q(displayName(i.name)), q(i.kind), i.primary ? id('vendor', i.primary) : 'NULL', q(notes), sqlTags(ITEM_TAGS[i.name]), q(ITEM_CATEGORY[i.name] ?? null)]);
     for (const s of i.skus) {
       if (s.vendor && !vendorNames.has(s.vendor)) throw new Error(`unknown vendor ${s.vendor}`);
       let skey = s.idKey ?? `${i.name}|${s.vendor ?? ''}|${s.brand ?? ''}|${s.order_unit}`;
@@ -578,6 +637,16 @@ function build() {
   }
 
   const itemNames = new Set(items.map((i) => i.name));
+  const mergedAway = new Set(Object.keys(ITEM_MERGES));
+  for (const [what, keys] of [['ITEM_RENAMES', Object.keys(ITEM_RENAMES)], ['ITEM_TAGS', Object.keys(ITEM_TAGS)], ['ITEM_BRAND', Object.keys(ITEM_BRAND)],
+    ['CATEGORY_OF', Object.keys(ITEM_CATEGORY)], ['SKU_MOVES', Object.values(SKU_MOVES)]]) {
+    for (const k of keys) if (!itemNames.has(k) && !mergedAway.has(k)) throw new Error(`${what}: no item named "${k}" — typo, or the item was renamed`);
+  }
+  const uncategorized = items.filter((i) => i.kind === 'ingredient' && !ITEM_CATEGORY[i.name]).map((i) => i.name);
+  if (uncategorized.length) console.warn(`Ingredients without a category: ${uncategorized.join('; ')}`);
+  const shown = items.map((i) => displayName(i.name));
+  const clash = shown.find((n, k) => shown.indexOf(n) !== k);
+  if (clash) throw new Error(`two items would both be named "${clash}"`);
   for (const d of DOCUMENTS) {
     if (d.vendor && !vendorNames.has(d.vendor)) throw new Error(`unknown vendor ${d.vendor} on document ${d.path}`);
     d.items = (d.items ?? []).map(itemKey);
@@ -609,7 +678,7 @@ BEGIN;
   const sql = header +
     upsert('vendors', ['id', 'name', 'category', 'status', 'address', 'website', 'phone_main', 'account_number', 'fob', 'default_terms', 'freight_notes', 'billing_entity', 'notes'], vrows) + '\n' +
     upsert('vendor_contacts', ['id', 'vendor_id', 'name', 'role', 'phone_office', 'phone_cell', 'email', 'is_primary', 'source'], crows) + '\n' +
-    upsert('supply_items', ['id', 'name', 'kind', 'primary_vendor_id', 'notes', 'tags'], irows) + '\n' +
+    upsert('supply_items', ['id', 'name', 'kind', 'primary_vendor_id', 'notes', 'tags', 'category'], irows) + '\n' +
     upsert('supply_skus', ['id', 'item_id', 'vendor_id', 'brand_name', 'item_code', 'vendor_item_code', 'order_unit', 'unit_weight_lbs', 'units_per_order_unit', 'units_per_thousand', 'spec_note'], srows) + '\n' +
     upsert('supply_pos', ['id', 'po_number', 'vendor_id', 'po_date', 'fulfillment', 'packing_slip_ref', 'ship_date', 'freight_cost', 'notes'], porows, { insertOnly: true }) + '\n' +
     upsert('quotes', ['id', 'sku_id', 'vendor_id', 'doc_type', 'doc_ref', 'doc_date', 'valid_until', 'moq', 'lead_time', 'terms', 'one_time_costs', 'status', 'notes', 'doc_path', 'po_id'], qrows, { keep: ['po_id'] }) + '\n' +

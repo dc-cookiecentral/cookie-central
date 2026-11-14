@@ -81,6 +81,10 @@ export default function SupplyItems({ data, maps, editing, setModal, onChanged }
       ),
     },
     {
+      key: 'category', label: 'Category', filterable: true, value: (r) => r.category || '',
+      render: (r) => (r.category ? <span className="text-[10px] text-md whitespace-nowrap">{r.category}</span> : <Empty />),
+    },
+    {
       key: 'primary', label: 'Primary Vendor', value: (r) => r.primary?.name || '',
       render: (r) =>
         r.primary ? <span>★ <VendorLink vendor={r.primary} /></span>
@@ -115,7 +119,7 @@ export default function SupplyItems({ data, maps, editing, setModal, onChanged }
       <div className="mb-5">
         <div className="text-[11px] font-bold uppercase tracking-wide mt-1 mb-1" style={{ color }}>{label}</div>
         <SpecTable
-          columns={cols.map((c) =>
+          columns={cols.filter((c) => kind === 'ingredient' || c.key !== 'category').map((c) =>
             c.key === 'price' ? { ...c, label: kind === 'ingredient' ? 'Price / lb' : 'Price / 1,000' }
               : c.key === 'cost' ? { ...c, label: kind === 'ingredient' ? 'Assumed · actual $/lb' : 'Assumed · actual $/1,000' } : c)}
           rows={kindRows}
